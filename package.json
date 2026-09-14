@@ -1,0 +1,41 @@
+{
+  "name": "twitch-community-bot",
+  "version": "1.0.0",
+  "description": "Bot Discord all-in-one pour la communauté d'un streamer Twitch",
+  "main": "dist/src/index.js",
+  "type": "commonjs",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/index.js",
+    "dev": "npm run build && node dist/src/index.js",
+    "deploy": "npm run build && node dist/src/deploy.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/tests/*.test.js\"",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@discordjs/voice": "0.19.2",
+    "discord.js": "14.27.0",
+    "dotenv": "17.4.2",
+    "ffmpeg-static": "5.3.0",
+    "libsodium-wrappers": "0.8.4",
+    "opusscript": "0.0.8",
+    "play-dl": "1.9.7",
+    "prism-media": "1.3.5"
+  },
+  "optionalDependencies": {
+    "@napi-rs/canvas": "1.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.4",
+    "typescript": "7.0.2"
+  },
+  "allowScripts": {
+    "ffmpeg-static@5.3.0": true
+  }
+}
