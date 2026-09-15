@@ -62,6 +62,7 @@ export interface TwitchUser {
   login: string;
   display_name: string;
   profile_image_url: string;
+  offline_image_url: string;
   description: string;
 }
 
@@ -149,6 +150,36 @@ export async function lireComptes(pseudos: string[]): Promise<TwitchUser[]> {
   const resultat: TwitchUser[] = [];
   for (const partie of morceaux(unique, 100)) resultat.push(...(await appelHelix<TwitchUser>('users', partie.map((l) => ['login', l]))));
   return resultat;
+}
+
+// - Bannière d’une chaîne -
+// Celle du profil, sinon l’image hors ligne ; gardée six heures.
+const bannieres = new Map<string, { url: string | null; expire: number }>();
+
+export async function banniereTwitch(pseudo: string): Promise<string | null> {
+  const cle = pseudo.toLowerCase();
+  const gardee = bannieres.get(cle);
+  if (gardee && gardee.expire > Date.now()) return gardee.url;
+  let url: string | null = null;
+  try {
+    const reponse = await fetch('https://gql.twitch.tv/gql', {
+      method: 'POST',
+      headers: { 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'query($login: String!) { user(login: $login) { bannerImageURL offlineImageURL } }', variables: { login: cle } }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    const corps = reponse.ok ? ((await reponse.json()) as { data?: { user?: { bannerImageURL?: string | null; offlineImageURL?: string | null } | null } }) : null;
+    url = corps?.data?.user?.bannerImageURL || corps?.data?.user?.offlineImageURL || null;
+  } catch {
+    url = null;
+  }
+  if (!url && twitchConfigure()) {
+    const [compte] = await lireComptes([cle]).catch(() => []);
+    url = compte?.offline_image_url || null;
+  }
+  bannieres.set(cle, { url, expire: Date.now() + 6 * 3_600_000 });
+  if (bannieres.size > 200) bannieres.delete(bannieres.keys().next().value!);
+  return url;
 }
 
 export async function lireClips(diffuseurId: string, depuis: number): Promise<TwitchClip[]> {

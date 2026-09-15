@@ -17,6 +17,7 @@ import { type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
 import { creerRegistre, RACINE_PROJET, formaterDuree, formaterNombre, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 import { activiteMembre } from './niveaux';
+import { banniereTwitch, listerChaines } from './twitch';
 
 const registre = creerRegistre('carte');
 
@@ -99,10 +100,7 @@ function ajusterTexte(contexte: Contexte, texte: string, max: number, largeur: n
 
 const fonds = new Map<string, ImageToile>();
 
-async function fondDe(serveurId: string, l: BibliothequeToile): Promise<ImageToile | null> {
-  const source = enseigneDe(serveurId).fond;
-  const secours = async () => (fs.existsSync(FOND_DEFAUT) ? l.loadImage(FOND_DEFAUT).catch(() => null) : null);
-  if (!source) return secours();
+async function imageDistante(source: string, l: BibliothequeToile): Promise<ImageToile | null> {
   const enCache = fonds.get(source);
   if (enCache) return enCache;
   try {
@@ -113,9 +111,32 @@ async function fondDe(serveurId: string, l: BibliothequeToile): Promise<ImageToi
     if (fonds.size > 20) fonds.delete(fonds.keys().next().value!);
     return image;
   } catch (echec) {
-    registre.avertir(`Fond de l’enseigne illisible (${(echec as Error).message}) — fond par défaut.`);
-    return secours();
+    registre.avertir(`Fond illisible (${(echec as Error).message}) : ${source}`);
+    return null;
   }
+}
+
+// - Fond de la carte -
+// Le fond choisi pour l’enseigne, sinon la bannière Twitch du streamer, sinon celui du bot.
+export async function sourceFond(serveurId: string): Promise<string | null> {
+  const enseigne = enseigneDe(serveurId);
+  if (enseigne.fond) return enseigne.fond;
+  const pseudo = enseigne.pseudoTwitch ?? listerChaines(serveurId)[0]?.pseudo;
+  return pseudo ? banniereTwitch(pseudo) : null;
+}
+
+async function fondDe(serveurId: string, l: BibliothequeToile): Promise<ImageToile | null> {
+  const source = await sourceFond(serveurId).catch(() => null);
+  const image = source ? await imageDistante(source, l) : null;
+  if (image) return image;
+  return fs.existsSync(FOND_DEFAUT) ? l.loadImage(FOND_DEFAUT).catch(() => null) : null;
+}
+
+function dessinerCouvrant(contexte: Contexte, image: ImageToile, largeur: number, hauteur: number): void {
+  const echelle = Math.max(largeur / image.width, hauteur / image.height);
+  const w = image.width * echelle;
+  const h = image.height * echelle;
+  contexte.drawImage(image, (largeur - w) / 2, (hauteur - h) / 2, w, h);
 }
 
 export interface OptionsCarte {
@@ -138,15 +159,15 @@ export async function construireCarteBienvenue(membre: GuildMember, options: Opt
     contexte.clip();
 
     const fondCarte = await fondDe(membre.guild.id, l);
-    if (fondCarte) contexte.drawImage(fondCarte, 0, 0, LARGEUR, HAUTEUR);
+    if (fondCarte) dessinerCouvrant(contexte, fondCarte, LARGEUR, HAUTEUR);
     else {
       contexte.fillStyle = '#1f1535';
       contexte.fillRect(0, 0, LARGEUR, HAUTEUR);
     }
     const voile = contexte.createLinearGradient(0, 0, LARGEUR, 0);
-    voile.addColorStop(0, 'rgba(10, 6, 24, 0.45)');
-    voile.addColorStop(0.35, 'rgba(10, 6, 24, 0.62)');
-    voile.addColorStop(1, 'rgba(10, 6, 24, 0.82)');
+    voile.addColorStop(0, 'rgba(10, 6, 24, 0.25)');
+    voile.addColorStop(0.35, 'rgba(10, 6, 24, 0.5)');
+    voile.addColorStop(1, 'rgba(10, 6, 24, 0.72)');
     contexte.fillStyle = voile;
     contexte.fillRect(0, 0, LARGEUR, HAUTEUR);
 
@@ -181,7 +202,7 @@ export async function construireCarteBienvenue(membre: GuildMember, options: Opt
     contexte.shadowBlur = 8;
     contexte.shadowOffsetY = 2;
 
-    const entete = nettoyer(options.titre ?? `— Bienvenue sur "${membre.guild.name}" —`);
+    const entete = nettoyer(options.titre ?? `— Bienvenue sur le serveur "${membre.guild.name}" —`);
     const tailleEntete = ajusterTexte(contexte, entete, 19, largeur, 'italic 500', 12);
     contexte.font = `italic 500 ${tailleEntete}px ${PILE_POLICES}`;
     contexte.fillStyle = '#e6e1f2';
