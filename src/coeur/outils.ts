@@ -109,7 +109,6 @@ export function creerRegistre(portee: string): Registre {
 
 export const registre = creerRegistre('bot');
 
-/** Erreur destinée à l'utilisateur : son message est affiché tel quel. */
 export class ErreurUtilisateur extends Error {
   constructor(
     message: string,
@@ -122,7 +121,6 @@ export class ErreurUtilisateur extends Error {
 
 export const ERREUR_GENERIQUE = "Le bot n'a pas pu effectuer cette action.";
 
-/** Codes d'erreur Discord courants traduits en messages compréhensibles. */
 export function decrireErreurDiscord(echec: unknown): string | null {
   const code = (echec as { code?: number } | null)?.code;
   switch (code) {
@@ -151,7 +149,6 @@ export function decrireErreurDiscord(echec: unknown): string | null {
   }
 }
 
-/** Map avec expiration, nettoyée paresseusement (aucun timer permanent par entrée). */
 export class CarteExpirante<K, V> {
   private readonly stockage = new Map<K, { value: V; expires: number }>();
   private dernierNettoyage = Date.now();
@@ -232,15 +229,9 @@ const UNITES: Record<string, number> = {
   mois: 2_592_000_000,
 };
 
-/**
- * Convertit une durée lisible en millisecondes.
- * Exemples : "2h30", "1j 12h", "45m", "90s", "1 semaine", "2h30m".
- * Retourne null si invalide.
- */
 export function lireDuree(saisie: string): number | null {
   const brut = saisie.trim().toLowerCase().replace(/,/g, '.');
   if (!brut) return null;
-  // "2h30" -> minutes implicites après les heures
   const heureMinute = /^(\d+)\s*h\s*(\d{1,2})$/.exec(brut);
   if (heureMinute) return Number(heureMinute[1]) * 3_600_000 + Number(heureMinute[2]) * 60_000;
   const expression = /(\d+(?:\.\d+)?)\s*([a-zé]+)/g;
@@ -254,7 +245,7 @@ export function lireDuree(saisie: string): number | null {
     consomme += correspondance[0];
   }
   if (!consomme || consomme.replace(/\s/g, '') !== brut.replace(/\s/g, '')) {
-    if (/^\d+$/.test(brut)) return Number(brut) * 60_000; // nombre seul = minutes
+    if (/^\d+$/.test(brut)) return Number(brut) * 60_000;
     return null;
   }
   return total > 0 ? Math.round(total) : null;
@@ -336,7 +327,6 @@ export function fuseauValide(fuseauHoraire: string): boolean {
 
 const JOURS_SEMAINE: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
-/** Décompose un instant dans un fuseau horaire donné. */
 export function partiesFuseau(ms: number, fuseauHoraire: string): PartiesFuseau {
   const fuseauSur = fuseauValide(fuseauHoraire) ? fuseauHoraire : 'UTC';
   const parties = Object.fromEntries(formateur(fuseauSur).formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
@@ -351,11 +341,9 @@ export function partiesFuseau(ms: number, fuseauHoraire: string): PartiesFuseau 
   };
 }
 
-/** Convertit une date/heure "murale" d'un fuseau en timestamp UTC (ms). */
 export function heureFuseauEnUtc(annee: number, mois: number, jour: number, heure: number, minute: number, fuseauHoraire: string): number {
   const estimation = Date.UTC(annee, mois - 1, jour, heure, minute);
   let resultat = estimation;
-  // Deux itérations suffisent pour gérer les changements d'heure
   for (let i = 0; i < 2; i++) {
     const p = partiesFuseau(resultat, fuseauHoraire);
     const enUtc = Date.UTC(p.annee, p.mois - 1, p.jour, p.heure, p.minute);
@@ -364,7 +352,6 @@ export function heureFuseauEnUtc(annee: number, mois: number, jour: number, heur
   return resultat;
 }
 
-/** Clé de jour "AAAA-MM-JJ" dans le fuseau donné. */
 export function cleJour(ms: number, fuseauHoraire: string): string {
   const p = partiesFuseau(ms, fuseauHoraire);
   return `${p.annee}-${String(p.mois).padStart(2, '0')}-${String(p.jour).padStart(2, '0')}`;
@@ -376,10 +363,6 @@ export function cleJourPrecedent(cle: string): string {
   return date.toISOString().slice(0, 10);
 }
 
-/**
- * Analyse une date "JJ/MM/AAAA" (ou "JJ/MM") et une heure "HH:MM" / "21h" dans un fuseau.
- * Retourne null si invalide.
- */
 export function lireDateHeure(dateSaisie: string, heureSaisie: string, fuseauHoraire: string, maintenant = Date.now()): number | null {
   const mp = /^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?$/.exec(dateSaisie.trim());
   const tm = /^(\d{1,2})(?:\s*[:h]\s*(\d{2})?)?$/i.exec(heureSaisie.trim());
@@ -415,7 +398,6 @@ export function tronquer(valeur: string, max: number): string {
 
 export { escapeMarkdown } from 'discord.js';
 
-/** Neutralise les mentions de masse dans un texte fourni par un utilisateur. */
 export function neutraliserMentions(valeur: string): string {
   return valeur.replace(/@(everyone|here)/gi, '@\u200b$1');
 }
@@ -460,7 +442,6 @@ export function medaille(rang: number): string {
   return rang === 1 ? '🥇' : rang === 2 ? '🥈' : rang === 3 ? '🥉' : `**${rang}.**`;
 }
 
-/** Limiteur à fenêtre glissante, en mémoire. */
 export class LimiteurFenetre {
   private readonly passages = new Map<string, number[]>();
   private dernierNettoyage = Date.now();
@@ -470,7 +451,6 @@ export class LimiteurFenetre {
     private readonly fenetreMs: number,
   ) {}
 
-  /** Enregistre un passage ; retourne false si la limite est dépassée. */
   compter(cle: string, maintenant = Date.now()): boolean {
     this.nettoyer(maintenant);
     const liste = (this.passages.get(cle) ?? []).filter((t) => maintenant - t < this.fenetreMs);
@@ -500,11 +480,9 @@ export class LimiteurFenetre {
   }
 }
 
-/** Cooldowns par clé (ex : commande + utilisateur). */
 export class Delais {
   private readonly jusqua = new Map<string, number>();
 
-  /** Retourne le temps restant en ms (0 = disponible, et le cooldown est alors armé). */
   prendre(cle: string, dureeMs: number, maintenant = Date.now()): number {
     const fin = this.jusqua.get(cle) ?? 0;
     if (fin > maintenant) return fin - maintenant;
@@ -547,7 +525,6 @@ export function resoudreSalon(serveur: Guild, valeur: string | undefined): Guild
   return id ? (serveur.channels.cache.get(id) ?? null) : null;
 }
 
-/** Cible d'une commande à préfixe : mention/ID en argument, sinon la personne à qui l'on répond. */
 export async function membreCible(message: Message<true>, argument: string | undefined): Promise<GuildMember | null> {
   const depuisArgument = await resoudreMembre(message.guild, argument);
   if (depuisArgument) return depuisArgument;
@@ -558,10 +535,6 @@ export async function membreCible(message: Message<true>, argument: string | und
   return null;
 }
 
-/**
- * Niveaux d'accès, du plus bas au plus haut.
- * Chaque niveau garde tout ce que donnent les précédents.
- */
 export enum Niveau {
   MEMBRE = 0,
   SUPPORT = 1,
@@ -613,7 +586,6 @@ export const CATEGORIES_AIDE: Record<CategorieAide, { label: string; emoji: stri
   owner: { label: 'Réglages du bot', emoji: '👑' },
 };
 
-/** Domaines de préfixes, à la manière du bot Airline : + sanctions, & salons, = général, . owner, m! musique. */
 export type DomainePrefixe = 'sanction' | 'salon' | 'general' | 'owner' | 'music';
 
 export const DOMAINES_PREFIXES: Record<DomainePrefixe, { label: string; emoji: string; prefixeParDefaut: string }> = {

@@ -12,17 +12,12 @@ export interface DefinitionWhitelist {
   emoji: string;
   groupe: string;
   description: string;
-  /** Portée : globale (tous les serveurs) ou par serveur. */
   portee: 'global' | 'guild';
-  /** Niveau donné par la whitelist (null = accès ciblé, sans niveau). */
   accorde: Niveau | null;
-  /** Niveau minimum pour donner ou retirer cette whitelist. */
   gerePar: Niveau;
-  /** Préfixe de commande rapide (domaine général "=" sauf owner "."). */
   raccourci: string;
 }
 
-/** Catalogue des whitelists, dans l'ordre d'affichage. */
 export const WHITELISTS: DefinitionWhitelist[] = [
   {
     id: 'owner',
@@ -144,7 +139,6 @@ function porteeDe(definition: DefinitionWhitelist, serveurId: string | null): st
   return definition.portee === 'global' ? 'global' : (serveurId ?? 'global');
 }
 
-// Cache par portée : les whitelists sont lues à chaque interaction.
 const cache = new Map<string, Map<string, Set<string>>>();
 
 function chargerPortee(portee: string): Map<string, Set<string>> {
@@ -161,7 +155,6 @@ function chargerPortee(portee: string): Map<string, Set<string>> {
   return listes;
 }
 
-/** Owners codés dans l'environnement : ils ne peuvent jamais être retirés. */
 export function estProprietaireFixe(utilisateurId: string): boolean {
   return environnement.proprietairesIds.includes(utilisateurId);
 }
@@ -189,7 +182,6 @@ export function whitelistsMembre(utilisateurId: string, serveurId: string | null
   return WHITELISTS.filter((w) => estWhitelist(w.id, utilisateurId, serveurId));
 }
 
-/** Niveau le plus élevé accordé par les whitelists d'un utilisateur. */
 export function niveauWhitelist(utilisateurId: string, serveurId: string | null): Niveau {
   let niveau = Niveau.MEMBRE;
   for (const w of whitelistsMembre(utilisateurId, serveurId)) if (w.accorde !== null && w.accorde > niveau) niveau = w.accorde;
@@ -231,7 +223,6 @@ export function viderCacheWhitelists(): void {
   cache.clear();
 }
 
-/** Peut-on donner/retirer cette whitelist ? (règle : strictement au-dessus, sauf owner/streamer) */
 export function peutGererWhitelist(niveauAuteur: Niveau, definition: DefinitionWhitelist, auteurProprietaireFixe: boolean, auteurProprietaireServeur: boolean): boolean {
   if (definition.id === 'owner') return auteurProprietaireFixe;
   if (definition.id === 'streamer') return niveauAuteur >= Niveau.PROPRIETAIRE_BOT || auteurProprietaireServeur;
@@ -244,15 +235,10 @@ export interface ProfilMembre {
   roleIds: string[];
   isAdministrator: boolean;
   canManageGuild: boolean;
-  /** Niveau accordé par les whitelists (par ID). */
   whitelistLevel: Niveau;
   isBotOwner: boolean;
 }
 
-/**
- * Calcul pur (testable) du niveau d'accès.
- * Sources cumulées : owner bot, propriétaire du serveur, whitelists par ID, rôles configurés, permissions Discord.
- */
 export function calculerNiveau(membre: ProfilMembre, permissions: ConfigServeur['permissions']): Niveau {
   if (membre.isBotOwner) return Niveau.PROPRIETAIRE_BOT;
   let niveau = membre.whitelistLevel;
@@ -289,13 +275,11 @@ export function aNiveau(membre: GuildMember, niveau: Niveau): boolean {
   return lireNiveau(membre) >= niveau;
 }
 
-/** Accès à une fonction : niveau suffisant OU whitelist ciblée. */
 export function aAcces(membre: GuildMember, niveau: Niveau, whitelist?: string): boolean {
   if (lireNiveau(membre) >= niveau) return true;
   return !!whitelist && estWhitelist(whitelist as WhitelistId, membre.id, membre.guild.id);
 }
 
-/** Membre ignoré par les protections automatiques (bypass ou staff). */
 export function estExempte(membre: GuildMember | null | undefined): boolean {
   if (!membre) return false;
   return estWhitelist('bypass', membre.id, membre.guild.id) || lireNiveau(membre) >= Niveau.MODERATEUR;
@@ -305,7 +289,6 @@ export function libelleNiveau(niveau: Niveau): string {
   return LIBELLES_NIVEAUX[niveau];
 }
 
-/** Le bot peut-il attribuer ce rôle ? (hiérarchie + rôle géré) */
 export function botPeutGererRole(serveur: Guild, role: Role): boolean {
   const moi = serveur.members.me;
   if (!moi || !moi.permissions.has(PermissionFlagsBits.ManageRoles)) return false;
@@ -321,14 +304,14 @@ export function rolesAttribuables(serveur: Guild, rolesIds: string[]): Role[] {
 
 export type VerificationModeration = { ok: true } | { ok: false; reason: string };
 
-/** Vérifie qu'un modérateur peut agir sur une cible (hiérarchie Discord et niveaux du bot respectés). */
 export function verifierModerable(auteur: GuildMember, cible: GuildMember): VerificationModeration {
   const serveur = auteur.guild;
   if (cible.id === auteur.id) return { ok: false, reason: 'Tu ne peux pas faire ça sur toi-même.' };
   if (cible.id === serveur.ownerId) return { ok: false, reason: 'Impossible de sanctionner le propriétaire du serveur.' };
   if (cible.id === serveur.members.me?.id) return { ok: false, reason: 'Je ne peux pas me sanctionner moi-même.' };
   const moi = serveur.members.me;
-  // Les sanctions automatiques (AutoMod, anti-raid) viennent du bot : seule la hiérarchie des rôles compte.
+  // - Sanctions automatiques -
+  // Venues du bot : seule la hiérarchie des rôles compte.
   if (auteur.id === moi?.id) {
     return moi.roles.highest.comparePositionTo(cible.roles.highest) > 0 ? { ok: true } : { ok: false, reason: 'Ce membre a un rôle supérieur ou égal au mien.' };
   }
@@ -349,11 +332,6 @@ export function botAPermissions(serveur: Guild, permissions: PermissionResolvabl
   return serveur.members.me?.permissions.has(permissions) ?? false;
 }
 
-/**
- * ENSEIGNES STREAMERS
- * Chaque streamer a sa direction artistique (nom, couleur, logo, pied, émojis, liens)
- * et la liste des serveurs qui la portent. Les messages du bot prennent celle du serveur où ils sont envoyés.
- */
 
 export const COULEUR_DEFAUT = 0x9146ff;
 
@@ -438,7 +416,6 @@ export function estLienImage(valeur: string): boolean {
   return MOTIF_IMAGE.test(valeur.trim());
 }
 
-/** Un émoji personnalisé Discord ou un émoji unicode court. */
 export function estEmoji(valeur: string): boolean {
   const v = valeur.trim();
   if (MOTIF_EMOJI_PERSO.test(v)) return true;
@@ -456,7 +433,6 @@ export function enHexa(couleur: number): string {
   return `#${couleur.toString(16).padStart(6, '0').toUpperCase()}`;
 }
 
-/** Palettes proposées dans /custom, lisibles sur le fond sombre de Discord. */
 export const PALETTES = [
   {
     name: 'Twitch',
@@ -620,7 +596,6 @@ export function poserServeursEnseigne(cle: string, serveurIds: string[]): void {
   transaction(() => {
     executer('DELETE FROM serveurs_enseignes WHERE enseigne_cle = ?', cle);
     for (const id of [...new Set(serveurIds)].slice(0, 100)) {
-      // Un serveur n'appartient qu'à une seule enseigne : il est retiré de l'ancienne.
       executer('INSERT INTO serveurs_enseignes (serveur_id, enseigne_cle) VALUES (?, ?) ON CONFLICT(serveur_id) DO UPDATE SET enseigne_cle = excluded.enseigne_cle', id, cle);
     }
   });

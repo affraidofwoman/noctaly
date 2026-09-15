@@ -9,10 +9,8 @@ export interface Migration {
   requete: string;
 }
 
-/**
- * Migrations versionnées. Ne JAMAIS modifier une migration déjà publiée :
- * ajouter une nouvelle entrée avec un numéro supérieur.
- */
+// - Migrations -
+// Une migration publiée ne se modifie jamais : on en ajoute une nouvelle.
 export const migrations: Migration[] = [
   {
     version: 1,
@@ -589,9 +587,7 @@ export function fermerBase(): void {
   if (base) {
     try {
       base.close();
-    } catch {
-      /* déjà fermée */
-    }
+    } catch {}
   }
   base = null;
 }

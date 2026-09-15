@@ -86,7 +86,6 @@ const pierreFeuilleCiseaux: CommandeSlash = {
   },
 };
 
-/** Coups en attente pour les duels (clé : message). */
 const enAttente = new Map<string, Map<string, string>>();
 
 async function surPierreFeuille(interaction: ButtonInteraction<'cached'>, [defieur, adversaire, coup]: string[]) {

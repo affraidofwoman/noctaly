@@ -22,7 +22,6 @@ export interface LigneAide {
   tri: string;
 }
 
-/** Lignes d'aide d'une section : uniquement ce que le membre peut lancer, slash et préfixes. */
 export function lignesAide(membre: GuildMember, categorie: CategorieAide): LigneAide[] {
   const aiguilleur = lireAiguilleur();
   const serveurId = membre.guild.id;
@@ -91,7 +90,6 @@ function menu(membre: GuildMember, sections: { categorie: CategorieAide; lines: 
   return [rangee(menu), rangee(boutonCorbeille(membre.guild.id, membre.id))];
 }
 
-/** Écran d'accueil : le tableau des sections, comme sur Airline. */
 export function accueilAide(membre: GuildMember) {
   const sections = sectionsPour(membre);
   const embed = embedEnseigne(membre.guild)
@@ -383,7 +381,6 @@ export const moduleGeneral: ModuleBot = {
       },
     },
   ],
-  // Suivi vocal commun : XP, statistiques et quêtes s'y abonnent chacun de leur côté.
   evenements: [sur('voiceStateUpdate', (avant, apres) => traiterEtatVocal(avant, apres), 5)],
   taches: [
     {

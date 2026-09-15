@@ -117,7 +117,6 @@ export interface PageReglage {
   titre: string;
   emoji: string;
   description: string;
-  /** Module dont l'activation est proposée sur la page. */
   moduleId?: string;
   champs: ChampReglage[];
   actions?: ActionReglage[];
@@ -148,7 +147,6 @@ export function pagesDeSection(section: SectionReglage): PageReglage[] {
 
 const GENRES_MENUS = new Set(['channel', 'channels', 'role', 'roles', 'choice', 'multichoice']);
 
-/** Vérifie qu'une page tient dans les 5 rangées de composants autorisées par Discord. */
 export function verifierMisePage(page: PageReglage): void {
   const menus = page.champs.filter((f) => GENRES_MENUS.has(f.genre)).length;
   const bascules = page.champs.filter((f) => f.genre === 'toggle').length;

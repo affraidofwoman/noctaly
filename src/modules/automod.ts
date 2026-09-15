@@ -8,10 +8,6 @@ import { creerRegistre, Delais, LimiteurFenetre, tronquer, Niveau } from '../coe
 import { type ConfigServeur, lireConfig, modifierConfig } from '../coeur/reglages';
 import { appliquerSanction } from './moderation';
 
-/**
- * Filtre de mots interdits repris du bot Airline : résiste aux substitutions (0→o, 3→e, @→a…),
- * aux séparateurs (n.e.g.r.e) et aux lettres répétées, sans toucher aux mots sûrs (violet, violon…).
- */
 
 export const MOTS_DEFAUT = [
   'negre', 'negro', 'nigger', 'nigga', 'bougnoule', 'bicot', 'youpin', 'chintok', 'niakoue',
@@ -21,6 +17,8 @@ export const MOTS_DEFAUT = [
   'pute', 'salope', 'connasse',
 ];
 
+// - Mots sûrs -
+// Comptés seulement tels qu’écrits, sinon « de p.u.t.e » passerait pour « député ».
 export const MOTS_SURS = [
   'violet', 'violette', 'violon', 'violoncelle', 'violoniste',
   'violence', 'violent', 'violente', 'violemment', 'violace',
@@ -40,7 +38,6 @@ const VARIANTES: Record<string, string> = {
   v: 'v', w: 'w', x: 'x×', y: 'y¥ÿ', z: 'z2',
 };
 
-/** Forme de base d'un mot : minuscules, sans accents, sosies remplacés, lettres seulement. */
 export function formeDeBase(mot: string): string {
   const epure = mot.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   return [...epure].map((c) => SOSIES[c] ?? c).join('').replace(/[^a-z]/g, '');
@@ -75,11 +72,9 @@ function plages(mot: string, botte: string): [number, number][] {
   return sortie;
 }
 
-/** Retourne le mot interdit trouvé dans le texte, ou null. */
 export function trouverMotInterdit(mots: string[], texte: string): string | null {
   if (!mots.length || !texte) return null;
   const botte = texte.slice(0, 4000).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  // Les mots sûrs ne comptent qu'écrits tels quels : sinon « de p.u.t.e » passerait pour « député ».
   const surs: [number, number][] = [];
   for (const mot of MOTS_SURS) {
     for (let i = botte.indexOf(mot); i !== -1; i = botte.indexOf(mot, i + 1)) surs.push([i, i + mot.length]);
@@ -113,7 +108,6 @@ export function contientInvitation(contenu: string): boolean {
   return INVITATION.test(contenu);
 }
 
-/** Domaine autorisé si identique ou sous-domaine d'une entrée de la whitelist. */
 export function domaineAutorise(organisateur: string, whitelist: string[]): boolean {
   const h = organisateur.toLowerCase().replace(/^www\./, '').replace(/:\d+$/, '');
   return whitelist.some((d) => {
@@ -143,7 +137,6 @@ export interface VerdictContenu {
   detail: string;
 }
 
-/** Règles sans état (évaluées sur un seul message). */
 export function verifierContenu(reglages: ConfigServeur['automod'], contenu: string, nombreMentions: number, mentionneTous: boolean): VerdictContenu | null {
   if (reglages.invites.enabled && contientInvitation(contenu)) return { regle: 'invites', detail: contenu.match(INVITATION)?.[0] ?? '' };
   if (reglages.liens.enabled) {
@@ -198,7 +191,6 @@ async function sanctionner(message: Message<true>, regle: RegleAutomod, detail: 
   const reglages = lireConfig(serveur.id).automod;
   await message.delete().catch(() => undefined);
 
-  // Une seule réaction par personne toutes les 10 secondes : pas de cascade de sanctions sur un spam.
   if (delaiActions.prendre(`${serveur.id}:${message.author.id}`, 10_000) > 0) return;
 
   const libelle = LIBELLES_REGLES[regle];

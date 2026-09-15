@@ -47,14 +47,11 @@ export interface DefinitionSalonJournal {
 
 export interface DefinitionCategorieJournal {
   categorie: string;
-  /** Permission Discord qui donne la vue sur la catégorie. */
   permissionVue: PermissionResolvable;
-  /** Whitelists qui donnent la vue sur la catégorie. */
   whitelistsVue: WhitelistId[];
   salons: DefinitionSalonJournal[];
 }
 
-/** Structure des salons de logs, à la manière du bot Airline : un salon nommé par type. */
 export const STRUCTURE_JOURNAUX: DefinitionCategorieJournal[] = [
   {
     categorie: 'Logs · Sanctions',
@@ -143,7 +140,6 @@ export function resoudreSalonTexte(serveur: Guild, salonId: string | null | unde
   return salonTexteUtilisable(serveur, salonId);
 }
 
-/** Salon d'un type de log : celui choisi dans la configuration, sinon celui qui porte le nom attendu. */
 export function salonJournalPour(serveur: Guild, type: TypeJournal): GuildTextBasedChannel | null {
   const reglages = lireConfig(serveur.id).journaux;
   if (reglages.disabled.includes(type)) return null;
@@ -179,7 +175,6 @@ export function construireEmbedJournal(options: OptionsJournal): EmbedBuilder {
   return embed;
 }
 
-/** Écrit dans le salon de logs du type (si le module Logs est actif). */
 export async function journal(serveur: Guild, type: TypeJournal, options: OptionsJournal): Promise<boolean> {
   if (!moduleActif(serveur.id, 'logs')) return false;
   const salon = salonJournalPour(serveur, type);
@@ -193,7 +188,6 @@ export async function journal(serveur: Guild, type: TypeJournal, options: Option
   }
 }
 
-/** Historise un événement en base (utilisé par /logs et le dashboard). */
 export function historiser(
   serveurId: string,
   type: TypeJournal,
@@ -218,7 +212,6 @@ export function historiser(
   }
 }
 
-/** Permissions d'une catégorie de logs : cachée, visible par la permission et les whitelists. */
 export function permissionsJournaux(serveur: Guild, definition: DefinitionCategorieJournal): OverwriteResolvable[] {
   const permissionsSalon: OverwriteResolvable[] = [{ id: serveur.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }];
   const moi = serveur.members.me;
@@ -241,7 +234,6 @@ export function permissionsJournaux(serveur: Guild, definition: DefinitionCatego
   return permissionsSalon.slice(0, 100);
 }
 
-/** Réapplique les accès des salons de logs existants (après un changement de whitelist). */
 export async function synchroniserAccesJournaux(serveur: Guild): Promise<number> {
   let modifie = 0;
   for (const definition of STRUCTURE_JOURNAUX) {
@@ -264,10 +256,6 @@ export async function synchroniserAccesJournaux(serveur: Guild): Promise<number>
   return modifie;
 }
 
-/**
- * Crée (sans jamais écraser) les catégories et salons de logs manquants, puis les enregistre dans la configuration.
- * Retourne le nombre de salons créés.
- */
 export async function creerSalonsJournal(serveur: Guild): Promise<{ cree: number; titreLie: number }> {
   let cree = 0;
   let titreLie = 0;

@@ -576,7 +576,6 @@ function mettreAfk(serveurId: string, utilisateurId: string, raison: string): vo
 async function surMessage(message: Message): Promise<void> {
   if (!message.inGuild() || message.author.bot) return;
   const soi = lire<LigneAfk>('SELECT raison, depuis FROM afk WHERE serveur_id = ? AND utilisateur_id = ?', message.guildId, message.author.id);
-  // Le message qui active l'AFK ne doit pas le retirer aussitôt.
   if (soi && Date.now() - soi.depuis > 5_000) {
     executer('DELETE FROM afk WHERE serveur_id = ? AND utilisateur_id = ?', message.guildId, message.author.id);
     const note = await message.reply({ embeds: [ok(message.guild, `👋 Bienvenue de retour <@${message.author.id}> ! Tu étais AFK depuis **${formaterDuree(Date.now() - soi.depuis)}**.`)], allowedMentions: { repliedUser: false } }).catch(() => null);
@@ -644,7 +643,6 @@ function panneauBoutons(serveur: import('discord.js').Guild) {
   return { embeds: [embed], components: reglages.roleAcceptationId ? [rangee(bouton('rules:accept', 'J’accepte le règlement', ButtonStyle.Success, '✅'))] : [] };
 }
 
-/** Sections éditables en texte : « ## Titre » puis le contenu, répété. */
 export function lireSections(saisie: string): { title: string; content: string }[] {
   const sortie: { title: string; content: string }[] = [];
   for (const groupe of saisie.split(/^##\s*/m).map((b) => b.trim()).filter(Boolean)) {
@@ -732,7 +730,6 @@ export const moduleReglement: ModuleBot = {
 
 const registre = creerRegistre('invitations');
 
-/** Nombre d'utilisations connu par code, par serveur. */
 const instantanes = new Map<string, Map<string, { uses: number; inviterId: string | null }>>();
 
 async function instantane(serveur: Guild): Promise<Map<string, { uses: number; inviterId: string | null }> | null> {
@@ -777,7 +774,6 @@ async function surArrivee(membre: GuildMember): Promise<void> {
         break;
       }
     }
-    // Invitation à usage unique supprimée après utilisation.
     if (!code) {
       const disparues = [...avant.entries()].filter(([c]) => !apres.has(c));
       if (disparues.length === 1) {
@@ -889,7 +885,6 @@ export const moduleInvitations: ModuleBot = {
     }),
     sur('inviteDelete', (invitation) => {
       if (!invitation.guild) return;
-      // On garde le code un moment pour détecter les invitations à usage unique.
       setTimeout(() => instantanes.get(invitation.guild!.id)?.delete(invitation.code), 10_000).unref();
     }),
   ],

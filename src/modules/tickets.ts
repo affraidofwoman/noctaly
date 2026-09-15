@@ -59,7 +59,6 @@ export function echapperHtml(texte: string): string {
   return texte.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-/** Récupère tout l'historique d'un salon (du plus ancien au plus récent), plafonné. */
 export async function recupererMessages(salon: GuildTextBasedChannel, max = 5000): Promise<Message[]> {
   const recuperes: Message[] = [];
   let avant: string | undefined;
@@ -73,7 +72,6 @@ export async function recupererMessages(salon: GuildTextBasedChannel, max = 5000
   return recuperes.reverse();
 }
 
-/** Remplace mentions et émojis Discord par du HTML lisible (le texte est déjà échappé). */
 function rendreContenu(echappe: string, serveur: Guild): string {
   return echappe
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
@@ -156,7 +154,6 @@ export interface OptionsTranscript {
   sousTitre?: string;
 }
 
-/** Transcript HTML autonome, aux couleurs de l'enseigne (repris du bot Airline). */
 export function construireTranscript(salon: GuildTextBasedChannel, messages: Message[], options: OptionsTranscript = {}): string {
   const serveur = salon.guild;
   const enseigne = enseigneDe(serveur.id);
@@ -195,7 +192,6 @@ export interface LigneTicket {
   ferme_par: string | null;
 }
 
-/** Salons de tickets ouverts (pour enregistrer leurs messages sans requête par message). */
 export const salonsTickets = new Set<string>();
 
 export function chargerSalonsTickets(): void {
@@ -226,7 +222,6 @@ export function motifDe(serveurId: string, id: string): MotifTicket {
   return motifs.find((c) => c.id === id) ?? { id, libelle: id, emoji: '🎫', description: '', style: 'Secondary', roles: [] };
 }
 
-/** Rôles qui voient un ticket : ceux de la catégorie, sinon les rôles staff tickets, sinon les rôles d'accès du bot. */
 export function rolesAcces(serveur: Guild, categorie: MotifTicket): string[] {
   const reglages = lireConfig(serveur.id);
   const choisir = (ids: string[]) => ids.filter((id) => serveur.roles.cache.has(id));
@@ -237,7 +232,6 @@ export function rolesAcces(serveur: Guild, categorie: MotifTicket): string[] {
   return choisir([...reglages.permissions.support, ...reglages.permissions.staff, ...reglages.permissions.moderateur, ...reglages.permissions.admin]);
 }
 
-/** Staff d'un ticket : niveau Support+, ou porteur d'un rôle qui voit ce ticket. */
 export function estStaffTicket(membre: GuildMember, ticket: LigneTicket): boolean {
   if (aNiveau(membre, Niveau.SUPPORT)) return true;
   const roles = rolesAcces(membre.guild, motifDe(membre.guild.id, ticket.categorie));
@@ -312,7 +306,6 @@ export async function creerTicket(membre: GuildMember, categorieId: string, suje
     { id: moi.id, allow: [...AUTORISATIONS_MEMBRE, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages] },
     ...roles.map((id) => ({ id, allow: AUTORISATIONS_MEMBRE })),
   ];
-  // Whitelists support/staff par ID : elles voient aussi les tickets (plafonné pour rester sous la limite Discord).
   const membresWhitelists = [...new Set([...membresListe('support', serveur.id), ...membresListe('staff', serveur.id)])].filter((id) => serveur.members.cache.has(id) && id !== membre.id).slice(0, 30);
   for (const id of membresWhitelists) permissionsSalon.push({ id, allow: AUTORISATIONS_MEMBRE });
 
@@ -351,7 +344,6 @@ export async function creerTicket(membre: GuildMember, categorieId: string, suje
   return { salon, ticket, categorie, rolesMentionnes };
 }
 
-/** Génère le transcript, l'envoie dans ticket-logs et en MP au créateur. */
 export async function archiverTranscript(serveur: Guild, salon: TextChannel, ticket: LigneTicket, fermePar: User): Promise<{ messages: number; mpEnvoye: boolean }> {
   const messages = await recupererMessages(salon);
   const categorie = motifDe(serveur.id, ticket.categorie);
@@ -413,7 +405,6 @@ export function marquerPris(ticket: LigneTicket, staffId: string | null): void {
   historiser(ticket.serveur_id, 'ticket', staffId ? 'claim' : 'unclaim', ticket.utilisateur_id, staffId, { ticketId: ticket.id });
 }
 
-/** Ferme l'accès en écriture du créateur (mode archive). */
 export async function verrouillerCreateur(salon: TextChannel, ticket: LigneTicket, ouvrir: boolean): Promise<void> {
   await salon.permissionOverwrites.edit(ticket.utilisateur_id, { SendMessages: ouvrir, ViewChannel: true }, { reason: ouvrir ? 'Ticket rouvert' : 'Ticket fermé' }).catch(() => undefined);
 }
@@ -445,7 +436,7 @@ const STYLES: Record<StyleBoutonTicket, ButtonStyle> = {
   Danger: ButtonStyle.Danger,
 };
 
-// ─── Panneau ───────────────────────────────────────────────────────────────
+// - Panneau -
 
 function variables(serveur: Guild) {
   return { guild: serveur, extra: { enseigne: nomEnseigne(serveur) } };
@@ -505,7 +496,7 @@ function menuMotifs(serveur: Guild) {
   );
 }
 
-// ─── Contrôles dans le ticket ──────────────────────────────────────────────
+// - Contrôles dans le ticket -
 
 function controlesOuvert(serveurId: string, pris: boolean) {
   return [
@@ -610,7 +601,6 @@ async function envoyerTranscriptPrive(interaction: RepliableInteraction, salon: 
   });
 }
 
-// ─── Catégories & rôles (« Qui voit les tickets ») ─────────────────────────
 
 function ecranMotifs(serveur: Guild, note?: string) {
   const motifs = lireConfig(serveur.id).tickets.categories;
@@ -687,7 +677,7 @@ function lireStyle(brut: string): StyleBoutonTicket {
 
 const LIBELLE_STYLE: Record<StyleBoutonTicket, string> = { Primary: 'bleu', Secondary: 'gris', Success: 'vert', Danger: 'rouge' };
 
-// ─── Setup ─────────────────────────────────────────────────────────────────
+// - Setup -
 
 const pages: PageReglage[] = [
   {
@@ -771,7 +761,7 @@ const pages: PageReglage[] = [
   },
 ];
 
-// ─── Commandes ─────────────────────────────────────────────────────────────
+// - Commandes -
 
 function pagesTickets(serveur: Guild, statut: 'open' | 'closed' | 'all') {
   const rangees = listerTickets(serveur.id, statut);
@@ -938,7 +928,7 @@ const commandesPrefixe: CommandePrefixe[] = [
   },
 ];
 
-// ─── Composants ────────────────────────────────────────────────────────────
+// - Composants -
 
 export const moduleTickets: ModuleBot = {
   id: 'tickets',

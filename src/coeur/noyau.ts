@@ -46,11 +46,8 @@ export interface DonneesCommande {
 export interface CommandeSlash {
   donnees: DonneesCommande;
   categorie: CategorieAide;
-  /** Niveau minimum requis pour la commande (défaut : MEMBER). */
   niveau?: Niveau;
-  /** Niveau par sous-commande : clé "sub" ou "groupe sub". Prioritaire sur `level`. */
   niveauxSousCommandes?: Record<string, Niveau>;
-  /** Whitelist qui donne accès à la commande même sans le niveau requis. */
   whitelist?: string;
   delaiSecondes?: number;
   executer(interaction: ChatInputCommandInteraction<'cached'>): Promise<unknown>;
@@ -70,9 +67,7 @@ export interface CommandePrefixe {
 }
 
 export interface GestionnaireComposant {
-  /** Préfixe du customId (avant le premier ":"). Doit être unique. */
   prefixe: string;
-  /** Niveau minimum pour utiliser le composant (défaut : MEMBER). */
   niveau?: Niveau;
   whitelist?: string;
   bouton?(interaction: ButtonInteraction<'cached'>, parametres: string[]): Promise<unknown>;
@@ -84,9 +79,7 @@ export type ResultatEvenement = void | 'stop';
 
 export interface EvenementModuleUnique<K extends keyof ClientEvents> {
   evenement: K;
-  /** Priorité d'exécution : plus petit = plus tôt (défaut 100). */
   priorite: number;
-  /** Retourner "stop" interrompt les modules suivants pour cet événement. */
   executer(...parametres: ClientEvents[K]): unknown;
 }
 
@@ -107,13 +100,11 @@ export interface TachePlanifiee {
   executer(client: Client<true>): Promise<void>;
 }
 
-/** Test déclenchable depuis /test (ex : envoyer un faux message de bienvenue). */
 export interface TestModule {
   id: string;
   libelle: string;
   emoji: string;
   description: string;
-  /** Retourne un court compte rendu affiché à l'administrateur. */
   executer(interaction: AnySelectMenuInteraction<'cached'>): Promise<string>;
 }
 
@@ -122,7 +113,6 @@ export interface ModuleBot {
   nom: string;
   emoji: string;
   description: string;
-  /** false = module cœur, toujours actif. */
   desactivable: boolean;
   actifParDefaut: boolean;
   commandes?: CommandeSlash[];
@@ -183,7 +173,6 @@ interface EntreeComposant {
   module: ModuleBot;
 }
 
-/** Commandes inconnues (ex : commandes personnalisées) : un module peut les prendre en charge. */
 export type GestionnaireCommandeInconnue = (interaction: ChatInputCommandInteraction<'cached'>) => Promise<boolean>;
 export type GestionnairePrefixeInconnu = (message: Message<true>, nom: string, parametres: string[]) => Promise<boolean>;
 
@@ -196,7 +185,6 @@ export function niveauRequis(commande: CommandeSlash, groupe: string | null, sou
   return commande.niveau ?? Niveau.MEMBRE;
 }
 
-/** Retrouve le serveur concerné par les arguments d'un événement Discord. */
 export function resoudreServeurId(parametres: unknown[]): string | null {
   for (const argument of parametres) {
     if (!argument || typeof argument !== 'object') continue;
@@ -209,7 +197,6 @@ export function resoudreServeurId(parametres: unknown[]): string | null {
   return null;
 }
 
-/** Découpe les arguments en respectant les guillemets : `a "b c" d` → [a, b c, d]. */
 export function decouperArguments(saisie: string): string[] {
   const sortie: string[] = [];
   const expression = /"([^"]*)"|'([^']*)'|(\S+)/g;
@@ -218,7 +205,6 @@ export function decouperArguments(saisie: string): string[] {
   return sortie;
 }
 
-/** Trouve le domaine et la commande visés par un message, selon les préfixes du serveur. */
 export function trouverPrefixe(contenu: string, prefixes: Record<DomainePrefixe, string>): { domain: DomainePrefixe; name: string; rest: string } | null {
   const candidats = (Object.entries(prefixes) as [DomainePrefixe, string][])
     .filter(([, p]) => p && contenu.toLowerCase().startsWith(p.toLowerCase()))
@@ -261,7 +247,6 @@ export class Aiguilleur {
       for (const gestionnaire of module.composants ?? []) this.ajouterComposant(gestionnaire, module);
       for (const evt of module.evenements ?? []) this.ajouterEvenement(evt, module);
     }
-    // Les commandes à préfixe passent après l'automod (priorité 10) et avant le reste.
     this.ajouterEvenement({ evenement: 'messageCreate', priorite: 50, executer: (message: Message) => this.traiterPrefixe(message) } as EvenementModule, coeur);
     for (const liste of this.evenements.values()) liste.sort((a, b) => a.event.priorite - b.event.priorite);
   }
@@ -305,7 +290,6 @@ export class Aiguilleur {
         const resultat = await (evenement.executer as (...a: unknown[]) => unknown)(...parametres);
         if (resultat === 'stop') break;
       } catch (echec) {
-        // Isolation : une erreur d'un module n'empêche jamais les autres de s'exécuter.
         registreAiguilleur.erreur(`Erreur dans ${module.id} (${String(nomEvenement)})`, echec);
       }
     }
@@ -430,7 +414,6 @@ export class Aiguilleur {
     }
   }
 
-  /** Commandes à préfixe : + sanctions, & salons, = général, . owner, m! musique (préfixes réglables par serveur). */
   private async traiterPrefixe(message: Message): Promise<void> {
     if (!message.inGuild() || message.author.bot || !message.content || !message.member) return;
     const reglages = lireConfig(message.guildId);
@@ -455,7 +438,6 @@ export class Aiguilleur {
     if (!moduleActif(message.guildId, module.id)) return;
     const requis = commande.niveau ?? Niveau.MEMBRE;
     if (requis > Niveau.MEMBRE && !aAcces(message.member, requis, commande.whitelist)) {
-      // Comme sur Airline : un accès refusé ne répond rien en public, il est seulement tracé.
       registreAiguilleur.debogage(`Accès refusé ${correspondance.domain}:${correspondance.name} pour ${message.author.tag}`);
       return;
     }
@@ -496,9 +478,7 @@ function compterCommande(serveurId: string): void {
       serveurId,
       jour,
     );
-  } catch {
-    /* statistique non critique */
-  }
+  } catch {}
 }
 
 export function moduleDeCommande(aiguilleur: Aiguilleur, nom: string): ModuleBot | undefined {
@@ -537,10 +517,6 @@ interface EtatTache {
   echecs: number;
 }
 
-/**
- * Planificateur unique : un seul timer pour toutes les tâches périodiques.
- * Une tâche ne peut jamais s'exécuter deux fois en parallèle, et une erreur n'affecte pas les autres.
- */
 export class Planificateur {
   private readonly taches = new Map<string, EtatTache>();
   private minuteur: NodeJS.Timeout | null = null;
@@ -587,7 +563,6 @@ export class Planificateur {
         })
         .finally(() => {
           etat.enCours = false;
-          // Recul progressif en cas d'échecs répétés (max x8)
           const recul = Math.min(8, 2 ** Math.max(0, etat.echecs - 1));
           etat.prochainPassage = Date.now() + etat.tache.intervalleMs * (etat.echecs ? recul : 1);
         });
@@ -610,10 +585,6 @@ export function construireCommandes(modules: ModuleBot[]): RESTPostAPIChatInputA
   return charge;
 }
 
-/**
- * Enregistre les commandes auprès de Discord.
- * En mode automatique, l'envoi n'a lieu que si les commandes ont changé (empreinte stockée).
- */
 export async function enregistrerCommandes(modules: ModuleBot[], options: { force?: boolean } = {}): Promise<boolean> {
   const charge = construireCommandes(modules);
   const cible = environnement.serveurDevId ? `guild:${environnement.serveurDevId}` : 'global';
@@ -626,9 +597,7 @@ export async function enregistrerCommandes(modules: ModuleBot[], options: { forc
         registreEnregistrement.info('Commandes déjà à jour, aucun envoi nécessaire.');
         return false;
       }
-    } catch {
-      /* première exécution */
-    }
+    } catch {}
   }
 
   const reste = new REST({ version: '10' }).setToken(environnement.jetonDiscord);

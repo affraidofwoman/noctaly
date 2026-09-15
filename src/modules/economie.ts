@@ -49,7 +49,6 @@ export function portefeuille(serveurId: string, utilisateurId: string): Portefeu
   );
 }
 
-/** Ajoute (ou retire si négatif) des pièces. Refuse de passer sous zéro. Retourne le nouveau solde. */
 export function ajouterPieces(serveurId: string, utilisateurId: string, montant: number, raison = 'gain'): number {
   const valeur = Math.trunc(montant);
   return transaction(() => {
@@ -114,7 +113,6 @@ export function inventaire(serveurId: string, utilisateurId: string): { article_
   return lireTout('SELECT article_nom, prix, achete_le FROM inventaire WHERE serveur_id = ? AND utilisateur_id = ? ORDER BY achete_le DESC LIMIT 50', serveurId, utilisateurId);
 }
 
-/** Achat atomique : stock, solde et inventaire sont mis à jour ensemble. */
 export function acheter(serveurId: string, utilisateurId: string, article: ArticleBoutique): number {
   return transaction(() => {
     const frais = articleBoutique(serveurId, article.id);
@@ -173,7 +171,7 @@ function pagesRiches(serveur: Guild) {
   return lignesEnPages(lignes, 10, (contenu, page, total) => embedEnseigne(serveur).setTitle('🏆 Les plus riches').setDescription(contenu).setFooter({ text: `Page ${page}/${total}` }));
 }
 
-// ─── Boutique ──────────────────────────────────────────────────────────────
+// - Boutique -
 
 const LIBELLE_TYPE: Record<ArticleBoutique['type'], string> = { role: 'Rôle', badge: 'Badge', item: 'Article' };
 
@@ -224,7 +222,7 @@ async function livrer(membre: GuildMember, article: ArticleBoutique): Promise<st
   return staff ? 'Le staff a été prévenu pour te le remettre.' : 'Ouvre un ticket pour le récupérer.';
 }
 
-// ─── Commandes ─────────────────────────────────────────────────────────────
+// - Commandes -
 
 const solde: CommandeSlash = {
   categorie: 'economy',
@@ -438,7 +436,6 @@ export const moduleEconomie: ModuleBot = {
           const texte = await livrer(interaction.member, article);
           await interaction.update(affichageBoutique(interaction.guild, interaction.user.id, `✅ Acheté : ${article.emoji} **${article.nom}**. ${texte}\n-# Nouveau solde : ${formaterNombre(soldeApres)}`));
         } catch (echec) {
-          // Livraison impossible : remboursement.
           ajouterPieces(interaction.guildId, interaction.user.id, article.prix, 'refund');
           executer('DELETE FROM inventaire WHERE id = (SELECT MAX(id) FROM inventaire WHERE serveur_id = ? AND utilisateur_id = ? AND article_id = ?)', interaction.guildId, interaction.user.id, article.id);
           if (article.stock !== null) executer('UPDATE articles_boutique SET stock = stock + 1 WHERE id = ?', article.id);
@@ -486,7 +483,6 @@ function recompense(serveurId: string, utilisateurId: string, xp: number, pieces
   return parties.join(' · ') || 'la gloire éternelle';
 }
 
-/** Avance les quêtes du jour d'un type donné et distribue les récompenses une seule fois. */
 function progression(client: Client | null, serveurId: string, utilisateurId: string, type: TypeActivite, montant: number): void {
   if (!moduleActif(serveurId, 'quests') || montant <= 0) return;
   const jour = aujourdhui(serveurId);
@@ -512,7 +508,6 @@ function progression(client: Client | null, serveurId: string, utilisateurId: st
   }
 }
 
-/** Série quotidienne : +1 par jour d'activité consécutif, remise à 1 après un jour manqué. */
 function avancerSerie(client: Client | null, serveurId: string, utilisateurId: string): void {
   if (!moduleActif(serveurId, 'quests')) return;
   const jour = aujourdhui(serveurId);
@@ -694,7 +689,6 @@ async function appliquerRecompenses(membre: GuildMember, nombre: number): Promis
   return donnes;
 }
 
-/** Un boost : compteur, rôle booster, badge VIP, récompenses et annonce. */
 async function enregistrerBoost(membre: GuildMember): Promise<void> {
   const serveur = membre.guild;
   const cle = `${serveur.id}:${membre.id}`;
@@ -814,7 +808,6 @@ export const moduleBoosts: ModuleBot = {
     sur('guildMemberUpdate', async (avant, apres) => {
       const reglages = lireConfig(apres.guild.id).boosts;
       if (!avant.premiumSince && apres.premiumSince) {
-        // Laisse le message système arriver en premier (il compte chaque boost) avant d'utiliser ce repli.
         setTimeout(() => void enregistrerBoost(apres), 5_000).unref();
       } else if (avant.premiumSince && !apres.premiumSince) {
         const role = reglages.roleBoosterId ? apres.guild.roles.cache.get(reglages.roleBoosterId) : null;

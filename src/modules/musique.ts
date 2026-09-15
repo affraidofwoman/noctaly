@@ -50,9 +50,7 @@ export interface Piste {
   duree: number;
   miniature: string | null;
   url: string | null;
-  /** Lien d'origine (Spotify, Deezer) quand la lecture passe par une recherche YouTube. */
   urlOrigine?: string | null;
-  /** Recherche YouTube à faire au moment de jouer (pistes Spotify/Deezer). */
   requete?: string | null;
   demandePar: string;
   depuisPlaylist?: boolean;
@@ -60,7 +58,7 @@ export interface Piste {
 
 export type PisteResolue = Omit<Piste, 'demandePar'>;
 
-// ─── FFmpeg ────────────────────────────────────────────────────────────────
+// - FFmpeg -
 
 function trouverFfmpeg(): string | null {
   const candidats: string[] = [];
@@ -68,17 +66,13 @@ function trouverFfmpeg(): string | null {
   try {
     const fourni = require('ffmpeg-static') as string | null;
     if (fourni) candidats.push(fourni);
-  } catch {
-    /* ffmpeg-static absent */
-  }
+  } catch {}
   candidats.push('ffmpeg', 'avconv');
   for (const c of candidats) {
     try {
       const r = spawnSync(c, ['-version'], { windowsHide: true, timeout: 10_000 });
       if (!r.error && r.status === 0) return c;
-    } catch {
-      /* suivant */
-    }
+    } catch {}
   }
   return null;
 }
@@ -94,7 +88,6 @@ if (FFMPEG) {
   registre.erreur('FFmpeg introuvable (ni ffmpeg-static, ni ffmpeg sur le PATH) : la musique ne produira aucun son.');
 }
 
-/** Filtres repris d'Airline : coupe les infra-graves, normalise et limite pour un volume régulier. */
 const FILTRES = process.env.MUSIQUE_FILTRES || ['highpass=f=35', 'dynaudnorm=f=400:g=9:p=0.85:m=4', 'alimiter=level_in=1:level_out=1:limit=0.92:attack=5:release=50'].join(',');
 
 export function fluxNormalise(saisie: Readable): Readable {
@@ -106,7 +99,6 @@ export function fluxNormalise(saisie: Readable): Readable {
   return saisie.pipe(transcodeur);
 }
 
-// ─── yt-dlp (plusieurs commandes et stratégies, comme sur Airline) ────────
 
 export const YTDLP_FOURNI = path.join(RACINE_PROJET, 'assets', 'bin', 'yt-dlp');
 
@@ -180,7 +172,6 @@ async function fluxYoutube(url: string): Promise<Readable> {
     }
   }
   choisis = null;
-  // Dernier recours : play-dl.
   try {
     const source = await play.stream(url, { discordPlayerCompatibility: true });
     return source.stream;
@@ -228,7 +219,6 @@ export async function chercherYoutube(requete: string): Promise<PisteResolue | n
   return null;
 }
 
-// ─── Spotify (API officielle, puis recherche YouTube au moment de jouer) ──
 
 let jetonSpotify: { token: string; expires: number } | null = null;
 export const spotifyActif = () => !!process.env.SPOTIFY_CLIENT_ID && !!process.env.SPOTIFY_CLIENT_SECRET;
@@ -274,7 +264,7 @@ const idSpotify = (url: string) => /(?:track|playlist|album)\/([a-zA-Z0-9]+)/.ex
 
 export const LIMITE_PLAYLIST = 5000;
 
-// ─── Résolution ────────────────────────────────────────────────────────────
+// - Résolution -
 
 export type ResultatResolution = { genre: 'track'; piste: PisteResolue } | { genre: 'playlist'; nom: string; pistes: PisteResolue[] } | { genre: 'error'; raison: string };
 
@@ -352,7 +342,6 @@ export async function resoudre(saisie: string): Promise<ResultatResolution> {
   }
 }
 
-/** Ouvre le flux audio brut (PCM 48 kHz) d'une piste. */
 export async function ouvrirPiste(piste: Piste): Promise<Readable> {
   if (!FFMPEG) throw new Error('FFmpeg est introuvable sur la machine du bot');
   if (!piste.url && piste.requete) {
@@ -383,7 +372,6 @@ const registreLecteur = creerRegistre('musique');
 export type ModeBoucle = 'off' | 'track' | 'queue';
 export const LIBELLES_BOUCLE: Record<ModeBoucle, string> = { off: 'désactivée', track: 'le morceau', queue: 'la file' };
 
-/** File active limitée ; le surplus attend en réserve et remonte tout seul (comme sur Airline). */
 export const FILE_ACTIVE_MAX = 1000;
 const HISTORIQUE_MAX = 20;
 
@@ -458,14 +446,12 @@ export class LecteurServeur {
       try {
         await Promise.race([entersState(connexion, VoiceConnectionStatus.Signalling, 5_000), entersState(connexion, VoiceConnectionStatus.Connecting, 5_000)]);
       } catch {
-        // Déconnexion réelle (kick du vocal, salon supprimé) : on nettoie.
         if (this.connexion === connexion) this.detruire();
       }
     });
     return connexion;
   }
 
-  /** Ajoute des pistes ; lance la lecture si rien ne joue. Retourne la position du premier ajout. */
   ajouter(pistes: Piste[]): { position: number; immediat: boolean; reserves: number } {
     const enLecture = !!this.actuel || this.demarrage;
     const position = this.file.length + this.reserve.length + 1;
@@ -507,7 +493,6 @@ export class LecteurServeur {
     }
   }
 
-  /** Passe au morceau suivant en respectant la boucle. */
   async suivant(): Promise<void> {
     if (this.detruit || this.demarrage) return;
     const termine = this.actuel;
@@ -549,7 +534,6 @@ export class LecteurServeur {
     return ignores;
   }
 
-  /** Rejoue le morceau précédent (le morceau en cours revient en tête de file). */
   precedent(): Piste | null {
     const anterieur = this.historique.pop();
     if (!anterieur) return null;
@@ -603,7 +587,6 @@ export class LecteurServeur {
     return avant - this.waiting;
   }
 
-  /** Temps estimé avant qu'une position de la file ne soit jouée (secondes). */
   tempsAvant(indice: number): number {
     let total = this.actuel ? Math.max(0, (this.actuel.duree || 0) - this.elapsed) : 0;
     const lireTout = this.reserve.length ? [...this.file, ...this.reserve] : this.file;
@@ -635,7 +618,6 @@ export class LecteurServeur {
     this.minuteurInactivite = null;
   }
 
-  /** Quitte après X minutes seul dans le salon. */
   verifierVide(): void {
     const minutes = lireConfig(this.serveur.id).musique.quitterSiVideMinutes;
     if (!this.channelId || minutes <= 0) return;
@@ -661,9 +643,7 @@ export class LecteurServeur {
     this.lecteur.stop(true);
     try {
       this.connexion?.destroy();
-    } catch {
-      /* déjà détruite */
-    }
+    } catch {}
     this.connexion = null;
     this.surDestruction(this.serveur.id);
   }
@@ -697,7 +677,7 @@ export type { Client };
 const registreMusique = creerRegistre('musique');
 const derniereAnnonce = new Map<string, Message>();
 
-// ─── Rendu ─────────────────────────────────────────────────────────────────
+// - Rendu -
 
 const titreLie = (t: Piste) => {
   const url = t.urlOrigine ?? t.url;
@@ -764,7 +744,7 @@ function embedFile(serveur: Guild, session: LecteurServeur, page = 0): EmbedBuil
     .setFooter({ text: `Page ${p + 1}/${pages} · ${lireTout.length} en attente · Boucle : ${LIBELLES_BOUCLE[session.boucle]} · Volume : ${Math.round(session.volume * 100)}%` });
 }
 
-// ─── Événements du lecteur ─────────────────────────────────────────────────
+// - Événements du lecteur -
 
 function salonTexte(session: LecteurServeur): GuildTextBasedChannel | null {
   const salonVise = session.salonTexteId ? session.serveur.channels.cache.get(session.salonTexteId) : null;
@@ -777,7 +757,6 @@ async function annonce(session: LecteurServeur, charge: { embeds: EmbedBuilder[]
   const envoye = await salon.send(charge).catch(() => null);
   const precedent = derniereAnnonce.get(session.serveur.id);
   if (envoye) derniereAnnonce.set(session.serveur.id, envoye);
-  // Un seul panneau « Lecture en cours » à la fois, comme sur Airline.
   if (precedent && envoye && precedent.id !== envoye.id) await precedent.delete().catch(() => undefined);
 }
 
@@ -796,7 +775,6 @@ const evenements: EvenementsLecteur = {
   },
 };
 
-// ─── Actions partagées (préfixe, slash, boutons) ───────────────────────────
 
 function estDj(membre: GuildMember): boolean {
   const reglages = lireConfig(membre.guild.id).musique;
@@ -956,7 +934,7 @@ function retirerPosition(membre: GuildMember, brut: string): string {
   return `🗑️ **${tronquer(retiree.titre, 150)}** retiré de la file.`;
 }
 
-// ─── Panneau (m!panel) ─────────────────────────────────────────────────────
+// - Panneau (m!panel) -
 
 const OPTIONS_PANNEAU: { value: string; label: string; description: string; emoji: string }[] = [
   { value: 'queue', label: 'File d’attente', description: 'Les morceaux en attente', emoji: '📋' },
@@ -975,7 +953,7 @@ function affichagePanneau(serveur: Guild) {
   return { embeds: [embedLecture(serveur, session)], components: [...controles(session, serveur.id), rangee(menu)] };
 }
 
-// ─── Commandes à préfixe m! ────────────────────────────────────────────────
+// - Commandes à préfixe m! -
 
 async function repondreTexte(message: Message<true>, texte: string) {
   await message.reply({ embeds: [new EmbedBuilder().setColor(couleurPour(message.guild)).setDescription(texte)], allowedMentions: { repliedUser: false } });
@@ -1109,7 +1087,7 @@ const commandesPrefixe: CommandePrefixe[] = [
   },
 ];
 
-// ─── Commandes slash ───────────────────────────────────────────────────────
+// - Commandes slash -
 
 function slash(nom: string, description: string, executer: (i: ChatInputCommandInteraction<'cached'>) => Promise<string | void>, construire?: (b: SlashCommandBuilder) => SlashCommandBuilder): CommandeSlash {
   const constructeur = new SlashCommandBuilder().setName(nom).setDescription(description);

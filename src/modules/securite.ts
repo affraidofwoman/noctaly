@@ -51,7 +51,6 @@ function enregistrerArrivee(membre: GuildMember, fenetreMs: number): number {
   return liste.length;
 }
 
-/** Alerte : salon de sécurité + MP au propriétaire et aux streamers (sans spam : 10 min entre deux alertes). */
 async function alerter(serveur: Guild, titre: string, lignes: string[]): Promise<void> {
   void journal(serveur, 'security', { titre, ton: 'alerte', lignes });
   if ((derniereAlerte.get(serveur.id) ?? 0) > Date.now()) return;
@@ -66,7 +65,6 @@ async function alerter(serveur: Guild, titre: string, lignes: string[]): Promise
   }
 }
 
-/** Mode raid (comme sur Airline) : vérification Discord renforcée pendant 30 min, puis retour au niveau habituel. */
 async function activerModeRaid(serveur: Guild): Promise<boolean> {
   if (modeRaid.has(serveur.id)) return false;
   if (!serveur.members.me?.permissions.has(PermissionFlagsBits.ManageGuild)) return false;
@@ -276,7 +274,6 @@ function estDeConfiance(serveur: Guild, utilisateurId: string): boolean {
   return reglages.membresDeConfiance.includes(utilisateurId) || membresListe('streamer', serveur.id).includes(utilisateurId);
 }
 
-/** Enregistre une action ; retourne le nombre d'actions du même type dans la fenêtre. */
 export function compterAction(cle: string, fenetreMs: number, maintenant = Date.now()): number {
   const liste = (historique.get(cle) ?? []).filter((t) => maintenant - t < fenetreMs);
   liste.push(maintenant);
@@ -441,7 +438,6 @@ function fabriquerCode(): string {
   return Array.from({ length: 6 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('');
 }
 
-/** Code affiché avec des espaces fines et des caractères invisibles pour gêner la lecture automatique. */
 function afficherCode(code: string): string {
   return code.split('').join('​ ');
 }

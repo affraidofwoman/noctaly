@@ -82,9 +82,7 @@ export interface EntreeSanction {
   type: TypeSanction;
   raison?: string | null;
   dureeMs?: number;
-  /** Pour unwarn : numéro de l'avertissement (sinon le plus récent). */
   avertissementId?: number;
-  /** Ne pas déclencher les actions automatiques (utilisé par elles-mêmes). */
   auto?: boolean;
 }
 
@@ -99,7 +97,6 @@ export interface ResultatSanction {
   jusqua?: number;
 }
 
-/** Message privé façon Airline : « Sanction appliquée » / « Sanction levée ». */
 async function prevenir(serveur: Guild, utilisateur: User, type: TypeSanction, raison: string, dureeMs?: number): Promise<boolean> {
   const reglages = lireConfig(serveur.id).moderation;
   const texte = TEXTE_MP[type];
@@ -145,10 +142,6 @@ async function recupererMembre(serveur: Guild, id: string): Promise<GuildMember 
   return serveur.members.cache.get(id) ?? (await serveur.members.fetch(id).catch(() => null));
 }
 
-/**
- * Applique une sanction complète : vérifications, action Discord, base de données,
- * message privé, journal sanction-log et actions automatiques des warns.
- */
 export async function appliquerSanction(saisie: EntreeSanction): Promise<ResultatSanction> {
   const { serveur, auteur, cible, type } = saisie;
   const raison = (saisie.raison ?? '').trim() || 'Aucune raison';
@@ -163,7 +156,6 @@ export async function appliquerSanction(saisie: EntreeSanction): Promise<Resulta
 
   const resultat: ResultatSanction = { type, cible, raison, mpEnvoye: false };
 
-  // Le message privé part avant l'expulsion : après, le bot ne partage plus de serveur avec la personne.
   if (type === 'kick' || type === 'ban' || type === 'blacklist') {
     resultat.mpEnvoye = await prevenir(serveur, cible, type, raison, saisie.dureeMs);
   }
@@ -217,7 +209,6 @@ export async function appliquerSanction(saisie: EntreeSanction): Promise<Resulta
       }
       const heures = lireConfig(serveur.id).moderation.heuresEffaceesBan;
       await serveur.members.ban(cible.id, { reason: raisonAudit, deleteMessageSeconds: Math.min(heures, 168) * 3600 }).catch((echec: { code?: number }) => {
-        // Déjà banni : la blacklist reste valable.
         if (echec.code !== 10026 || type !== 'blacklist') throw echec;
       });
       break;
@@ -269,7 +260,6 @@ export async function appliquerSanction(saisie: EntreeSanction): Promise<Resulta
   return resultat;
 }
 
-/** Actions automatiques configurées : ex. 3 warns → timeout, 5 → kick, 7 → ban. */
 async function executerActionAuto(serveur: Guild, auteur: GuildMember, cible: User, avertissements: number): Promise<ResultatSanction | null> {
   const regle = lireConfig(serveur.id).moderation.actionsAuto.find((a) => a.avertissements === avertissements);
   if (!regle) return null;
@@ -296,7 +286,6 @@ export function decrireResultat(resultat: ResultatSanction): string {
   return lignes.join('\n');
 }
 
-/** Parse « 3:timeout:60, 5:kick, 7:ban » pour les actions automatiques. */
 export function lireActionsAuto(saisie: string): { avertissements: number; action: 'timeout' | 'kick' | 'ban'; dureeMinutes: number }[] | null {
   if (!saisie.trim()) return [];
   const sortie: { avertissements: number; action: 'timeout' | 'kick' | 'ban'; dureeMinutes: number }[] = [];
@@ -315,7 +304,6 @@ export function formaterActionsAuto(liste: { avertissements: number; action: str
 
 export type PorteeVerrou = 'channel' | 'category' | 'server';
 
-/** État de l'overwrite @everyone avant verrouillage, pour le restaurer exactement. */
 interface InstantanePermissions {
   autorise: string;
   refuse: string;
@@ -340,7 +328,6 @@ function instantane(salon: GuildChannel): InstantanePermissions {
 async function verrouillerSalon(salon: GuildChannel, raison: string): Promise<InstantanePermissions | null> {
   if (!VERROUILLABLES.has(salon.type)) return null;
   const tousMembres = salon.guild.roles.everyone;
-  // Déjà fermé à @everyone : on ne touche à rien.
   if (!salon.permissionsFor(tousMembres)?.has(PermissionFlagsBits.SendMessages) && salon.type !== ChannelType.GuildVoice) return null;
   const cliche = instantane(salon);
   await salon.permissionOverwrites.edit(tousMembres, Object.fromEntries(PERMISSIONS_VERROU.map((p) => [new PermissionsBitField(p).toArray()[0]!, false])), { reason: raison });
@@ -349,7 +336,6 @@ async function verrouillerSalon(salon: GuildChannel, raison: string): Promise<In
 
 async function restaurerSalon(salon: GuildChannel, cliche: InstantanePermissions, raison: string): Promise<void> {
   const tousMembres = salon.guild.roles.everyone.id;
-  // Remet exactement l'état d'avant pour les permissions touchées par le verrouillage.
   const options = cliche.existait ? versOptions(BigInt(cliche.autorise), BigInt(cliche.refuse)) : versOptions(0n, 0n);
   await salon.permissionOverwrites.edit(tousMembres, options, { reason: raison });
   if (!cliche.existait) {
@@ -377,7 +363,6 @@ function verrouActif(serveurId: string, portee: PorteeVerrou, cibleId: string) {
   return lire<{ id: number; instantane: string }>('SELECT id, instantane FROM verrouillages WHERE serveur_id = ? AND portee = ? AND cible_id = ? AND actif = 1', serveurId, portee, cibleId);
 }
 
-/** Verrouille un salon, une catégorie ou tout le serveur, en gardant de quoi tout restaurer. */
 export async function verrouiller(serveur: Guild, portee: PorteeVerrou, cibleId: string, auteur: User, raison: string): Promise<ResultatVerrou> {
   if (verrouActif(serveur.id, portee, cibleId)) throw new ErreurUtilisateur(portee === 'channel' ? 'Ce salon est déjà verrouillé.' : 'Un verrouillage est déjà en cours sur cette cible.');
   let salons: GuildChannel[];
@@ -426,7 +411,6 @@ export async function verrouiller(serveur: Guild, portee: PorteeVerrou, cibleId:
   return { id: r.lastInsertRowid, verrouilles: Object.keys(instantanes).length, ignores };
 }
 
-/** Lève un verrouillage et restaure les permissions d'origine. */
 export async function deverrouiller(serveur: Guild, portee: PorteeVerrou, cibleId: string, auteur: User): Promise<number> {
   const rangee = verrouActif(serveur.id, portee, cibleId);
   if (!rangee) throw new ErreurUtilisateur(portee === 'channel' ? 'Ce salon n’est pas verrouillé par le bot.' : 'Aucun verrouillage en cours sur cette cible.');
@@ -439,9 +423,7 @@ export async function deverrouiller(serveur: Guild, portee: PorteeVerrou, cibleI
     try {
       await restaurerSalon(salonVise as GuildChannel, cliche, audit);
       restaures++;
-    } catch {
-      /* salon devenu inaccessible : on continue */
-    }
+    } catch {}
   }
   executer('UPDATE verrouillages SET actif = 0 WHERE id = ?', rangee.id);
   historiser(serveur.id, 'security', 'unlock', null, auteur.id, { scope: portee, targetId: cibleId, restored: restaures });
@@ -489,7 +471,7 @@ function pagesAvertissements(serveur: Guild, utilisateur: User) {
   );
 }
 
-// ─── Nettoyage ─────────────────────────────────────────────────────────────
+// - Nettoyage -
 
 async function effacerMessages(salon: GuildTextBasedChannel, montant: number, filtreMembreId: string | null, auteur: User): Promise<number> {
   const max = Math.min(Math.max(montant, 1), 1000);
@@ -518,7 +500,7 @@ async function effacerMessages(salon: GuildTextBasedChannel, montant: number, fi
   return supprimes;
 }
 
-// ─── Commandes slash ───────────────────────────────────────────────────────
+// - Commandes slash -
 
 const optionRaison = (o: import('discord.js').SlashCommandStringOption) => o.setName('raison').setDescription('Pourquoi').setMaxLength(400);
 
@@ -824,7 +806,6 @@ const verrouillage: CommandeSlash = {
   },
 };
 
-// ─── Commandes à préfixe (façon Airline) ───────────────────────────────────
 
 async function exigerCible(message: Message<true>, argument: string | undefined): Promise<User> {
   const membre = await membreCible(message, argument);
@@ -1213,7 +1194,6 @@ export const moduleModeration: ModuleBot = {
   pagesReglage: [pageReglage],
   composants: [{ prefixe: 'modconf', niveau: Niveau.MODERATEUR, bouton: (i, parametres) => surConfirmationModeration(i, parametres) }],
   evenements: [
-    // Blacklist : re-ban immédiat, avant tout accueil.
     sur('guildMemberAdd', async (membre: GuildMember) => {
       const entree = estEnListeNoire(membre.guild.id, membre.id);
       if (!entree) return;

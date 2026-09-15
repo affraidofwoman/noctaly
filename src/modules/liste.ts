@@ -19,30 +19,24 @@ import { moduleTickets } from './tickets';
 import { moduleTirages } from './tirages';
 import { moduleTwitch } from './twitch';
 
-/**
- * REGISTRE DES MODULES
- * Pour supprimer un module : retirer sa ligne ici (et son dossier si souhaité).
- * Pour ajouter un module : créer src/modules/<nom>/index.ts puis l'ajouter à cette liste.
- * L'ordre influence l'affichage de /modules et de /setup.
- */
 export const modules: ModuleBot[] = [
-  // Cœur (toujours actifs)
+  // - Cœur (toujours actifs) -
   moduleGeneral,
   moduleAdministration,
-  // Accueil
+  // - Accueil -
   moduleBienvenue,
   moduleDeparts,
   moduleRolesAuto,
-  // Journalisation et modération
+  // - Journalisation et modération -
   moduleJournaux,
   moduleModeration,
   moduleAutomod,
-  // Support et animation
+  // - Support et animation -
   moduleTickets,
   moduleTirages,
   moduleTwitch,
   moduleMusique,
-  // Communauté
+  // - Communauté -
   moduleNiveaux,
   moduleAnciennete,
   moduleSuggestions,
@@ -52,7 +46,7 @@ export const modules: ModuleBot[] = [
   moduleSignalements,
   moduleStatistiques,
   moduleProfils,
-  // Agenda et publication
+  // - Agenda et publication -
   moduleAnniversaires,
   moduleRappels,
   moduleEvenements,
@@ -60,14 +54,14 @@ export const modules: ModuleBot[] = [
   moduleRedaction,
   moduleCommandesPerso,
   moduleReponsesAuto,
-  // Engagement
+  // - Engagement -
   moduleInvitations,
   moduleBoosts,
   moduleEconomie,
   moduleQuetes,
   moduleJeux,
   moduleConcours,
-  // Sécurité et accès
+  // - Sécurité et accès -
   moduleReglement,
   moduleVerification,
   moduleAntiraid,

@@ -105,7 +105,6 @@ async function lireJetonApplication(forcer = false): Promise<string> {
   return jetonApplication.token;
 }
 
-/** Appel Helix authentifié (jeton d'application), avec renouvellement et respect du rate limit. */
 export async function appelHelix<T>(route: string, parametres: [string, string][] = [], reessayer = true): Promise<T[]> {
   if (!twitchConfigure()) throw new Error('Twitch n’est pas configuré (TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET)');
   const url = new URL(`${HELIX}/${route}`);
@@ -136,7 +135,6 @@ function morceaux<T>(articles: T[], taille: number): T[][] {
   return sortie;
 }
 
-/** Lives en cours pour une liste de pseudos (par lots de 100). */
 export async function lireLives(pseudos: string[]): Promise<TwitchStream[]> {
   const unique = [...new Set(pseudos.map((l) => l.toLowerCase()))];
   const resultat: TwitchStream[] = [];
@@ -177,7 +175,6 @@ export async function lireJaquette(jeuId: string): Promise<string | null> {
 }
 
 export function miniatureLive(flux: TwitchStream): string {
-  // Paramètre anti-cache : Discord garde sinon la première miniature indéfiniment.
   return `${flux.thumbnail_url.replace('{width}', '1280').replace('{height}', '720')}?t=${Math.floor(Date.now() / 300_000)}`;
 }
 
@@ -191,7 +188,6 @@ export function normaliserPseudo(saisie: string): string {
     .toLowerCase();
 }
 
-// ─── Jeton utilisateur (EventSub : raids, follows, abonnements) ────────────
 
 const FICHIER_JETON = path.join(path.dirname(environnement.cheminBase), 'twitch-user-token.json');
 
@@ -204,9 +200,7 @@ export function chargerJetonUtilisateur(): JetonUtilisateur | null {
   try {
     const enregistre = JSON.parse(fs.readFileSync(FICHIER_JETON, 'utf8')) as JetonUtilisateur;
     if (enregistre.access) return enregistre;
-  } catch {
-    /* pas de jeton sauvegardé */
-  }
+  } catch {}
   return environnement.twitchJetonUtilisateur ? { access: environnement.twitchJetonUtilisateur, refresh: environnement.twitchJetonRenouvellement || null } : null;
 }
 
@@ -262,7 +256,8 @@ export interface LigneChaineTwitch {
   cree_le: number;
 }
 
-/** Un live absent moins longtemps que cela est considéré comme une micro-coupure (pas de fin, pas de doublon). */
+// - Micro-coupures -
+// Un live absent moins longtemps reste le même live : ni fin ni nouvelle annonce.
 export const GRACE_HORS_LIGNE_MS = 5 * 60_000;
 
 export function listerChaines(serveurId?: string): LigneChaineTwitch[] {
@@ -329,7 +324,6 @@ function variablesLive(serveur: Guild, salonVise: LigneChaineTwitch, flux: Pick<
   };
 }
 
-/** Message de live : « 🔴 {streamer} est en LIVE ! » + jeu, titre, viewers et bouton « REGARDER LE LIVE ». */
 export function construireMessageLive(serveur: Guild, salonVise: LigneChaineTwitch, flux: TwitchStream) {
   const reglages = lireConfig(serveur.id).twitch;
   const variables = variablesLive(serveur, salonVise, flux);
@@ -387,13 +381,13 @@ async function surLive(client: Client, salonVise: LigneChaineTwitch, flux: Twitc
   const debutLe = Date.parse(flux.started_at);
   let messageId: string | null = null;
   if (salon) {
-    // Une annonce impossible à construire ou à envoyer ne doit jamais bloquer l'enregistrement du live (sinon doublons).
+    // - Annonce du live -
+    // Un envoi raté ne bloque jamais l’enregistrement du live, sinon doublons.
     const envoye = await (async () => salon.send(construireMessageLive(serveur, salonVise, flux)))().catch((echec: Error) => {
       registreNotifications.avertir(`Notification de live non envoyée (${salonVise.pseudo} → ${serveur.id}) : ${echec.message}`);
       return null;
     });
     messageId = envoye?.id ?? null;
-    // Publication automatique dans les salons d'annonces pour les serveurs abonnés.
     if (envoye && envoye.crosspostable) await envoye.crosspost().catch(() => undefined);
   }
   executer(
@@ -469,7 +463,6 @@ async function surHorsLigne(client: Client, salonVise: LigneChaineTwitch): Promi
   });
 }
 
-/** Un tour de sondage : une seule requête par lot de 100 chaînes, pour tous les serveurs. */
 export async function sonderLives(client: Client): Promise<void> {
   const salons = listerChaines().filter((c) => client.guilds.cache.has(c.serveur_id) && moduleActif(c.serveur_id, 'twitch'));
   if (!salons.length) return;
@@ -481,7 +474,6 @@ export async function sonderLives(client: Client): Promise<void> {
       const flux = parPseudo.get(salonVise.pseudo);
       if (flux) {
         if (salonVise.live_id === flux.id) await surMiseAJour(client, salonVise, flux);
-        // Reprise après une coupure courte : même live, on ne renotifie pas.
         else if (salonVise.live_id && salonVise.live_vu_le && maintenant - salonVise.live_vu_le < GRACE_HORS_LIGNE_MS && Date.parse(flux.started_at) - (salonVise.live_debut_le ?? 0) < GRACE_HORS_LIGNE_MS * 2) {
           executer('UPDATE chaines_twitch SET live_id = ? WHERE id = ?', flux.id, salonVise.id);
           await surMiseAJour(client, { ...salonVise, live_id: flux.id }, flux);
@@ -495,7 +487,6 @@ export async function sonderLives(client: Client): Promise<void> {
   }
 }
 
-/** Nouveaux clips depuis le dernier passage. */
 export async function sonderClips(client: Client): Promise<void> {
   const salons = listerChaines().filter((c) => c.notifier_clips && c.diffuseur_id && client.guilds.cache.has(c.serveur_id) && moduleActif(c.serveur_id, 'twitch'));
   for (const salonVise of salons) {
@@ -519,7 +510,6 @@ export async function sonderClips(client: Client): Promise<void> {
   }
 }
 
-/** Événements EventSub (raid, follow, abonnement) envoyés aux serveurs qui suivent la chaîne. */
 export async function diffuserEvenementTwitch(client: Client, diffuseurId: string, titre: string, description: string, url: string): Promise<void> {
   const salons = listerChaines().filter((c) => c.diffuseur_id === diffuseurId && c.notifier_evenements && moduleActif(c.serveur_id, 'twitch'));
   for (const salonVise of salons) {
@@ -543,11 +533,6 @@ interface WsMessage {
   };
 }
 
-/**
- * Client EventSub WebSocket (optionnel, nécessite TWITCH_USER_TOKEN).
- * Raids : pour toutes les chaînes suivies. Follows et abonnements : seulement la chaîne du compte du jeton
- * (Twitch exige que le jeton appartienne au streamer ou à un modérateur).
- */
 export class ClientAbonnementsTwitch {
   private prise: WebSocket | null = null;
   private jeton: JetonUtilisateur | null = chargerJetonUtilisateur();
@@ -662,7 +647,6 @@ export class ClientAbonnementsTwitch {
     }
   }
 
-  /** À appeler quand une chaîne est ajoutée : réabonne sans attendre une reconnexion. */
   resynchroniser(): void {
     this.prise?.close();
   }
@@ -732,7 +716,7 @@ async function suivre(serveur: Guild, pseudoBrut: string, salonId: string | null
   return rangee;
 }
 
-// ─── Écrans ────────────────────────────────────────────────────────────────
+// - Écrans -
 
 function ecranListe(serveur: Guild, note?: string) {
   const rangees = listerChaines(serveur.id);
@@ -839,7 +823,7 @@ async function envoyerTest(serveur: Guild, client: Client, r: LigneChaineTwitch)
   return `✅ Notification de test postée dans <#${salon.id}>${live ? ' (avec le live réel en cours)' : ''}.`;
 }
 
-// ─── Setup ─────────────────────────────────────────────────────────────────
+// - Setup -
 
 const pageReglage: PageReglage = {
   id: 'twitch',
@@ -894,7 +878,7 @@ const pageReglage: PageReglage = {
   ],
 };
 
-// ─── Commandes ─────────────────────────────────────────────────────────────
+// - Commandes -
 
 const optionPseudo = (o: import('discord.js').SlashCommandStringOption) => o.setName('chaine').setDescription('Pseudo ou lien Twitch').setRequired(true).setMaxLength(100);
 

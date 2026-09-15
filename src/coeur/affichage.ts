@@ -43,7 +43,6 @@ function idDe(serveur: RefServeur): string | null {
   return typeof serveur === 'string' ? serveur : serveur.id;
 }
 
-/** Tons d'état repris du bot Airline, utilisés avec le thème "enseigne". */
 const TONS_ENSEIGNE: Omit<CouleursTheme, 'primary'> = {
   success: '#3FE08F',
   error: '#E0455A',
@@ -65,14 +64,12 @@ export function enseigneDuServeur(serveur: RefServeur): Enseigne {
   return enseigneDe(idDe(serveur));
 }
 
-/** Nom affiché : enseigne du streamer, sinon nom du serveur. */
 export function nomEnseigne(serveur: RefServeur): string {
   const enseigne = enseigneDuServeur(serveur);
   if (enseigne.cle) return enseigne.nom;
   return serveur && typeof serveur !== 'string' ? serveur.name : enseigne.nom;
 }
 
-/** Embed à l'identité visuelle du serveur (enseigne du streamer ou thème choisi). */
 export function embedEnseigne(serveur: RefServeur, genre: GenreEmbed = 'primary'): EmbedBuilder {
   const embed = new EmbedBuilder().setColor(couleurPour(serveur, genre));
   if (serveur && typeof serveur !== 'string') {
@@ -86,7 +83,6 @@ export function embedEnseigne(serveur: RefServeur, genre: GenreEmbed = 'primary'
 
 export interface ReponseOptions {
   titre?: string;
-  /** Émoji devant le titre (par défaut celui du type de réponse). */
   sujet?: string;
   emoji?: string;
   par?: User | null;
@@ -95,23 +91,19 @@ export interface ReponseOptions {
   vignette?: string | null;
 }
 
-/** Une ligne de liste : « • Libellé — **valeur** ». */
 export function puce(libelle: string, valeur?: string | number | null): string {
   const v = valeur === undefined || valeur === null || valeur === '' ? '' : ` — **${String(valeur).trim()}**`;
   return `• ${libelle.trim()}${v}`;
 }
 
-/** Un intitulé de section : « emoji **Nom** ». */
 export function section(emoji: string, nom: string): string {
   return `${emoji ? `${emoji} ` : ''}**${nom.trim()}**`;
 }
 
-/** Un chiffre mis en évidence : « emoji Libellé : `valeur` ». */
 export function total(emoji: string, libelle: string, valeur: string | number): string {
   return `${emoji ? `${emoji} ` : ''}${libelle.trim()} : \`${String(valeur).trim()}\``;
 }
 
-/** Signe un embed : pied « tag » + horodatage. */
 export function signer(embed: EmbedBuilder, utilisateur: User | null | undefined): EmbedBuilder {
   if (!utilisateur) return embed;
   return embed.setFooter({ text: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) }).setTimestamp();
@@ -145,7 +137,6 @@ export interface PanneauSection {
   lignes?: (string | [string, string | number | null | undefined])[];
 }
 
-/** Panneau complet : titre, ouverture, sections à puces, totaux. */
 export function panneau(
   serveur: RefServeur,
   opts: { sujet?: string; titre?: string; ouverture?: string; sections?: PanneauSection[]; totaux?: { emoji: string; libelle: string; valeur: string | number }[]; texte?: string; par?: User | null },
@@ -168,7 +159,6 @@ export function panneau(
   return opts.par ? signer(embed, opts.par) : embed;
 }
 
-// Raccourcis historiques utilisés par le cœur.
 export function embedSucces(serveur: RefServeur, description: string, titre = 'C’est fait'): EmbedBuilder {
   return ok(serveur, description, { titre });
 }
@@ -220,7 +210,6 @@ export const DOCS_VARIABLES: Record<string, string> = {
   twitch: 'Lien de la chaîne Twitch de l’enseigne',
 };
 
-/** Remplace les variables {nom} connues. Les variables inconnues sont laissées intactes. */
 export function remplirModele(modele: string, contexte: ContexteVariables): string {
   const utilisateur = contexte.membre?.user ?? contexte.utilisateur ?? null;
   const serveur = contexte.serveur ?? contexte.membre?.guild ?? null;
@@ -270,7 +259,6 @@ export interface ChampFenetre {
   longueurMax?: number;
 }
 
-/** Construit un modal Discord à partir d'une liste de champs texte (5 maximum). */
 export function construireFormulaire(idPersonnalise: string, titre: string, champs: ChampFenetre[]): ModalBuilder {
   const fenetre = new ModalBuilder().setCustomId(idPersonnalise).setTitle(titre.slice(0, 45));
   for (const champ of champs.slice(0, 5)) {
@@ -323,7 +311,6 @@ const registre = creerRegistre('interaction');
 
 type ChargeReponse = Omit<InteractionReplyOptions, 'flags'> & { ephemeral?: boolean };
 
-/** Répond à une interaction quel que soit son état (déjà répondue, différée…). */
 export async function repondre(interaction: RepliableInteraction, charge: ChargeReponse): Promise<void> {
   const { ephemeral: prive, ...reste } = charge;
   try {
@@ -336,7 +323,6 @@ export async function repondre(interaction: RepliableInteraction, charge: Charge
     }
   } catch (echec) {
     const code = (echec as { code?: number }).code;
-    // 10062 : interaction expirée, 40060 : déjà acquittée → rien à faire
     if (code !== 10062 && code !== 40060) registre.avertir('Réponse impossible', echec);
   }
 }
@@ -359,7 +345,6 @@ export async function differerPrive(interaction: RepliableInteraction): Promise<
   }
 }
 
-/** Transforme n'importe quelle erreur en message propre pour l'utilisateur. */
 export async function traiterErreurInteraction(interaction: RepliableInteraction, echec: unknown, portee: string): Promise<void> {
   if (echec instanceof ErreurUtilisateur) {
     await repondreErreur(interaction, echec.message);
@@ -373,7 +358,6 @@ export async function traiterErreurInteraction(interaction: RepliableInteraction
   }
   registre.erreur(`[${portee}] Erreur non gérée`, echec);
   if (interaction.guild) {
-    // Le détail technique va au staff (#sante-log), jamais au membre.
     void journal(interaction.guild, 'health', {
       titre: 'Erreur technique',
       ton: 'alerte',
@@ -407,7 +391,6 @@ function rangees(id: string, session: SessionPagination) {
   ];
 }
 
-/** Envoie une liste d'embeds paginée (boutons ⬅️ ➡️ ❌, réservés à l'auteur). */
 export async function paginer(interaction: RepliableInteraction, pages: EmbedBuilder[], prive = false): Promise<void> {
   if (pages.length === 0) return;
   if (pages.length === 1) {
@@ -420,7 +403,6 @@ export async function paginer(interaction: RepliableInteraction, pages: EmbedBui
   await repondre(interaction, { embeds: [pages[0]!], components: rangees(id, session), ephemeral: prive });
 }
 
-/** Construit des pages à partir de lignes de texte. */
 export function lignesEnPages(lignes: string[], parPage: number, construire: (contenu: string, page: number, total: number) => EmbedBuilder): EmbedBuilder[] {
   const total = Math.max(1, Math.ceil(lignes.length / parPage));
   const pages: EmbedBuilder[] = [];
@@ -474,7 +456,6 @@ export interface OptionsConfirmation {
   surAnnulation?(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
 }
 
-/** Demande une confirmation avant une action dangereuse. Réponse éphémère. */
 export async function demanderConfirmation(interaction: RepliableInteraction, options: OptionsConfirmation): Promise<void> {
   const id = idCourt();
   sessionsConfirmation.ecrire(id, { proprietaireId: interaction.user.id, surConfirmation: options.surConfirmation, surAnnulation: options.surAnnulation });
@@ -513,7 +494,6 @@ export const composantConfirmation: GestionnaireComposant = {
   },
 };
 
-/** Bouton corbeille (comme sur Airline) : supprime le message, réservé à son auteur ou au staff. */
 export function rangeeCorbeille(serveurId: string | null, proprietaireId: string) {
   return rangee(bouton(`del:${proprietaireId}`, '', ButtonStyle.Secondary, emojiPour(serveurId, 'corbeille')));
 }

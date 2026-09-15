@@ -9,7 +9,6 @@ import { type CommandeSlash, type ModuleBot } from '../coeur/noyau';
 import { creerRegistre, environnement, ErreurUtilisateur, marqueTemps, Niveau } from '../coeur/outils';
 import { moduleActif, viderCacheConfig, viderCacheModules } from '../coeur/reglages';
 
-/** Tables de configuration sauvegardées par serveur (les données d'activité restent en place). */
 export const TABLES: { table: string; filtre: string }[] = [
   { table: 'reglages_serveurs', filtre: 'serveur_id = ?' },
   { table: 'modules_serveurs', filtre: 'serveur_id = ?' },
@@ -69,7 +68,6 @@ export function listerSauvegardes(serveurId: string): { id: number; nom: string;
   return lireTout('SELECT id, nom, fichier, taille, cree_par, cree_le FROM sauvegardes WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 25', serveurId);
 }
 
-/** Garde les N sauvegardes automatiques les plus récentes. */
 export function purgerSauvegardesAuto(serveurId: string, garder = 7): void {
   const autos = lireTout<{ id: number; fichier: string }>("SELECT id, fichier FROM sauvegardes WHERE serveur_id = ? AND nom = 'automatique' ORDER BY cree_le DESC", serveurId);
   for (const ancien of autos.slice(garder)) {
@@ -78,7 +76,6 @@ export function purgerSauvegardesAuto(serveurId: string, garder = 7): void {
   }
 }
 
-/** Restaure la configuration du bot d'un serveur. Ne modifie jamais les salons ni les rôles Discord. */
 export function restaurerSauvegarde(serveurId: string, sauvegardeId: number): { tables: number; rows: number } {
   const rangee = lire<{ fichier: string }>('SELECT fichier FROM sauvegardes WHERE id = ? AND serveur_id = ?', sauvegardeId, serveurId);
   if (!rangee || !fs.existsSync(rangee.fichier)) throw new Error('Sauvegarde introuvable');

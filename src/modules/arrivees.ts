@@ -28,7 +28,6 @@ export const RESSOURCES = path.join(RACINE_PROJET, 'assets');
 const FOND_DEFAUT = path.join(RESSOURCES, 'bienvenue', 'fond.webp');
 const DOSSIER_POLICES = path.join(RESSOURCES, 'fonts');
 
-/** Polices chargées si présentes : les grosses (emoji, japonais) peuvent être ajoutées depuis le bot Airline. */
 const POLICES: [string, string][] = [
   ['NotoSans.ttf', 'CarteTexte'],
   ['NotoSans-Bold.ttf', 'CarteTexte'],
@@ -98,7 +97,6 @@ function ajusterTexte(contexte: Contexte, texte: string, max: number, largeur: n
   return taille;
 }
 
-// Les fonds d'enseigne sont téléchargés une fois puis gardés.
 const fonds = new Map<string, ImageToile>();
 
 async function fondDe(serveurId: string, l: BibliothequeToile): Promise<ImageToile | null> {
@@ -115,7 +113,6 @@ async function fondDe(serveurId: string, l: BibliothequeToile): Promise<ImageToi
     if (fonds.size > 20) fonds.delete(fonds.keys().next().value!);
     return image;
   } catch (echec) {
-    // Un fond injoignable ne doit pas priver la personne de son accueil.
     registre.avertir(`Fond de l’enseigne illisible (${(echec as Error).message}) — fond par défaut.`);
     return secours();
   }
@@ -126,7 +123,6 @@ export interface OptionsCarte {
   sousTitre?: string;
 }
 
-/** Carte de bienvenue (PNG) inspirée du bot Airline, aux couleurs de l'enseigne. Retourne null si impossible. */
 export async function construireCarteBienvenue(membre: GuildMember, options: OptionsCarte = {}): Promise<Buffer | null> {
   const l = bibliothequeToile();
   if (!l) return null;
@@ -214,7 +210,6 @@ export async function construireCarteBienvenue(membre: GuildMember, options: Opt
 
 const registreBienvenue = creerRegistre('bienvenue');
 
-/** Envoie l'accueil d'un membre. Retourne le salon utilisé, ou null si rien n'a été envoyé. */
 export async function envoyerBienvenue(membre: GuildMember): Promise<string | null> {
   const serveur = membre.guild;
   const reglages = lireConfig(serveur.id).bienvenue;
@@ -246,7 +241,6 @@ export async function envoyerBienvenue(membre: GuildMember): Promise<string | nu
     await salon.send({ embeds: [embed], files: fichiers, allowedMentions: mentionsAutorisees });
   } catch (echec) {
     if (!fichiers.length) throw echec;
-    // La carte a été refusée : l'accueil part sans elle.
     embed.setImage(null).setThumbnail(membre.user.displayAvatarURL({ size: 256 }));
     await salon.send({ embeds: [embed], allowedMentions: mentionsAutorisees });
   }
@@ -263,7 +257,6 @@ async function envoyerBienvenueMp(membre: GuildMember): Promise<void> {
   await membre.send({ embeds: [embed] }).catch(() => undefined);
 }
 
-// ─── Compteur de membres (renommage limité par Discord : 2 fois / 10 min) ──
 
 const compteursEnAttente = new Set<string>();
 const dernierRenommage = new Map<string, number>();
@@ -351,7 +344,6 @@ export const moduleBienvenue: ModuleBot = {
         planifierCompteur(membre.guild);
         return;
       }
-      // En premier : rien de ce qui suit ne doit pouvoir empêcher un accueil.
       await envoyerBienvenue(membre).catch((echec: Error) => registreBienvenue.avertir(`${membre.id} non accueilli : ${echec.message}`));
       await envoyerBienvenueMp(membre);
       planifierCompteur(membre.guild);
@@ -475,7 +467,6 @@ export const moduleDeparts: ModuleBot = {
 
 const registreRolesAuto = creerRegistre('autorole');
 
-/** Donne les rôles automatiques configurés (membres ou bots). Ignore les rôles au-dessus du bot. */
 export async function donnerRolesAuto(membre: GuildMember, genre: 'member' | 'bot', raison = 'Rôle automatique'): Promise<string[]> {
   const reglages = lireConfig(membre.guild.id).rolesAuto;
   const voulus = genre === 'bot' ? reglages.rolesBots : reglages.rolesMembres;
@@ -551,7 +542,6 @@ export const moduleRolesAuto: ModuleBot = {
         await donnerRolesAuto(membre, 'bot');
         return;
       }
-      // La vérification donne elle-même les rôles membres une fois le membre vérifié.
       if (moduleActif(serveur.id, 'verification') && reglages.verification.roleVerifieId) return;
       const delai = reglages.rolesAuto.delaiSecondes * 1000;
       if (delai > 0) {

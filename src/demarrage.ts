@@ -39,7 +39,6 @@ function demarrerRotationStatut(client: Client<true>): void {
     client.user.setPresence({ activities: [{ name: statut.name, type: statut.type }], status: 'online' });
   };
   mettreAJour();
-  // Une mise à jour toutes les 5 minutes : largement sous les limites de l'API.
   setInterval(mettreAJour, 5 * 60_000).unref();
 }
 
@@ -123,7 +122,6 @@ async function demarrer(): Promise<void> {
 let clientActif: Client | null = null;
 let enArret = false;
 
-/** Arrêt propre : tâches, modules, dashboard, connexion Discord puis base de données. */
 async function quitterProprement(code: number): Promise<void> {
   if (enArret) return;
   enArret = true;
@@ -134,7 +132,8 @@ async function quitterProprement(code: number): Promise<void> {
   arreterSite();
   await clientActif?.destroy().catch(() => undefined);
   fermerBase();
-  // Laisse les connexions se fermer : un exit immédiat fait planter libuv sous Windows.
+  // - Arrêt différé -
+  // Un arrêt immédiat fait planter libuv sous Windows.
   setTimeout(() => process.exit(code), 300);
 }
 

@@ -26,7 +26,7 @@ function citer(texte: string | null | undefined, max = 1000): string {
   return tronquer(texte.replace(/```/g, 'ˋˋˋ'), max);
 }
 
-// ─── Membres ───────────────────────────────────────────────────────────────
+// - Membres -
 
 async function surArrivee(membre: GuildMember) {
   const age = joursDepuis(membre.user.createdTimestamp);
@@ -57,7 +57,7 @@ async function surDepart(membre: GuildMember | PartialGuildMember) {
   });
 }
 
-// ─── Messages ──────────────────────────────────────────────────────────────
+// - Messages -
 
 async function surMessageSupprime(message: Message | PartialMessage) {
   if (!message.guild || message.author?.bot || ignore(message.guild, message.channelId)) return;
@@ -112,7 +112,7 @@ async function surSuppressionMasse(messages: Map<string, Message | PartialMessag
   });
 }
 
-// ─── Vocal ─────────────────────────────────────────────────────────────────
+// - Vocal -
 
 async function surVocal(avant: VoiceState, apres: VoiceState) {
   const membre = apres.member ?? avant.member;
@@ -128,7 +128,6 @@ async function surVocal(avant: VoiceState, apres: VoiceState) {
   }
 }
 
-// ─── Journal d'audit (avec l'auteur de l'action) ───────────────────────────
 
 type Changement = { key: string; old?: unknown; new?: unknown };
 
@@ -154,7 +153,6 @@ function decrireChangements(changements: Changement[]): string[] {
 
 async function surAudit(entree: GuildAuditLogsEntry, serveur: Guild) {
   const executantId = entree.executorId;
-  // Les actions du bot sont déjà journalisées par les modules concernés, avec plus de détails.
   if (executantId && executantId === serveur.members.me?.id) return;
   const par = executantId ? `<@${executantId}>` : '*inconnu*';
   const executant = executantId ? (serveur.client.users.cache.get(executantId) ?? null) : null;
@@ -225,7 +223,7 @@ async function surAudit(entree: GuildAuditLogsEntry, serveur: Guild) {
   }
 }
 
-// ─── Commandes ─────────────────────────────────────────────────────────────
+// - Commandes -
 
 interface LigneJournal {
   categorie: string;

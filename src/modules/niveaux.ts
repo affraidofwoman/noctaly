@@ -49,7 +49,6 @@ export function lierClientActivite(client: Client): void {
   clientLie = client;
 }
 
-/** Les modules (quêtes, succès…) s'abonnent à l'activité sans dépendre des modules qui la produisent. */
 export function surActivite(ecouteur: Ecouteur): void {
   ecouteurs.push(ecouteur);
 }
@@ -71,7 +70,6 @@ export interface CreditVocal {
   utilisateurId: string;
   salonId: string;
   secondes: number;
-  /** Seul(e) dans le salon, sourd ou dans le salon AFK : les modules peuvent ignorer ce temps. */
   inactif: boolean;
 }
 
@@ -80,7 +78,6 @@ type EcouteurVocal = (credit: CreditVocal, client: Client) => void;
 const ecouteursVocal: EcouteurVocal[] = [];
 const CREDIT_MAX_S = 10 * 60;
 
-/** Un module s'abonne au temps passé en vocal (XP, statistiques, quêtes…). */
 export function surTempsVocal(ecouteur: EcouteurVocal): void {
   ecouteursVocal.push(ecouteur);
 }
@@ -111,7 +108,6 @@ function credit(client: Client, serveurId: string, utilisateurId: string, jusqua
   emettre(client, { serveurId, utilisateurId, salonId: rangee.salon_id, secondes, inactif: etat ? estInactif(etat) : false });
 }
 
-/** À brancher sur voiceStateUpdate (module cœur). */
 export function traiterEtatVocal(avant: VoiceState, apres: VoiceState): void {
   const membre = apres.member ?? avant.member;
   if (!membre || membre.user.bot) return;
@@ -126,7 +122,6 @@ export function traiterEtatVocal(avant: VoiceState, apres: VoiceState): void {
   }
 }
 
-/** Crédite régulièrement les sessions en cours (le temps n'est pas perdu en cas de redémarrage). */
 export function crediterVocal(client: Client): void {
   const maintenant = Date.now();
   for (const rangee of lireTout<{ serveur_id: string; utilisateur_id: string; salon_id: string; debut_le: number }>('SELECT * FROM sessions_vocales')) {
@@ -142,7 +137,6 @@ export function crediterVocal(client: Client): void {
   }
 }
 
-/** Au démarrage : repart de zéro pour les personnes déjà en vocal. */
 export function resynchroniserVocal(client: Client): void {
   executer('DELETE FROM sessions_vocales');
   const maintenant = Date.now();
@@ -157,7 +151,6 @@ export function resynchroniserVocal(client: Client): void {
 export const COLONNES_JOUR = ['messages', 'arrivees', 'departs', 'secondes_vocal', 'commandes'] as const;
 type ColonneJour = (typeof COLONNES_JOUR)[number];
 
-/** Incrémente un compteur journalier du serveur (dans son fuseau horaire). */
 export function incrementerJour(serveurId: string, colonne: ColonneJour, montant = 1): void {
   const jour = cleJour(Date.now(), lireConfig(serveurId).general.fuseau);
   executer(
@@ -169,7 +162,6 @@ export function incrementerJour(serveurId: string, colonne: ColonneJour, montant
   );
 }
 
-/** Profil d'activité d'un membre (créé à la première rencontre). */
 export function noterMembre(serveurId: string, utilisateurId: string): void {
   executer('INSERT OR IGNORE INTO membres (serveur_id, utilisateur_id, vu_le) VALUES (?, ?, ?)', serveurId, utilisateurId, Date.now());
 }
@@ -189,12 +181,10 @@ export function activiteMembre(serveurId: string, utilisateurId: string): { mess
   return lire('SELECT messages, secondes_vocal, vu_le FROM membres WHERE serveur_id = ? AND utilisateur_id = ?', serveurId, utilisateurId);
 }
 
-/** XP nécessaire pour passer du niveau `level` au suivant (formule façon MEE6). */
 export function xpPourSuivant(niveau: number): number {
   return 5 * niveau * niveau + 50 * niveau + 100;
 }
 
-/** XP totale nécessaire pour atteindre un niveau. */
 export function xpTotalePourNiveau(niveau: number): number {
   let total = 0;
   for (let l = 0; l < niveau; l++) total += xpPourSuivant(l);
@@ -226,7 +216,6 @@ export function niveauDe(serveurId: string, utilisateurId: string): number {
   return lireXp(serveurId, utilisateurId).niveau;
 }
 
-/** Ajoute (ou retire) de l'XP. Retourne l'ancien et le nouveau niveau. */
 export function ajouterXp(serveurId: string, utilisateurId: string, montant: number, noterMessage = false): { ancienNiveau: number; nouveauNiveau: number; xp: number } {
   const avant = lireXp(serveurId, utilisateurId);
   const xp = Math.max(0, avant.xp + Math.round(montant));
@@ -286,7 +275,6 @@ export interface DefinitionBadge {
   description: string;
 }
 
-/** Badges proposés par défaut sur chaque serveur (modifiables). */
 export const BADGES_DEFAUT: DefinitionBadge[] = [
   { badge_id: 'og', nom: 'OG', emoji: '🏆', description: 'Membre de très longue date' },
   { badge_id: 'actif', nom: 'Actif', emoji: '⭐', description: 'Niveau 10 atteint' },
@@ -334,7 +322,6 @@ export function supprimerBadge(serveurId: string, badgeId: string): boolean {
   return executer('DELETE FROM badges WHERE serveur_id = ? AND badge_id = ?', serveurId, badgeId).changes > 0;
 }
 
-/** Donne un badge (sans doublon). Retourne true s'il est nouveau. */
 export function donnerBadge(serveurId: string, utilisateurId: string, badgeId: string, donnePar: string | null = null): boolean {
   if (!lireBadge(serveurId, badgeId)) return false;
   return executer('INSERT OR IGNORE INTO badges_membres (serveur_id, utilisateur_id, badge_id, donne_le, donne_par) VALUES (?, ?, ?, ?, ?)', serveurId, utilisateurId, badgeId, Date.now(), donnePar).changes > 0;
@@ -357,7 +344,6 @@ export function badgesMembre(serveurId: string, utilisateurId: string): (Definit
 
 const delais = new Map<string, number>();
 
-/** Rôles de niveau : empilés ou seulement le plus haut atteint. */
 export async function synchroniserRolesNiveau(membre: GuildMember, niveau: number): Promise<void> {
   const recompenses = rolesNiveau(membre.guild.id);
   if (!recompenses.length) return;
@@ -610,7 +596,6 @@ export const moduleNiveaux: ModuleBot = {
 const registreAnciennete = creerRegistre('anciennete');
 const JOURS_DEFAUT = [30, 90, 180];
 
-/** Rôles d'ancienneté : exemple 30 j → membre régulier, 90 j → ancien, 180 j → OG. */
 export async function synchroniserAnciennete(serveur: Guild): Promise<number> {
   const reglages = lireConfig(serveur.id).anciennete;
   const paliers = reglages.paliers.filter((t) => t.roleId && t.days > 0).sort((a, b) => a.days - b.days);
@@ -723,7 +708,6 @@ export const moduleAnciennete: ModuleBot = {
   ],
 };
 
-/** Badges automatiques calculés à l'affichage (staff, booster, ancienneté). */
 function synchroniserBadgesAuto(membre: GuildMember): void {
   if (!lireConfig(membre.guild.id).profils.badgesAuto) return;
   const g = membre.guild.id;

@@ -188,7 +188,7 @@ async function lireFormulaireWeb(conditions: IncomingMessage): Promise<URLSearch
   });
 }
 
-// ─── OAuth2 Discord ────────────────────────────────────────────────────────
+// - OAuth2 Discord -
 
 const uriRedirection = () => `${environnement.siteUrl}/callback`;
 
@@ -207,7 +207,7 @@ async function echangerCode(code: string): Promise<{ id: string; username: strin
   return { id: utilisateur.id, username: utilisateur.global_name ?? utilisateur.username, avatar: utilisateur.avatar };
 }
 
-// ─── Accès ─────────────────────────────────────────────────────────────────
+// - Accès -
 
 async function serveursGerables(client: Client<true>, utilisateurId: string): Promise<Guild[]> {
   const sortie: Guild[] = [];
@@ -232,7 +232,7 @@ async function exigerAccesServeur(client: Client<true>, session: Session, serveu
   return niveau >= Niveau.ADMIN ? { guild: serveur, level: niveau } : null;
 }
 
-// ─── Pages ─────────────────────────────────────────────────────────────────
+// - Pages -
 
 function nomEnseigne(serveur?: Guild | null): string {
   if (!serveur) return process.env.BOT_BRAND_NAME?.trim() || 'Twitch Community';
@@ -368,7 +368,7 @@ function pagePersonnalisation(session: Session, serveur: Guild, avertissement?: 
 <p><button type="submit">💾 Enregistrer</button></p></form>`;
 }
 
-// ─── Routeur ───────────────────────────────────────────────────────────────
+// - Routeur -
 
 async function traiter(client: Client<true>, conditions: IncomingMessage, reponse: ServerResponse): Promise<void> {
   const ip = (conditions.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() || conditions.socket.remoteAddress || 'inconnu';

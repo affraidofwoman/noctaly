@@ -142,7 +142,7 @@ async function conclure(client: Client, c: LigneConcours): Promise<void> {
     if (membre && role && botPeutGererRole(serveur, role)) await membre.roles.add(role, `Gagnant du concours ${c.nom}`).catch(() => undefined);
   }
   if (serveur && salon) {
-    // Désactive les boutons de vote.
+    // - Désactive les boutons de vote -
     for (const e of participationsDe(c.id)) {
       if (!e.message_id) continue;
       const m = await salon.messages.fetch(e.message_id).catch(() => null);
@@ -277,7 +277,6 @@ export const moduleConcours: ModuleBot = {
           if (c.statut !== 'voting') throw new ErreurUtilisateur('Les votes sont clos.');
           if (entree.utilisateur_id === interaction.user.id) throw new ErreurUtilisateur('Tu ne peux pas voter pour ta propre participation.');
           const jury = !!c.role_jury_id && interaction.member.roles.cache.has(c.role_jury_id);
-          // Un seul vote par personne dans le concours : voter ailleurs déplace le vote.
           const precedent = lire<{ participation_id: number }>('SELECT v.participation_id FROM votes_concours v JOIN participations_concours e ON e.id = v.participation_id WHERE e.concours_id = ? AND v.utilisateur_id = ?', c.id, interaction.user.id);
           if (precedent?.participation_id === entree.id) {
             executer('DELETE FROM votes_concours WHERE participation_id = ? AND utilisateur_id = ?', entree.id, interaction.user.id);
@@ -351,7 +350,6 @@ interface LigneFormulaire {
   salon_id: string | null;
 }
 
-/** Formulaires intégrés : partenariat et candidature staff. */
 function integre(serveur: Guild, nom: string): DefinitionFormulaire | null {
   const reglages = lireConfig(serveur.id);
   if (nom === 'partenariat') {
@@ -400,7 +398,6 @@ function fenetreFormulaire(formulaire: DefinitionFormulaire) {
   return construireFormulaire(`form:submit:${formulaire.nom}`, formulaire.titre, champs);
 }
 
-/** Questions en texte : une par ligne, « * » à la fin pour une réponse longue, « ? » au début pour facultative. */
 export function lireQuestions(saisie: string): Question[] {
   return saisie
     .split('\n')

@@ -110,7 +110,6 @@ export function decrireConditions(conditions: ConditionsTirage): string[] {
   ].filter((l): l is string => !!l);
 }
 
-/** Vérifie les conditions de participation. Retourne la raison du refus ou null. */
 export function verifierEligibilite(membre: GuildMember, conditions: ConditionsTirage): string | null {
   if (conditions.roleId && !membre.roles.cache.has(conditions.roleId)) return `Il te faut le rôle <@&${conditions.roleId}> pour participer.`;
   if (conditions.niveauMin && niveauDe(membre.guild.id, membre.id) < conditions.niveauMin) return `Il faut être au moins niveau **${conditions.niveauMin}** (tu es niveau ${niveauDe(membre.guild.id, membre.id)}).`;
@@ -179,7 +178,6 @@ export async function rafraichirMessage(client: Client, g: LigneTirage): Promise
   await message.edit(construireMessageTirage(salon.guild, g)).catch((echec: Error) => registre.debogage(`Message giveaway non mis à jour : ${echec.message}`));
 }
 
-/** Tirage équitable (crypto) de `count` gagnants distincts. */
 export function tirerGagnants(reserveTirage: string[], nombre: number): string[] {
   const copie = [...reserveTirage];
   const gagnants: string[] = [];
@@ -253,7 +251,6 @@ export function quitterTirage(utilisateurId: string, g: LigneTirage): boolean {
   return executer('DELETE FROM participations_tirages WHERE tirage_id = ? AND utilisateur_id = ?', g.id, utilisateurId).changes > 0;
 }
 
-/** Termine un giveaway : tirage parmi les participants encore éligibles, annonce, MP, badges, logs. */
 export async function terminerTirage(client: Client, id: number, terminePar: string | null = null): Promise<string[]> {
   const pris = transaction(() => {
     const g = lireTirage(id);
@@ -269,7 +266,6 @@ export async function terminerTirage(client: Client, id: number, terminePar: str
 
   let eligibles = reserveTirage;
   if (serveur) {
-    // Les membres partis ou qui ne remplissent plus les conditions ne peuvent pas gagner.
     const membres = await serveur.members.fetch({ user: reserveTirage.slice(0, 1000) }).catch(() => null);
     if (membres) eligibles = reserveTirage.filter((uid) => {
       const m = membres.get(uid);
@@ -370,7 +366,6 @@ function libelle(g: LigneTirage): string {
   return tronquer(`${etat} #${g.id} · ${g.lot}`, 100);
 }
 
-// ─── Menu façon Airline ────────────────────────────────────────────────────
 
 function menu(serveur: Guild, note?: string) {
   const lireTout = tiragesDuServeur(serveur.id);
@@ -424,7 +419,7 @@ function pagesListe(serveur: Guild) {
   return lignesEnPages(lignes, 8, (contenu, page, total) => embedEnseigne(serveur).setTitle('🎉 Giveaways').setDescription(contenu).setFooter({ text: `Page ${page}/${total}` }));
 }
 
-// ─── Commande ──────────────────────────────────────────────────────────────
+// - Commande -
 
 const optionId = (o: import('discord.js').SlashCommandIntegerOption) => o.setName('id').setDescription('Le giveaway').setRequired(true).setAutocomplete(true);
 
@@ -532,7 +527,7 @@ const tirage: CommandeSlash = {
   },
 };
 
-// ─── Composants ────────────────────────────────────────────────────────────
+// - Composants -
 
 async function surArrivee(interaction: ButtonInteraction<'cached'>, id: string | undefined) {
   const g = exigerTirage(interaction.guildId, id);
@@ -703,7 +698,6 @@ export const moduleTirages: ModuleBot = {
       nom: 'giveaways-refresh',
       intervalleMs: 5_000,
       async executer(client) {
-        // Les compteurs « Participer (n) » sont regroupés pour ne pas éditer le message à chaque clic.
         const ids = [...aRafraichir].slice(0, 10);
         for (const id of ids) {
           aRafraichir.delete(id);

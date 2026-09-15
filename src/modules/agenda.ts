@@ -53,7 +53,6 @@ export function anniversaireValide(jour: number, mois: number): boolean {
   return Number.isInteger(jour) && Number.isInteger(mois) && mois >= 1 && mois <= 12 && jour >= 1 && jour <= JOURS_PAR_MOIS[mois - 1]!;
 }
 
-/** Le 29 février est fêté le 28 les années non bissextiles. */
 export function estAnniversaire(rangee: { jour: number; mois: number }, aujourdhui: { jour: number; mois: number; annee: number }): boolean {
   const bissextile = (aujourdhui.annee % 4 === 0 && aujourdhui.annee % 100 !== 0) || aujourdhui.annee % 400 === 0;
   if (rangee.mois === 2 && rangee.jour === 29 && !bissextile) return aujourdhui.mois === 2 && aujourdhui.jour === 28;
@@ -65,7 +64,6 @@ async function traiterServeur(serveur: Guild): Promise<void> {
   const maintenant = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau);
   const role = reglages.roleId ? serveur.roles.cache.get(reglages.roleId) : null;
 
-  // Retire le rôle d'anniversaire après 24 h.
   if (role) {
     for (const r of lireTout<LigneAnniversaire>('SELECT * FROM anniversaires WHERE serveur_id = ? AND role_donne_le IS NOT NULL AND role_donne_le < ?', serveur.id, Date.now() - 86_400_000)) {
       const membre = await serveur.members.fetch(r.utilisateur_id).catch(() => null);
@@ -132,7 +130,6 @@ const commandeAnniversaire: CommandeSlash = {
       if (!anniversaireValide(jour, mois)) throw new ErreurUtilisateur('Cette date n’existe pas.');
       const annee = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau).annee;
       const aujourdhui = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau);
-      // Enregistré aujourd'hui même : on ne le souhaite pas une seconde fois s'il est déjà passé l'heure.
       const ignorerCetteAnnee = estAnniversaire({ jour, mois }, aujourdhui) && aujourdhui.heure >= lireConfig(serveur.id).anniversaires.hour;
       executer(
         `INSERT INTO anniversaires (serveur_id, utilisateur_id, jour, mois, annee_annoncee) VALUES (?, ?, ?, ?, ?)
@@ -272,7 +269,6 @@ function creer(serveurId: string, salonId: string, utilisateurId: string, delai:
   return lire<LigneRappel>('SELECT * FROM rappels WHERE id = ?', r.lastInsertRowid)!;
 }
 
-/** « 2h30 live Twitch » → durée + texte ; la durée peut contenir plusieurs morceaux (« 1j 2h »). */
 export function decouperRappel(saisie: string): { delay: number; text: string } | null {
   const mots = saisie.trim().split(/\s+/);
   for (let n = Math.min(3, mots.length); n >= 1; n--) {
@@ -294,7 +290,6 @@ async function livrer(client: Client, r: LigneRappel): Promise<void> {
   const utilisateur = await client.users.fetch(r.utilisateur_id).catch(() => null);
   const mp = await utilisateur?.send({ embeds: [embed] }).then(() => true).catch(() => false);
   if (mp) return;
-  // MP fermés : on rappelle dans le salon d'origine.
   const salon = serveur && r.salon_id ? serveur.channels.cache.get(r.salon_id) : null;
   if (salon?.isTextBased()) await salon.send({ content: `<@${r.utilisateur_id}>`, embeds: [embed], allowedMentions: { users: [r.utilisateur_id] } }).catch(() => undefined);
 }

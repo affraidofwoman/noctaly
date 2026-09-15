@@ -67,13 +67,11 @@ export type ActionAutomod = 'delete' | 'warn' | 'timeout';
 export type StyleBoutonTicket = 'Primary' | 'Secondary' | 'Success' | 'Danger';
 
 export interface MotifTicket {
-  /** Identifiant stable, aussi utilisé comme préfixe du salon (ex : support-pseudo). */
   id: string;
   libelle: string;
   emoji: string;
   description: string;
   style: StyleBoutonTicket;
-  /** Rôles qui voient ce type de ticket et sont mentionnés à l'ouverture. */
   roles: string[];
 }
 
@@ -95,7 +93,6 @@ export interface DefinitionQuete {
 export interface ConfigServeur {
   general: {
     fuseau: string;
-    /** "brand" = couleurs de l'enseigne du streamer. */
     theme: ThemeId | 'brand';
     colors: CouleursTheme;
     footer: string;
@@ -104,9 +101,7 @@ export interface ConfigServeur {
   };
   prefixes: Record<DomainePrefixe, string>;
   commandes: {
-    /** Salons où les commandes à préfixe marchent (vide = partout). */
     salonsAutorises: string[];
-    /** Supprimer le message de commande après exécution. */
     effacerCommande: boolean;
   };
   permissions: {
@@ -140,7 +135,6 @@ export interface ConfigServeur {
     delaiSecondes: number;
   };
   journaux: {
-    /** Salon utilisé pour les types sans salon dédié. */
     salonSecoursId: string | null;
     channels: Partial<Record<TypeJournal, string>>;
     disabled: TypeJournal[];
@@ -149,19 +143,16 @@ export interface ConfigServeur {
   tickets: {
     salonPanneauId: string | null;
     categorieParenteId: string | null;
-    /** Rôles qui voient tous les tickets (en plus des rôles par catégorie). */
     rolesStaff: string[];
     ouvertsMaxParMembre: number;
     categories: MotifTicket[];
     titrePanneau: string;
     introPanneau: string;
     piedPanneau: string;
-    /** buttons = un bouton par motif (Airline v1) ; v2 = sections avec bouton ; menu = un bouton puis « Quel est le sujet ? ». */
     stylePanneau: 'buttons' | 'v2' | 'menu';
     titreBienvenue: string;
     messageBienvenue: string;
     piedBienvenue: string;
-    /** delete = transcript puis suppression (comme Airline) ; archive = salon verrouillé, suppression manuelle. */
     modeFermeture: 'delete' | 'archive';
     transcriptAuMembre: boolean;
     counter: number;
@@ -188,11 +179,9 @@ export interface ConfigServeur {
   };
   moderation: {
     mpSanction: boolean;
-    /** Phrase ajoutée aux messages privés de sanction (comment contester). */
     texteContact: string;
     actionsAuto: ActionAutoAvertissement[];
     minutesTimeoutDefaut: number;
-    /** Supprimer les messages des dernières X heures lors d'un ban (0 à 168). */
     heuresEffaceesBan: number;
   };
   automod: {
@@ -548,7 +537,6 @@ function estObjetSimple(v: unknown): v is Simple {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-/** Fusion profonde : les objets sont fusionnés, les tableaux et scalaires stockés remplacent les défauts. */
 export function fusionProfonde<T>(defauts: T, stocke: unknown): T {
   if (!estObjetSimple(defauts) || !estObjetSimple(stocke)) {
     if (stocke === undefined) return defauts;
@@ -559,7 +547,6 @@ export function fusionProfonde<T>(defauts: T, stocke: unknown): T {
   const sortie: Simple = { ...defauts };
   for (const [cle, valeur] of Object.entries(stocke)) {
     if (!(cle in defauts)) {
-      // Clés libres (ex : overrides de logs) : on garde les objets ouverts
       if (Object.keys(defauts).length === 0) sortie[cle] = valeur;
       continue;
     }
@@ -587,7 +574,6 @@ export function lireConfig(serveurId: string): ConfigServeur {
   return config;
 }
 
-/** Modifie la configuration d'un serveur via une fonction et la persiste. */
 export function modifierConfig(serveurId: string, modifier: (config: ConfigServeur) => void): ConfigServeur {
   const brouillon = structuredClone(lireConfig(serveurId));
   modifier(brouillon);
@@ -645,7 +631,6 @@ function etatsServeur(serveurId: string): Map<string, boolean> {
 
 export function moduleActif(serveurId: string | null | undefined, moduleId: string): boolean {
   const module = modules.get(moduleId);
-  // Module retiré du registre : considéré comme inactif, sans jamais planter.
   if (!module) return false;
   if (!module.desactivable) return true;
   if (!serveurId) return module.actifParDefaut;

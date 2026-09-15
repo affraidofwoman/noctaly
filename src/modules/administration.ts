@@ -289,7 +289,6 @@ function optionsWhitelists(serveurId: string, cibleId?: string) {
   });
 }
 
-/** Écran d'accueil : choisir une whitelist pour voir sa liste. */
 export function accueilWhitelists(serveur: Guild, note?: string) {
   const embed = embedEnseigne(serveur)
     .setTitle(`${emojiPour(serveur.id, 'whitelist')} Whitelists`)
@@ -313,7 +312,6 @@ export function accueilWhitelists(serveur: Guild, note?: string) {
   return { embeds: [embed], components: [rangee(menu)] };
 }
 
-/** La liste d'une whitelist, avec ajout/retrait si l'on a le droit. */
 export function listeWhitelist(membre: GuildMember, listeId: WhitelistId, note?: string) {
   const serveur = membre.guild;
   const definition = lireWhitelist(listeId)!;
@@ -365,7 +363,6 @@ export function listeWhitelist(membre: GuildMember, listeId: WhitelistId, note?:
   return { embeds: [embed], components: composants };
 }
 
-/** Les whitelists d'une personne : choisir pour donner ou retirer. */
 export function whitelistsDe(membre: GuildMember, cible: User, note?: string) {
   const serveur = membre.guild;
   const actuel = whitelistsMembre(cible.id, serveur.id);
@@ -394,7 +391,6 @@ export function whitelistsDe(membre: GuildMember, cible: User, note?: string) {
 
 export type ResultatBascule = { ok: true; ajoute: boolean; texte: string } | { ok: false; texte: string };
 
-/** Donne ou retire une whitelist, avec contrôle d'accès, journal et resynchronisation des logs. */
 export async function basculerWhitelist(auteur: GuildMember, listeId: WhitelistId, cible: User, forcer?: 'add' | 'remove'): Promise<ResultatBascule> {
   const definition = lireWhitelist(listeId);
   if (!definition) return { ok: false, texte: 'Whitelist inconnue.' };
@@ -472,7 +468,6 @@ export const composantWhitelists: GestionnaireComposant = {
   },
 };
 
-/** Raccourcis à préfixe, comme =wlbot / =sys / .owner sur Airline : sans argument, affiche la liste. */
 export function raccourcisWhitelists(): CommandePrefixe[] {
   return WHITELISTS.map((definition) => ({
     nom: definition.raccourci,
@@ -508,7 +503,7 @@ function exigerEnseigne(cle: string | undefined) {
   return s;
 }
 
-/** La liste des enseignes. */
+// - La liste des enseignes -
 export function accueilEnseignes(client: Client, note?: string) {
   const enseignes = listerEnseignes();
   const embed = new EmbedBuilder()
@@ -548,7 +543,6 @@ export function accueilEnseignes(client: Client, note?: string) {
   return { embeds: [embed], components: composants };
 }
 
-/** L'écran d'une enseigne, avec son rendu sous les yeux. */
 export function ecranEnseigne(client: Client, cle: string, note?: string) {
   const s = exigerEnseigne(cle);
   const couleur = s.couleur ?? COULEUR_DEFAUT;
@@ -874,7 +868,7 @@ export const composantEnseignes: GestionnaireComposant = {
   },
 };
 
-// ─── /modules ──────────────────────────────────────────────────────────────
+// - /modules -
 
 const MODULES_PAR_MENU = 25;
 
@@ -919,7 +913,7 @@ export function panneauModules(serveur: Guild, note?: string) {
   return { embeds: [embed], components: composants };
 }
 
-// ─── /quicksetup ───────────────────────────────────────────────────────────
+// - /quicksetup -
 
 interface SalonRapide {
   nom: string;
@@ -1001,7 +995,7 @@ async function lancerInstallationRapide(serveur: Guild): Promise<string[]> {
   return signalement;
 }
 
-// ─── /test ─────────────────────────────────────────────────────────────────
+// - /test -
 
 const PERMISSIONS_REQUISES: [bigint, string][] = [
   [PermissionFlagsBits.ManageRoles, 'Gérer les rôles'],
@@ -1060,7 +1054,7 @@ function menuTests(serveur: Guild) {
   return rangee(menu);
 }
 
-// ─── Commandes ─────────────────────────────────────────────────────────────
+// - Commandes -
 
 const assistant: CommandeSlash = {
   categorie: 'admin',
@@ -1196,7 +1190,7 @@ const enseignes: CommandeSlash = {
   },
 };
 
-// ─── Préfixes owner ────────────────────────────────────────────────────────
+// - Préfixes owner -
 
 const prefixesProprietaire: CommandePrefixe[] = [
   {

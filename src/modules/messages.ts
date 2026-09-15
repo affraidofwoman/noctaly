@@ -66,13 +66,11 @@ export interface Brouillon {
   salonId: string | null;
   roleId: string | null;
   mentionTous: boolean;
-  /** Message existant à modifier au lieu d'en publier un nouveau. */
   messageAModifier: { channelId: string; messageId: string } | null;
 }
 
 const brouillons = new CarteExpirante<string, Brouillon>(45 * 60_000);
 
-/** Préfixe des composants : « an » pour les annonces, « eb » pour l’embed builder (modules indépendants). */
 export const prefixeComposant = (d: Pick<Brouillon, 'genre'>) => (d.genre === 'announce' ? 'an' : 'eb');
 
 export function nouveauBrouillon(serveur: Guild, proprietaireId: string, genre: Brouillon['genre']): Brouillon {
@@ -483,7 +481,6 @@ function charge(serveur: Guild, rangee: LigneCommandePerso, contexte: Parameters
   return { content: tronquer(texte, 2000), allowedMentions: { parse: [] as [] } };
 }
 
-/** Enregistre la commande comme commande slash du serveur (sans toucher aux commandes globales). */
 async function enregistrerCommandeServeur(serveur: Guild, rangee: LigneCommandePerso): Promise<string | null> {
   if (lireAiguilleur().commandes.has(rangee.nom)) return null;
   try {
@@ -642,7 +639,6 @@ export const moduleCommandesPerso: ModuleBot = {
   evenements: [sur('messageCreate', (m) => traiterMessage(m), 160)],
   async auDemarrage(client: Client<true>) {
     lireAiguilleur().surCommandeInconnue(traiterSlash);
-    // Les commandes perso d'un serveur où le bot est revenu sont réenregistrées si besoin.
     for (const serveur of client.guilds.cache.values()) {
       for (const rangee of lireTout<LigneCommandePerso>('SELECT * FROM commandes_perso WHERE serveur_id = ? AND commande_discord_id IS NULL', serveur.id).slice(0, 20)) {
         await enregistrerCommandeServeur(serveur, rangee);
@@ -826,7 +822,6 @@ function exigerPanneau(serveurId: string, id: number | string | undefined): Lign
   return panneauBoutons;
 }
 
-/** Normalise un émoji saisi : unicode ou <:nom:id> ; pour les réactions, l'identifiant sert de clé. */
 function cleEmoji(brut: string | null): string | null {
   if (!brut) return null;
   const enseignes = /<a?:\w+:(\d+)>/.exec(brut);
@@ -880,7 +875,6 @@ async function publierPanneauxRoles(serveur: Guild, panneauBoutons: LignePanneau
   return message.url;
 }
 
-/** Applique un choix de rôle en respectant le mode du panneau. Retourne un compte rendu. */
 async function appliquerChoix(membre: GuildMember, panneauBoutons: LignePanneau, roleId: string, forcerAjout?: boolean): Promise<string> {
   const role = membre.guild.roles.cache.get(roleId);
   if (!role) throw new ErreurUtilisateur('Ce rôle n’existe plus.');
