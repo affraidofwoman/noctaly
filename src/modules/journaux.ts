@@ -10,7 +10,7 @@ import {
   SlashCommandBuilder,
   type VoiceState,
 } from 'discord.js';
-import { embedEnseigne, lignesEnPages, ok, paginer } from '../coeur/affichage';
+import { embedEnseigne, lignesEnPages, ok, paginer, suiviReponse } from '../coeur/affichage';
 import { lireJson, lireTout } from '../coeur/base';
 import { creerSalonsJournal, definitionJournal, journal, type TypeJournal, TYPES_JOURNAUX } from '../coeur/journaux';
 import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
@@ -284,7 +284,9 @@ const commandeJournaux: CommandeSlash = {
   async executer(interaction) {
     if (interaction.options.getSubcommand() === 'salons') {
       await interaction.deferReply({ flags: 64 });
-      const { cree, titreLie } = await creerSalonsJournal(interaction.guild);
+      const suivi = suiviReponse(interaction, interaction.guild, 'Salons de logs');
+      const { cree, titreLie } = await creerSalonsJournal(interaction.guild, (f, t) => suivi.regler(f, t));
+      await suivi.terminer();
       await interaction.editReply({ embeds: [ok(interaction.guild, `**${cree}** créé(s), **${titreLie}** déjà présent(s).`, { titre: 'Salons de logs' })] });
       return;
     }
@@ -339,10 +341,13 @@ export const moduleJournaux: ModuleBot = {
       description: 'Un message de test par type de log',
       async executer(interaction) {
         const resultats: string[] = [];
+        const suivi = suiviReponse(interaction, interaction.guild, 'Test des logs', TYPES_JOURNAUX.length);
         for (const t of TYPES_JOURNAUX) {
+          suivi.avancer();
           const envoye = await journal(interaction.guild, t.type, { titre: 'Test des logs', ton: 'info', lignes: [definitionJournal(t.type).description], par: interaction.user });
           resultats.push(`${envoye ? '✅' : '❌'} \`${t.nom}\``);
         }
+        await suivi.terminer();
         return resultats.join(' · ');
       },
     },

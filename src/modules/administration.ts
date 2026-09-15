@@ -66,6 +66,7 @@ import {
   rangee,
   refus,
   repondre,
+  suiviReponse,
 } from '../coeur/affichage';
 import {
   afficherAccueil,
@@ -258,11 +259,13 @@ export const pagesAdministration: PageReglage[] = [
         emoji: '🏗️',
         async executer(interaction) {
           await interaction.deferReply({ flags: 64 });
-          const { cree, titreLie } = await creerSalonsJournal(interaction.guild).catch((echec: unknown) => {
+          const suivi = suiviReponse(interaction, interaction.guild, 'Salons de logs');
+          const { cree, titreLie } = await creerSalonsJournal(interaction.guild, (f, t) => suivi.regler(f, t)).catch((echec: unknown) => {
             throw echec instanceof Error && (echec as { code?: number }).code === 50013
               ? new ErreurUtilisateur('Il me faut la permission « Gérer les salons ».')
               : echec;
           });
+          await suivi.terminer();
           await interaction.editReply({ embeds: [ok(interaction.guild, `**${cree}** salon(s) ou catégorie(s) créé(s), **${titreLie}** déjà présent(s) et relié(s).`, { titre: 'Salons de logs' })] });
         },
       },
@@ -951,8 +954,11 @@ function trouverSalon(serveur: Guild, nom: string, type: ChannelType): GuildBase
   return serveur.channels.cache.find((c) => c.type === type && normaliserNom(c.name) === cible);
 }
 
-async function lancerInstallationRapide(serveur: Guild): Promise<string[]> {
+async function lancerInstallationRapide(serveur: Guild, progression?: (fait: number, total: number) => void): Promise<string[]> {
   const signalement: string[] = [];
+  const totalRapide = STRUCTURE_RAPIDE.reduce((n, g) => n + 1 + g.channels.length, 0);
+  let faitRapide = 0;
+  const pas = () => progression?.(++faitRapide, totalRapide * 2);
   const liens: { link: SalonRapide['lien']; id: string }[] = [];
   const tousMembres = serveur.roles.everyone.id;
   for (const groupe of STRUCTURE_RAPIDE) {
@@ -963,11 +969,13 @@ async function lancerInstallationRapide(serveur: Guild): Promise<string[]> {
     } else {
       signalement.push(`✔️ Catégorie **${categorie.name}** déjà présente`);
     }
+    pas();
     for (const salonVise of groupe.channels) {
       const existant = trouverSalon(serveur, salonVise.nom, ChannelType.GuildText);
       if (existant) {
         signalement.push(`　✔️ <#${existant.id}> déjà présent`);
         liens.push({ link: salonVise.lien, id: existant.id });
+        pas();
         continue;
       }
       const cree = await serveur.channels.create({
@@ -984,12 +992,13 @@ async function lancerInstallationRapide(serveur: Guild): Promise<string[]> {
       });
       signalement.push(`　➕ <#${cree.id}>`);
       liens.push({ link: salonVise.lien, id: cree.id });
+      pas();
     }
   }
   modifierConfig(serveur.id, (c) => {
     for (const { link: lien, id } of liens) lien?.(c, id);
   });
-  const journaux = await creerSalonsJournal(serveur);
+  const journaux = await creerSalonsJournal(serveur, (f, t) => progression?.(totalRapide + Math.round((f / t) * totalRapide), totalRapide * 2));
   signalement.push(`📜 Logs : **${journaux.cree}** créé(s), **${journaux.titreLie}** relié(s)`);
   return signalement;
 }
@@ -1076,7 +1085,9 @@ const installationRapide: CommandeSlash = {
       libelleConfirmation: 'Créer',
       surConfirmation: async (i) => {
         await i.update({ embeds: [info(i.guild, 'Création en cours…')], components: [] });
-        const signalement = await lancerInstallationRapide(i.guild);
+        const suivi = suiviReponse(i, i.guild, 'Structure du serveur');
+        const signalement = await lancerInstallationRapide(i.guild, (f, t) => suivi.regler(f, t));
+        await suivi.terminer();
         await i.editReply({ embeds: [ok(i.guild, tronquer(signalement.join('\n'), 4000), { titre: 'Structure prête' })] });
       },
     });

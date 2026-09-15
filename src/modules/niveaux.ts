@@ -10,7 +10,7 @@ import {
   type VoiceState,
 } from 'discord.js';
 import { emojiPour, libelleNiveauVu, lireNiveau, rolesAttribuables } from '../coeur/acces';
-import { embedEnseigne, info, lignesEnPages, ok, paginer, remplirModele, repondre } from '../coeur/affichage';
+import { embedEnseigne, info, lignesEnPages, ok, paginer, remplirModele, repondre, suiviReponse } from '../coeur/affichage';
 import type { ChampReglage, PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout } from '../coeur/base';
 import { journal, resoudreSalonTexte } from '../coeur/journaux';
@@ -596,14 +596,16 @@ export const moduleNiveaux: ModuleBot = {
 const registreAnciennete = creerRegistre('anciennete');
 const JOURS_DEFAUT = [30, 90, 180];
 
-export async function synchroniserAnciennete(serveur: Guild): Promise<number> {
+export async function synchroniserAnciennete(serveur: Guild, progression?: (fait: number, total: number) => void): Promise<number> {
   const reglages = lireConfig(serveur.id).anciennete;
   const paliers = reglages.paliers.filter((t) => t.roleId && t.days > 0).sort((a, b) => a.days - b.days);
   if (!paliers.length) return 0;
   const membres = await serveur.members.fetch().catch(() => serveur.members.cache);
   let changements = 0;
   const meilleurs = paliers[paliers.length - 1]!;
+  let fait = 0;
   for (const membre of membres.values()) {
+    progression?.(++fait, membres.size);
     if (membre.user.bot || !membre.joinedTimestamp) continue;
     const jours = joursDepuis(membre.joinedTimestamp);
     const obtenus = paliers.filter((t) => jours >= t.days);
@@ -679,7 +681,9 @@ const pageReglageAnciennete: PageReglage = {
       emoji: '🔄',
       async executer(interaction) {
         await interaction.deferReply({ flags: 64 });
-        const n = await synchroniserAnciennete(interaction.guild);
+        const suivi = suiviReponse(interaction, interaction.guild, 'Rôles d’ancienneté');
+        const n = await synchroniserAnciennete(interaction.guild, (f, t) => suivi.regler(f, t));
+        await suivi.terminer();
         await interaction.editReply({ content: `✅ ${n} membre(s) mis à jour.` });
       },
     },

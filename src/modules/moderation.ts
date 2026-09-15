@@ -21,6 +21,7 @@ import { aNiveau, emojiPour, enseigneDe, verifierModerable } from '../coeur/acce
 import {
   bouton,
   couleurPour,
+  creerSuivi,
   demanderConfirmation,
   embedEnseigne,
   erreur,
@@ -32,6 +33,7 @@ import {
   rangee,
   refus,
   repondre,
+  suiviReponse,
 } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireJson, lireTout } from '../coeur/base';
@@ -372,7 +374,7 @@ function verrouActif(serveurId: string, portee: PorteeVerrou, cibleId: string) {
   return lire<{ id: number; instantane: string }>('SELECT id, instantane FROM verrouillages WHERE serveur_id = ? AND portee = ? AND cible_id = ? AND actif = 1', serveurId, portee, cibleId);
 }
 
-export async function verrouiller(serveur: Guild, portee: PorteeVerrou, cibleId: string, auteur: User, raison: string): Promise<ResultatVerrou> {
+export async function verrouiller(serveur: Guild, portee: PorteeVerrou, cibleId: string, auteur: User, raison: string, progression?: (fait: number, total: number) => void): Promise<ResultatVerrou> {
   if (verrouActif(serveur.id, portee, cibleId)) throw new ErreurUtilisateur(portee === 'channel' ? 'Ce salon est déjà verrouillé.' : 'Un verrouillage est déjà en cours sur cette cible.');
   let salons: GuildChannel[];
   if (portee === 'channel') {
@@ -390,6 +392,7 @@ export async function verrouiller(serveur: Guild, portee: PorteeVerrou, cibleId:
   const audit = `Verrouillage par ${auteur.tag} : ${raison}`.slice(0, 500);
   const instantanes: Record<string, InstantanePermissions> = {};
   let ignores = 0;
+  let fait = 0;
   for (const salonVise of salons) {
     try {
       const cliche = await verrouillerSalon(salonVise, audit);
@@ -398,6 +401,7 @@ export async function verrouiller(serveur: Guild, portee: PorteeVerrou, cibleId:
     } catch {
       ignores++;
     }
+    progression?.(++fait, salons.length);
   }
   if (!Object.keys(instantanes).length) throw new ErreurUtilisateur('Aucun salon à verrouiller (déjà fermés ou permissions insuffisantes).');
   const r = executer(
@@ -482,7 +486,7 @@ function pagesAvertissements(serveur: Guild, utilisateur: User) {
 
 // - Nettoyage -
 
-async function effacerMessages(salon: GuildTextBasedChannel, montant: number, filtreMembreId: string | null, auteur: User): Promise<number> {
+async function effacerMessages(salon: GuildTextBasedChannel, montant: number, filtreMembreId: string | null, auteur: User, progression?: (fait: number, total: number) => void): Promise<number> {
   const max = Math.min(Math.max(montant, 1), 1000);
   let supprimes = 0;
   let avant: string | undefined;
@@ -496,6 +500,7 @@ async function effacerMessages(salon: GuildTextBasedChannel, montant: number, fi
     if (aSupprimer.length) {
       const retiree = await salon.bulkDelete(aSupprimer, true);
       supprimes += retiree.size;
+      progression?.(supprimes, max);
     }
     if (lot.size < 100 || lot.last()!.createdTimestamp < limite) break;
   }
@@ -704,7 +709,9 @@ const effacer: CommandeSlash = {
   async executer(i) {
     if (!i.channel) return;
     await i.deferReply({ flags: 64 });
-    const supprimes = await effacerMessages(i.channel, i.options.getInteger('nombre', true), i.options.getUser('membre')?.id ?? null, i.user);
+    const suivi = suiviReponse(i, i.guild, 'Nettoyage');
+    const supprimes = await effacerMessages(i.channel, i.options.getInteger('nombre', true), i.options.getUser('membre')?.id ?? null, i.user, (f, total) => suivi.regler(f, total));
+    await suivi.terminer();
     await i.editReply({ embeds: [ok(i.guild, `**${supprimes}** message(s) supprimé(s).\n-# Les messages de plus de 14 jours et épinglés sont conservés.`)] });
   },
 };
@@ -815,7 +822,8 @@ const verrouillage: CommandeSlash = {
       libelleConfirmation: 'Verrouiller',
       surConfirmation: async (b) => {
         await b.update({ embeds: [info(b.guild, 'Verrouillage en cours…')], components: [] });
-        const r = await verrouiller(b.guild, portee, cible, b.user, raison);
+        const suivi = suiviReponse(b, b.guild, 'Verrouillage');
+        const r = await verrouiller(b.guild, portee, cible, b.user, raison, (f, t) => suivi.regler(f, t)).finally(() => suivi.terminer());
         await b.editReply({ embeds: [ok(b.guild, `🔒 **${r.verrouilles}** salon(s) verrouillé(s) sur ${filtre}.${r.ignores ? `\n-# ${r.ignores} ignoré(s) (déjà fermés ou inaccessibles).` : ''}`)] });
         if (b.channel && 'send' in b.channel) {
           await b.channel.send({ embeds: [refus(b.guild, `**LOCKDOWN** — ${raison}\nLes messages sont temporairement bloqués.`)] }).catch(() => undefined);
@@ -1119,7 +1127,11 @@ const commandesPrefixe: CommandePrefixe[] = [
         Date.now(),
       );
       let banni = 0;
-      for (const serveur of serveursEnseigne(message.client, portee)) {
+      const serveurs = serveursEnseigne(message.client, portee);
+      const attente = await message.reply({ embeds: [info(message.guild, 'Blacklist en cours…')], allowedMentions: { repliedUser: false } });
+      const suivi = creerSuivi((texte) => attente.edit({ embeds: [info(message.guild, texte)] }), 'Blacklist d’enseigne', serveurs.length);
+      for (const serveur of serveurs) {
+        suivi.avancer();
         const reussi = await serveur.members.ban(utilisateur.id, { reason: `Blacklist d’enseigne : ${raison}`.slice(0, 500) }).then(() => true).catch(() => false);
         if (reussi) {
           banni++;
@@ -1127,7 +1139,8 @@ const commandesPrefixe: CommandePrefixe[] = [
           void journal(serveur, 'blacklist', { titre: 'Blacklist d’enseigne', ton: 'alerte', lignes: [`**Cible** : <@${utilisateur.id}> \`${utilisateur.id}\``, `**Raison** : ${raison}`], par: message.author });
         }
       }
-      await message.reply({ embeds: [ok(message.guild, `<@${utilisateur.id}> blacklisté sur l’enseigne — banni de **${banni}** serveur(s).`)], allowedMentions: { repliedUser: false } });
+      await suivi.terminer();
+      await attente.edit({ embeds: [ok(message.guild, `<@${utilisateur.id}> blacklisté sur l’enseigne — banni de **${banni}** serveur(s).`)] });
     },
   },
   {
@@ -1159,7 +1172,8 @@ async function surConfirmationModeration(interaction: ButtonInteraction<'cached'
   }
   if (action === 'lockall') {
     await interaction.update({ embeds: [info(interaction.guild, 'Verrouillage en cours…')], components: [] });
-    const r = await verrouiller(interaction.guild, 'server', interaction.guildId, interaction.user, decodeURIComponent(extra ?? '') || 'Aucune raison');
+    const suivi = suiviReponse(interaction, interaction.guild, 'Verrouillage');
+    const r = await verrouiller(interaction.guild, 'server', interaction.guildId, interaction.user, decodeURIComponent(extra ?? '') || 'Aucune raison', (f, t) => suivi.regler(f, t)).finally(() => suivi.terminer());
     await interaction.editReply({ embeds: [ok(interaction.guild, `🔒 **${r.verrouilles}** salon(s) verrouillé(s).`)] });
     return;
   }
@@ -1168,11 +1182,14 @@ async function surConfirmationModeration(interaction: ButtonInteraction<'cached'
     await interaction.update({ embeds: [info(interaction.guild, 'Débannissement en cours…')], components: [] });
     const bannissements = await interaction.guild.bans.fetch();
     const enListeNoire = new Set(entreesListeNoire(interaction.guildId).map((b) => b.utilisateur_id));
+    const suivi = suiviReponse(interaction, interaction.guild, 'Débannissement', bannissements.size);
     let fait = 0;
     for (const b of bannissements.values()) {
+      suivi.avancer();
       if (enListeNoire.has(b.user.id) || estEnListeNoire(interaction.guildId, b.user.id)) continue;
       if (await interaction.guild.bans.remove(b.user.id, `+unbanall par ${interaction.user.tag}`).then(() => true).catch(() => false)) fait++;
     }
+    await suivi.terminer();
     historiser(interaction.guildId, 'sanction', 'unbanall', null, interaction.user.id, { count: fait });
     void journal(interaction.guild, 'sanction', { titre: 'Débannissement général', ton: 'ok', lignes: [`**Comptes débannis** : ${fait}`], par: interaction.user });
     await interaction.editReply({ embeds: [ok(interaction.guild, `🕊️ **${fait}** compte(s) débanni(s).`)] });

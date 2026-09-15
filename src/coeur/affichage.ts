@@ -31,7 +31,11 @@ import {
   ErreurUtilisateur,
   formaterDate,
   idCourt,
-  partiesFuseau, Niveau } from './outils';
+  barreProgression,
+  formaterDuree,
+  partiesFuseau,
+  Niveau,
+} from './outils';
 import { type CouleursTheme, hexaEnEntier, lireConfig, THEMES } from './reglages';
 
 export type GenreEmbed = keyof CouleursTheme;
@@ -519,3 +523,56 @@ export const composantCorbeille: GestionnaireComposant = {
     });
   },
 };
+
+// - Suivi de progression -
+// Le temps restant ne s’affiche qu’une fois un premier pas mesuré.
+export function texteProgression(titre: string, fait: number, total: number, debut: number, maintenant = Date.now()): string {
+  const taux = total > 0 ? Math.min(1, fait / total) : 1;
+  const morceaux = [`${barreProgression(taux)} **${Math.floor(taux * 100)} %**`, `${fait}/${total}`];
+  if (fait > 0 && fait < total) {
+    const restant = ((maintenant - debut) / fait) * (total - fait);
+    morceaux.push(`~${formaterDuree(Math.max(1000, restant))} restante${restant >= 120_000 ? 's' : ''}`);
+  }
+  return `⏳ ${titre}\n${morceaux.join(' · ')}`;
+}
+
+export interface Suivi {
+  avancer(pas?: number): void;
+  regler(fait: number, total: number): void;
+  terminer(): Promise<void>;
+}
+
+export function suiviReponse(interaction: { editReply(charge: object): Promise<unknown> }, serveur: RefServeur, titre: string, total = 0): Suivi {
+  return creerSuivi((texte) => interaction.editReply({ content: null, embeds: [info(serveur, texte)], components: [] }), titre, total);
+}
+
+export function creerSuivi(afficher: (texte: string) => Promise<unknown>, titre: string, total: number, options: { intervalleMs?: number; maintenant?: () => number } = {}): Suivi {
+  const maintenant = options.maintenant ?? Date.now;
+  const intervalle = options.intervalleMs ?? 1_500;
+  const debut = maintenant();
+  let fait = 0;
+  let dernier = -Infinity;
+  let enCours: Promise<unknown> = Promise.resolve();
+  const publier = () => {
+    dernier = maintenant();
+    const texte = texteProgression(titre, fait, total, debut, dernier);
+    enCours = enCours.then(() => afficher(texte)).catch(() => undefined);
+  };
+  publier();
+  return {
+    avancer(pas = 1) {
+      fait = Math.min(total, fait + pas);
+      if (maintenant() - dernier >= intervalle) publier();
+    },
+    regler(nouveauFait, nouveauTotal) {
+      total = nouveauTotal;
+      fait = Math.min(total, nouveauFait);
+      if (maintenant() - dernier >= intervalle) publier();
+    },
+    async terminer() {
+      fait = total;
+      publier();
+      await enCours;
+    },
+  };
+}

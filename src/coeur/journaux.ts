@@ -256,9 +256,12 @@ export async function synchroniserAccesJournaux(serveur: Guild): Promise<number>
   return modifie;
 }
 
-export async function creerSalonsJournal(serveur: Guild): Promise<{ cree: number; titreLie: number }> {
+export async function creerSalonsJournal(serveur: Guild, progression?: (fait: number, total: number) => void): Promise<{ cree: number; titreLie: number }> {
   let cree = 0;
   let titreLie = 0;
+  const total = STRUCTURE_JOURNAUX.reduce((n, d) => n + 1 + d.salons.length, 0);
+  let fait = 0;
+  const pas = () => progression?.(++fait, total);
   const salons: Partial<Record<TypeJournal, string>> = {};
   for (const definition of STRUCTURE_JOURNAUX) {
     let categorie = serveur.channels.cache.find((c) => c.type === ChannelType.GuildCategory && c.name === definition.categorie);
@@ -271,11 +274,13 @@ export async function creerSalonsJournal(serveur: Guild): Promise<{ cree: number
       });
       cree++;
     }
+    pas();
     for (const salonVise of definition.salons) {
       const existant = serveur.channels.cache.find((c) => c.name === salonVise.nom && c.type === ChannelType.GuildText);
       if (existant) {
         salons[salonVise.type] = existant.id;
         titreLie++;
+        pas();
         continue;
       }
       const salon = await serveur.channels.create({
@@ -288,6 +293,7 @@ export async function creerSalonsJournal(serveur: Guild): Promise<{ cree: number
       });
       salons[salonVise.type] = salon.id;
       cree++;
+      pas();
     }
   }
   modifierConfig(serveur.id, (c) => {
