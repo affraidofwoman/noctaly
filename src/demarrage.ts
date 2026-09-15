@@ -1,5 +1,5 @@
 import { ActivityType, type Client, Events } from 'discord.js';
-import { composantConfirmation, composantCorbeille, composantPagination } from './coeur/affichage';
+import { COMPOSANTS_COEUR } from './coeur/affichage';
 import { enregistrerPagesReglage } from './coeur/assistant';
 import { executer, fermerBase, ouvrirBase } from './coeur/base';
 import { journal } from './coeur/journaux';
@@ -49,7 +49,7 @@ async function demarrer(): Promise<void> {
   enregistrerPagesReglage(modules.flatMap((m) => m.pagesReglage ?? []));
 
   const client = creerClient();
-  const aiguilleur = new Aiguilleur(modules, [composantPagination, composantConfirmation, composantCorbeille]);
+  const aiguilleur = new Aiguilleur(modules, COMPOSANTS_COEUR);
   etatBot.aiguilleur = aiguilleur;
   aiguilleur.brancher(client);
 

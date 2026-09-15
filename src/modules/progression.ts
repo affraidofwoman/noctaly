@@ -548,7 +548,7 @@ function ecranImage(image: Buffer | null, secours: () => EmbedBuilder, composant
   return { embeds: [secours()], components: composants };
 }
 
-const id = (action: string, proprietaire: string, ...arguments_: string[]) => ['pg', action, proprietaire, ...arguments_].join(':');
+const id = (action: string, proprietaire: string, ...arguments_: string[]) => ['prg', action, proprietaire, ...arguments_].join(':');
 
 function navigation(proprietaire: string, ...boutons: ('avatar' | 'inventaire' | 'boutique' | 'quetes' | 'classement' | 'statut')[]) {
   const libelles = { avatar: ['Mon avatar', '🧍'], inventaire: ['Inventaire', '🎒'], boutique: ['Boutique', '🛒'], quetes: ['Quêtes', '🎯'], classement: ['Classement', '🏆'], statut: ['Statut', '📊'] } as const;
@@ -1182,7 +1182,7 @@ const commandesPrefixe: CommandePrefixe[] = [
 // - Boutons -
 
 const composant: GestionnaireComposant = {
-  prefixe: 'pg',
+  prefixe: 'prg',
   async bouton(interaction: ButtonInteraction<'cached'>, [action, proprietaire, a, b]) {
     const membre = interaction.member;
     if (action !== 'classement' && proprietaire !== interaction.user.id) {

@@ -576,3 +576,5 @@ export function creerSuivi(afficher: (texte: string) => Promise<unknown>, titre:
     },
   };
 }
+
+export const COMPOSANTS_COEUR = [composantPagination, composantConfirmation, composantCorbeille];
