@@ -24,7 +24,7 @@ import {
   lignesEnPages,
   nomEnseigne,
   ok,
-  paginer,
+
   rangee,
   repondre,
 } from '../coeur/affichage';
@@ -42,6 +42,7 @@ import {
   marqueTemps,
   medaille,
   neutraliserMentions,
+  resoudreUtilisateur,
   tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, modifierConfig, moduleActif } from '../coeur/reglages';
 import { creerTicket } from './tickets';
@@ -136,25 +137,6 @@ async function rafraichir(serveur: Guild, s: LigneSuggestion): Promise<void> {
   await message?.edit(afficher(serveur, s)).catch(() => undefined);
 }
 
-const suggerer: CommandeSlash = {
-  categorie: 'community',
-  delaiSecondes: 30,
-  donnees: new SlashCommandBuilder()
-    .setName('suggest')
-    .setDescription('Proposer une idée')
-    .addStringOption((o) => o.setName('idee').setDescription('Ton idée').setMaxLength(2000)),
-  async executer(interaction) {
-    const idee = interaction.options.getString('idee');
-    if (!idee) {
-      await interaction.showModal(construireFormulaire('sg:new', 'Nouvelle suggestion', [{ id: 'content', libelle: 'Ton idée', long: true, longueurMin: 10, longueurMax: 2000, indication: 'Créer une soirée communautaire…' }]));
-      return;
-    }
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const url = await creer(interaction.member, idee);
-    await interaction.editReply({ embeds: [ok(interaction.guild, `Merci ! Ta suggestion est publiée : ${url}`)] });
-  },
-};
-
 const commandesPrefixe: CommandePrefixe[] = [
   {
     nom: 'suggest',
@@ -178,7 +160,7 @@ const pageReglage: PageReglage = {
   emoji: '💡',
   moduleId: 'suggestions',
   ordre: 2,
-  description: 'Les membres proposent avec `/suggest`, votent 👍/👎, et le staff accepte ou refuse avec un commentaire.',
+  description: 'Les membres proposent avec le bouton du salon (ou `=suggest`), votent 👍/👎, et le staff accepte ou refuse avec un commentaire.',
   champs: [
     { genre: 'channel', cle: 'channel', libelle: 'Salon des suggestions', lire: (c) => c.suggestions.salonId, ecrire: (c, v) => void (c.suggestions.salonId = v) },
     { genre: 'toggle', cle: 'thread', libelle: 'Fil de discussion', lire: (c) => c.suggestions.creerFil, ecrire: (c, v) => void (c.suggestions.creerFil = v) },
@@ -218,7 +200,7 @@ export const moduleSuggestions: ModuleBot = {
   description: 'Suggestions avec votes et réponse du staff',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [suggerer],
+
   commandesPrefixe: [...commandesPrefixe, prefixePanneau(panneauSuggestions, 'Poser les suggestions')],
   panneaux: [panneauSuggestions],
   pagesReglage: [pageReglage],
@@ -357,37 +339,27 @@ const sondage: CommandeSlash = {
   categorie: 'community',
   niveau: Niveau.MEMBRE,
   delaiSecondes: 20,
-  donnees: new SlashCommandBuilder()
-    .setName('poll')
-    .setDescription('Créer un sondage')
-    .addStringOption((o) => o.setName('question').setDescription('La question').setRequired(true).setMaxLength(250))
-    .addStringOption((o) => o.setName('choix').setDescription('Choix séparés par |').setMaxLength(1000))
-    .addStringOption((o) => o.setName('duree').setDescription('Durée'))
-    .addBooleanOption((o) => o.setName('multiple').setDescription('Autoriser plusieurs choix')),
+  donnees: new SlashCommandBuilder().setName('sondage').setDescription('Créer un sondage'),
   async executer(interaction) {
-    const brut = interaction.options.getString('choix');
-    const propositions = (brut ? brut.split('|') : ['Oui', 'Non']).map((c) => neutraliserMentions(c.trim())).filter(Boolean).slice(0, 10);
-    if (propositions.length < 2) throw new ErreurUtilisateur('Il faut au moins 2 choix, séparés par `|`.');
-    const dureeBrute = interaction.options.getString('duree');
-    const duree = dureeBrute ? lireDuree(dureeBrute) : null;
-    if (dureeBrute && (!duree || duree > 30 * 86_400_000)) throw new ErreurUtilisateur('Durée invalide (ex : `1h`, `2j`, 30 jours max).');
-    const r = executer(
-      'INSERT INTO sondages (serveur_id, salon_id, auteur_id, question, propositions, multiple, fin_le, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      interaction.guildId,
-      interaction.channelId,
-      interaction.user.id,
-      neutraliserMentions(interaction.options.getString('question', true)),
-      JSON.stringify(propositions),
-      interaction.options.getBoolean('multiple') ? 1 : 0,
-      duree ? Date.now() + duree : null,
-      Date.now(),
+    await interaction.showModal(
+      construireFormulaire('poll:creer', 'Nouveau sondage', [
+        { id: 'question', libelle: 'La question', indication: 'On lance quel jeu ce soir ?', longueurMax: 250 },
+        { id: 'choix', libelle: 'Les choix, un par ligne (vide = Oui / Non)', long: true, obligatoire: false, longueurMax: 1000, indication: 'Valorant\nMinecraft\nFortnite' },
+        { id: 'duree', libelle: 'Durée (facultatif)', obligatoire: false, indication: '1h, 2j', longueurMax: 10 },
+        { id: 'multiple', libelle: 'Plusieurs choix possibles ? (oui / non)', obligatoire: false, valeur: 'non', longueurMax: 3 },
+      ]),
     );
-    const cree = exigerSondage(interaction.guildId, String(r.lastInsertRowid));
-    const message = await interaction.reply({ ...afficherSondages(interaction.guild, cree), withResponse: true });
-    executer('UPDATE sondages SET message_id = ? WHERE id = ?', message.resource?.message?.id ?? null, cree.id);
-    historiser(interaction.guildId, 'community', 'poll', null, interaction.user.id, { id: cree.id });
   },
 };
+
+// - Lire un sondage saisi -
+export function lireSondage(choix: string, duree: string, multiple: string): { propositions: string[]; dureeMs: number | null; multiple: boolean } {
+  const propositions = (choix.trim() ? choix.split(/\n|\|/) : ['Oui', 'Non']).map((c) => neutraliserMentions(c.trim())).filter(Boolean).slice(0, 10);
+  if (propositions.length < 2) throw new ErreurUtilisateur('Il faut au moins 2 choix, un par ligne.');
+  const dureeMs = duree.trim() ? lireDuree(duree) : null;
+  if (duree.trim() && (!dureeMs || dureeMs > 30 * 86_400_000)) throw new ErreurUtilisateur('Durée invalide (ex : `1h`, `2j`, 30 jours max).');
+  return { propositions, dureeMs, multiple: /^(o|oui|y|yes|1)$/i.test(multiple.trim()) };
+}
 
 export const moduleSondages: ModuleBot = {
   id: 'polls',
@@ -400,6 +372,25 @@ export const moduleSondages: ModuleBot = {
   composants: [
     {
       prefixe: 'poll',
+      async fenetre(interaction: ModalSubmitInteraction<'cached'>) {
+        const champ = (id: string) => interaction.fields.getTextInputValue(id);
+        const lu = lireSondage(champ('choix'), champ('duree'), champ('multiple'));
+        const r = executer(
+          'INSERT INTO sondages (serveur_id, salon_id, auteur_id, question, propositions, multiple, fin_le, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          interaction.guildId,
+          interaction.channelId,
+          interaction.user.id,
+          neutraliserMentions(champ('question')),
+          JSON.stringify(lu.propositions),
+          lu.multiple ? 1 : 0,
+          lu.dureeMs ? Date.now() + lu.dureeMs : null,
+          Date.now(),
+        );
+        const cree = exigerSondage(interaction.guildId, String(r.lastInsertRowid));
+        const message = await interaction.reply({ ...afficherSondages(interaction.guild, cree), withResponse: true });
+        executer('UPDATE sondages SET message_id = ? WHERE id = ?', message.resource?.message?.id ?? null, cree.id);
+        historiser(interaction.guildId, 'community', 'poll', null, interaction.user.id, { id: cree.id });
+      },
       async bouton(interaction: ButtonInteraction<'cached'>, [action, id, choix]) {
         const p = exigerSondage(interaction.guildId, id);
         if (p.statut === 'closed') throw new ErreurUtilisateur('Ce sondage est terminé.');
@@ -486,36 +477,55 @@ async function envoyerSignalement(membre: GuildMember, cible: User, raison: stri
   return 'Merci, ton signalement a été transmis au staff.';
 }
 
-const signalement: CommandeSlash = {
+// - /contact : écrire au staff -
+const contact: CommandeSlash = {
   categorie: 'community',
-  delaiSecondes: 60,
-  donnees: new SlashCommandBuilder()
-    .setName('report')
-    .setDescription('Signaler')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addStringOption((o) => o.setName('raison').setDescription('Ce qui s’est passé').setRequired(true).setMaxLength(1000))
-    .addStringOption((o) => o.setName('preuve').setDescription('Lien de preuve').setMaxLength(500)),
+  donnees: new SlashCommandBuilder().setName('contact').setDescription('Écrire au staff'),
   async executer(interaction) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const texte = await envoyerSignalement(interaction.member, interaction.options.getUser('membre', true), interaction.options.getString('raison', true), interaction.options.getString('preuve'));
-    await interaction.editReply({ embeds: [ok(interaction.guild, texte)] });
+    const serveur = interaction.guild;
+    const formulaires = moduleActif(serveur.id, 'forms');
+    const embed = new EmbedBuilder()
+      .setColor(couleurPour(serveur))
+      .setTitle('📨 Écrire au staff')
+      .setDescription(
+        [
+          '🚨 **Signaler** — un membre enfreint les règles',
+          '💬 **Donner ton avis** — sur le serveur, les lives, le bot',
+          formulaires ? '🤝 **Partenariat** — proposer une collaboration' : null,
+          formulaires ? '📋 **Candidature** — rejoindre l’équipe' : null,
+          '',
+          '-# Une question ou un souci ? Les tickets restent le plus rapide.',
+        ]
+          .filter((l) => l !== null)
+          .join('\n'),
+      );
+    await interaction.reply({
+      embeds: [embed],
+      components: [
+        rangee(
+          bouton('rep:signaler', 'Signaler', ButtonStyle.Danger, '🚨'),
+          bouton('rep:avis', 'Donner mon avis', ButtonStyle.Primary, '💬'),
+          ...(formulaires ? [bouton('form:open:partenariat', 'Partenariat', ButtonStyle.Secondary, '🤝'), bouton('form:open:staff', 'Candidature', ButtonStyle.Secondary, '📋')] : []),
+        ),
+      ],
+      flags: MessageFlags.Ephemeral,
+    });
   },
 };
 
-const avis: CommandeSlash = {
-  categorie: 'community',
-  delaiSecondes: 60,
-  donnees: new SlashCommandBuilder().setName('feedback').setDescription('Ton avis'),
-  async executer(interaction) {
-    await interaction.showModal(
-      construireFormulaire('rep:feedback', 'Ton avis compte', [
-        { id: 'subject', libelle: 'Sujet', longueurMax: 100, indication: 'Le bot, les lives, le serveur…' },
-        { id: 'content', libelle: 'Ton message', long: true, longueurMax: 2000 },
-        { id: 'rating', libelle: 'Note sur 5 (facultatif)', obligatoire: false, longueurMax: 1 },
-      ]),
-    );
-  },
-};
+const fenetreAvis = () =>
+  construireFormulaire('rep:feedback', 'Ton avis compte', [
+    { id: 'subject', libelle: 'Sujet', longueurMax: 100, indication: 'Le bot, les lives, le serveur…' },
+    { id: 'content', libelle: 'Ton message', long: true, longueurMax: 2000 },
+    { id: 'rating', libelle: 'Note sur 5 (facultatif)', obligatoire: false, longueurMax: 1 },
+  ]);
+
+const fenetreSignalement = () =>
+  construireFormulaire('rep:report', 'Signaler un membre', [
+    { id: 'membre', libelle: 'Qui ? (pseudo, mention ou identifiant)', longueurMax: 60 },
+    { id: 'raison', libelle: 'Ce qui s’est passé', long: true, longueurMax: 1000 },
+    { id: 'preuve', libelle: 'Lien de preuve (facultatif)', obligatoire: false, longueurMax: 500 },
+  ]);
 
 const pageReglageSignalements: PageReglage = {
   id: 'reports',
@@ -524,7 +534,7 @@ const pageReglageSignalements: PageReglage = {
   emoji: '🚨',
   moduleId: 'reports',
   ordre: 5,
-  description: 'Où arrivent `/report` et `/feedback`. Sans salon, c’est le salon staff général qui est utilisé.',
+  description: 'Où arrivent les signalements et les avis envoyés par `/contact`. Sans salon, c’est le salon staff général qui est utilisé.',
   champs: [
     { genre: 'channel', cle: 'reports', libelle: 'Salon des signalements', lire: (c) => c.signalements.salonId, ecrire: (c, v) => void (c.signalements.salonId = v) },
     { genre: 'channel', cle: 'feedback', libelle: 'Salon des feedbacks', lire: (c) => c.avis.salonId, ecrire: (c, v) => void (c.avis.salonId = v) },
@@ -546,15 +556,17 @@ export const moduleSignalements: ModuleBot = {
   id: 'reports',
   nom: 'Signalements & feedback',
   emoji: '🚨',
-  description: '/report et /feedback vers le staff',
+  description: 'Signalements et avis vers le staff, par /contact',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [signalement, avis],
+  commandes: [contact],
   pagesReglage: [pageReglageSignalements],
   composants: [
     {
       prefixe: 'rep',
       async bouton(interaction: ButtonInteraction<'cached'>, [action]) {
+        if (action === 'signaler') return interaction.showModal(fenetreSignalement());
+        if (action === 'avis') return interaction.showModal(fenetreAvis());
         if (!aNiveau(interaction.member, Niveau.STAFF)) throw new ErreurUtilisateur('Réservé au staff.');
         const embed = EmbedBuilder.from(interaction.message.embeds[0]!);
         if (action === 'take') {
@@ -566,6 +578,16 @@ export const moduleSignalements: ModuleBot = {
         }
       },
       async fenetre(interaction: ModalSubmitInteraction<'cached'>, [action]) {
+        if (action === 'report') {
+          const saisie = interaction.fields.getTextInputValue('membre').trim();
+          const vise = interaction.guild.members.cache.find((m) => m.id === saisie.replace(/\D/g, '') || m.user.username.toLowerCase() === saisie.toLowerCase() || m.displayName.toLowerCase() === saisie.toLowerCase());
+          const cible = vise?.user ?? (await resoudreUtilisateur(interaction.client, saisie));
+          if (!cible) throw new ErreurUtilisateur('Je ne trouve pas ce membre : essaie son identifiant.');
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+          const texte = await envoyerSignalement(interaction.member, cible, interaction.fields.getTextInputValue('raison'), interaction.fields.getTextInputValue('preuve') || null);
+          await interaction.editReply({ embeds: [ok(interaction.guild, texte)] });
+          return;
+        }
         if (action !== 'feedback') return;
         const serveur = interaction.guild;
         const reglages = lireConfig(serveur.id);
@@ -866,18 +888,6 @@ function pagesClassement(serveur: Guild) {
   return lignesEnPages(lignes, 10, (contenu, page, total) => embedEnseigne(serveur).setTitle('🏆 Classement des invitations').setDescription(contenu).setFooter({ text: `Page ${page}/${total}` }));
 }
 
-const invitations: CommandeSlash = {
-  categorie: 'community',
-  donnees: new SlashCommandBuilder()
-    .setName('invites')
-    .setDescription('Tes invitations')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)'))
-    .addBooleanOption((o) => o.setName('classement').setDescription('Voir le classement')),
-  async executer(interaction) {
-    if (interaction.options.getBoolean('classement')) return paginer(interaction, pagesClassement(interaction.guild));
-    return repondre(interaction, { embeds: [embedInvitations(interaction.guild, interaction.options.getUser('membre') ?? interaction.user)] });
-  },
-};
 
 const commandesPrefixeInvitations: CommandePrefixe[] = [
   {
@@ -886,8 +896,12 @@ const commandesPrefixeInvitations: CommandePrefixe[] = [
     domaine: 'general',
     categorie: 'community',
     description: 'Tes invitations',
-    usage: '[membre]',
+    usage: '[membre|top]',
     async executer(message, parametres) {
+      if (parametres[0] === 'top') {
+        await message.reply({ embeds: [pagesClassement(message.guild)[0]!], allowedMentions: { repliedUser: false } });
+        return;
+      }
       const id = parametres[0]?.replace(/\D/g, '');
       const utilisateur = id ? await message.client.users.fetch(id).catch(() => message.author) : message.author;
       await message.reply({ embeds: [embedInvitations(message.guild, utilisateur)], allowedMentions: { repliedUser: false } });
@@ -916,7 +930,7 @@ export const moduleInvitations: ModuleBot = {
   description: 'Suivi des invitations, fakes et classement',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [invitations],
+
   commandesPrefixe: commandesPrefixeInvitations,
   pagesReglage: [pageReglageInvitations],
   evenements: [

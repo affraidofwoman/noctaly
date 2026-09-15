@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import {
+  type AnySelectMenuInteraction,
   AttachmentBuilder,
   type ButtonInteraction,
   ButtonStyle,
@@ -9,11 +10,14 @@ import {
   type Guild,
   GuildMember,
   type Message,
+  type ModalSubmitInteraction,
+  RoleSelectMenuBuilder,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
   type User,
 } from 'discord.js';
 import { emojiPour, enHexa, enseigneDe, rolesAttribuables } from '../coeur/acces';
-import { bouton, embedEnseigne, info, ok, rangee, remplirModele, repondre } from '../coeur/affichage';
+import { bouton, construireFormulaire, embedEnseigne, info, ok, rangee, remplirModele, repondre } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout, transaction } from '../coeur/base';
 import { journal, resoudreSalonTexte } from '../coeur/journaux';
@@ -605,7 +609,7 @@ export async function ecranStatut(serveur: Guild, utilisateur: User, membre: Gui
   return ecranImage(
     image,
     () => embedEnseigne(serveur).setTitle(`📊 ${utilisateur.displayName}`).setDescription(`Rang **${rang.lettre}** · Niveau **${p.niveau}**\n${formaterNombre(p.actuel)} / ${formaterNombre(p.requis)} XP · #${rangDe(g, utilisateur.id) || '—'}`),
-    [navigation(spectateurId, 'avatar', 'quetes', 'classement')],
+    [navigation(spectateurId, 'avatar', 'quetes', 'classement', 'boutique'), rangee(bouton(id('quotidien', spectateurId), 'Bonus du jour', ButtonStyle.Success, '🎁'), bouton(id('parametres', spectateurId), 'Paramètres', ButtonStyle.Secondary, '⚙️'))],
   );
 }
 
@@ -902,7 +906,7 @@ const commandes: CommandeSlash[] = [
   {
     categorie: 'progression',
     delaiSecondes: 3,
-    donnees: new SlashCommandBuilder().setName('niveau').setDescription('Ton statut').addUserOption(optionMembre),
+    donnees: new SlashCommandBuilder().setName('profil').setDescription('Niveau, avatar, quêtes').addUserOption(optionMembre),
     async executer(i) {
       await i.deferReply();
       const utilisateur = i.options.getUser('membre') ?? i.user;
@@ -911,195 +915,208 @@ const commandes: CommandeSlash[] = [
     },
   },
   {
-    categorie: 'progression',
-    delaiSecondes: 3,
-    donnees: new SlashCommandBuilder().setName('classement').setDescription('Les classements'),
-    async executer(i) {
-      await i.deferReply();
-      await i.editReply(await ecranClassement(i.guild, i.user.id, 'xp', 'semaine'));
-    },
-  },
-  {
-    categorie: 'progression',
-    donnees: new SlashCommandBuilder().setName('rangs').setDescription('Paliers et déblocages'),
-    async executer(i) {
-      await i.deferReply();
-      await i.editReply(await ecranRangs(i.member));
-    },
-  },
-  {
-    categorie: 'progression',
-    donnees: new SlashCommandBuilder().setName('quetes').setDescription('Tes quêtes'),
-    async executer(i) {
-      await i.deferReply();
-      await i.editReply(await ecranQuetes(i.member));
-    },
-  },
-  {
-    categorie: 'progression',
-    donnees: new SlashCommandBuilder().setName('avatar').setDescription('Ton personnage'),
-    async executer(i) {
-      await i.deferReply();
-      await i.editReply(await ecranAvatar(i.member));
-    },
-  },
-  {
-    categorie: 'progression',
-    donnees: new SlashCommandBuilder().setName('boutique').setDescription('Coffres et articles'),
-    async executer(i) {
-      await i.deferReply();
-      await i.editReply(await ecranBoutique(i.member));
-    },
-  },
-  {
-    categorie: 'progression',
-    donnees: new SlashCommandBuilder().setName('quotidien').setDescription('Ton bonus du jour'),
-    async executer(i) {
-      await repondre(i, { embeds: [ok(i.guild, recupererQuotidien(i.member), { titre: 'Bonus du jour' })] });
-    },
-  },
-  {
-    categorie: 'progression',
-    donnees: new SlashCommandBuilder().setName('gold').setDescription('Ton solde').addUserOption(optionMembre),
-    async executer(i) {
-      const utilisateur = i.options.getUser('membre') ?? i.user;
-      await repondre(i, { embeds: [embedGold(i.guild, utilisateur)] });
-    },
-  },
-  {
-    categorie: 'progression',
-    delaiSecondes: 5,
-    donnees: new SlashCommandBuilder()
-      .setName('donner')
-      .setDescription('Donner du gold')
-      .addUserOption((o) => o.setName('membre').setDescription('À qui').setRequired(true))
-      .addIntegerOption((o) => o.setName('montant').setDescription('Combien').setRequired(true).setMinValue(1).setMaxValue(1_000_000)),
-    async executer(i) {
-      const cible = i.options.getUser('membre', true);
-      await repondre(i, { embeds: [ok(i.guild, donnerGold(i.guildId, i.user.id, cible, i.options.getInteger('montant', true)))], allowedMentions: { users: [cible.id] } });
-    },
-  },
-  {
-    categorie: 'progression',
-    donnees: new SlashCommandBuilder().setName('rep').setDescription('Donner de la réputation').addUserOption((o) => o.setName('membre').setDescription('À qui').setRequired(true)),
-    async executer(i) {
-      const cible = i.options.getUser('membre', true);
-      if (cible.bot) throw new ErreurUtilisateur('Choisis un membre, pas un bot.');
-      donnerReputation(i.guildId, i.user.id, cible.id);
-      await repondre(i, { embeds: [ok(i.guild, `<@${i.user.id}> donne un point de réputation à <@${cible.id}> ⭐ (${reputationDe(i.guildId, cible.id)} au total).`)], allowedMentions: { users: [cible.id] } });
-    },
-  },
-  {
-    categorie: 'progression',
-    donnees: new SlashCommandBuilder()
-      .setName('parametres')
-      .setDescription('Bio et notifications')
-      .addStringOption((o) => o.setName('bio').setDescription('Ta nouvelle bio').setMaxLength(60)),
-    async executer(i) {
-      const bio = i.options.getString('bio');
-      if (bio !== null) poserBio(i.member, bio);
-      await repondre(i, { ...ecranParametres(i.member), ephemeral: true });
-    },
-  },
-  {
     categorie: 'admin',
     niveau: Niveau.ADMIN,
     donnees: new SlashCommandBuilder()
       .setName('progression')
       .setDescription('Gérer la progression')
-      .addSubcommand((s) => s.setName('xp').setDescription('Donner ou retirer').addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)).addIntegerOption((o) => o.setName('quantite').setDescription('XP (négatif = retrait)').setRequired(true).setMinValue(-1_000_000).setMaxValue(1_000_000)))
-      .addSubcommand((s) => s.setName('niveau').setDescription('Fixer un niveau').addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)).addIntegerOption((o) => o.setName('niveau').setDescription('Niveau').setRequired(true).setMinValue(0).setMaxValue(500)))
-      .addSubcommand((s) => s.setName('gold').setDescription('Ajuster le gold').addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)).addIntegerOption((o) => o.setName('montant').setDescription('Négatif = retrait').setRequired(true).setMinValue(-10_000_000).setMaxValue(10_000_000)))
-      .addSubcommand((s) => s.setName('reset').setDescription('Remise à zéro').addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)))
-      .addSubcommand((s) => s.setName('avatar-reset').setDescription('Recréer son avatar').addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)))
-      .addSubcommand((s) => s.setName('role-ajouter').setDescription('Rôle de niveau').addIntegerOption((o) => o.setName('niveau').setDescription('Niveau').setRequired(true).setMinValue(1).setMaxValue(500)).addRoleOption((o) => o.setName('role').setDescription('Rôle').setRequired(true)))
-      .addSubcommand((s) => s.setName('role-retirer').setDescription('Retirer un rôle').addRoleOption((o) => o.setName('role').setDescription('Rôle').setRequired(true)))
-      .addSubcommand((s) => s.setName('roles').setDescription('Les rôles de niveau'))
-      .addSubcommand((s) =>
-        s
-          .setName('article')
-          .setDescription('Vendre un article')
-          .addStringOption((o) => o.setName('nom').setDescription('Nom').setRequired(true).setMaxLength(60))
-          .addIntegerOption((o) => o.setName('prix').setDescription('Prix').setRequired(true).setMinValue(1).setMaxValue(10_000_000))
-          .addStringOption((o) => o.setName('type').setDescription('Ce que ça donne').setRequired(true).addChoices({ name: 'Un rôle', value: 'role' }, { name: 'Un badge', value: 'badge' }, { name: 'À livrer par le staff', value: 'item' }))
-          .addRoleOption((o) => o.setName('role').setDescription('Le rôle'))
-          .addStringOption((o) => o.setName('badge').setDescription('Le badge').setMaxLength(32))
-          .addStringOption((o) => o.setName('emoji').setDescription('Émoji').setMaxLength(64))
-          .addIntegerOption((o) => o.setName('stock').setDescription('Stock').setMinValue(1).setMaxValue(100_000)),
-      )
-      .addSubcommand((s) => s.setName('article-retirer').setDescription('Retirer un article').addIntegerOption((o) => o.setName('article').setDescription('L’article').setRequired(true).setAutocomplete(true))),
-    async autocompletion(i) {
-      await i.respond(articlesBoutique(i.guildId).slice(0, 25).map((a) => ({ name: tronquer(`${a.nom} — ${a.prix}`, 100), value: a.id })));
-    },
+      .addUserOption((o) => o.setName('membre').setDescription('Un membre à ajuster')),
     async executer(i) {
-      await repondre(i, { embeds: [await administrer(i)], ephemeral: true });
+      const cible = i.options.getUser('membre');
+      await repondre(i, { ...(cible ? panneauMembreProgression(i.guild, cible.id) : panneauProgression(i.guild)), ephemeral: true });
     },
   },
 ];
 
-async function administrer(i: import('discord.js').ChatInputCommandInteraction<'cached'>): Promise<EmbedBuilder> {
-  const serveur = i.guild;
-  const sous = i.options.getSubcommand();
-  if (sous === 'roles') return info(serveur, rolesNiveau(serveur.id).map((r) => `Niveau **${r.niveau}** → <@&${r.role_id}>`).join('\n') || 'Aucun rôle de niveau.', { titre: 'Rôles de niveau' });
-  if (sous === 'role-ajouter') {
-    const role = i.options.getRole('role', true);
-    if (!rolesAttribuables(serveur, [role.id]).length) throw new ErreurUtilisateur('Je ne peux pas attribuer ce rôle (au-dessus du mien ou géré par une intégration).');
-    poserRoleNiveau(serveur.id, i.options.getInteger('niveau', true), role.id);
-    return ok(serveur, `Niveau **${i.options.getInteger('niveau', true)}** → <@&${role.id}>`);
-  }
-  if (sous === 'role-retirer') return retirerRoleNiveau(serveur.id, i.options.getRole('role', true).id) ? ok(serveur, 'Rôle de niveau retiré.') : info(serveur, 'Ce rôle n’était pas un rôle de niveau.');
-  if (sous === 'article') {
-    const type = i.options.getString('type', true) as 'role' | 'badge' | 'item';
-    const role = i.options.getRole('role');
-    const badge = i.options.getString('badge');
-    if (type === 'role' && (!role || !rolesAttribuables(serveur, [role.id]).length)) throw new ErreurUtilisateur('Choisis un rôle que je peux donner.');
-    if (type === 'badge' && !badge) throw new ErreurUtilisateur('Indique l’identifiant du badge.');
-    if (articlesBoutique(serveur.id).length >= 25) throw new ErreurUtilisateur('25 articles maximum.');
-    executer(
-      'INSERT INTO articles_boutique (serveur_id, nom, description, emoji, prix, type, valeur, stock, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      serveur.id,
-      i.options.getString('nom', true),
-      '',
-      i.options.getString('emoji') ?? (type === 'role' ? '🎨' : type === 'badge' ? '💎' : '🎟️'),
-      i.options.getInteger('prix', true),
-      type,
-      type === 'role' ? role!.id : type === 'badge' ? badge : null,
-      i.options.getInteger('stock'),
-      Date.now(),
+// - /progression : tout au clic -
+function panneauProgression(serveur: Guild, note?: string) {
+  const roles = rolesNiveau(serveur.id);
+  const articles = articlesBoutique(serveur.id);
+  const embed = embedEnseigne(serveur)
+    .setTitle('🌟 Progression')
+    .setDescription(note ?? 'Les rôles gagnés en montant de niveau et les articles de la boutique.\n-# Pour ajuster un membre : `/progression membre:@quelqu’un`.')
+    .addFields(
+      { name: `🏅 Rôles de niveau (${roles.length})`, value: roles.map((r) => `Niveau **${r.niveau}** → <@&${r.role_id}>`).join('\n') || '—', inline: true },
+      { name: `🛍️ Articles (${articles.length}/25)`, value: tronquer(articles.map((a) => `${a.emoji} ${a.nom} — ${formaterNombre(a.prix)}`).join('\n') || '—', 1024), inline: true },
     );
-    return ok(serveur, 'Article ajouté à la boutique.');
-  }
-  if (sous === 'article-retirer') {
-    executer('DELETE FROM articles_boutique WHERE serveur_id = ? AND id = ?', serveur.id, i.options.getInteger('article', true));
-    return ok(serveur, 'Article retiré.');
-  }
-  const utilisateur = i.options.getUser('membre', true);
-  if (sous === 'gold') {
-    const montant = i.options.getInteger('montant', true);
+  return {
+    embeds: [embed],
+    components: [
+      rangee(
+        bouton('prga:rajout', 'Rôle de niveau', ButtonStyle.Success, '➕'),
+        bouton('prga:rretrait', 'Retirer un rôle', ButtonStyle.Secondary, '➖').setDisabled(!roles.length),
+        bouton('prga:aajout', 'Article', ButtonStyle.Success, '➕').setDisabled(articles.length >= 25),
+        bouton('prga:aretrait', 'Retirer un article', ButtonStyle.Secondary, '➖').setDisabled(!articles.length),
+      ),
+    ],
+  };
+}
+
+function panneauMembreProgression(serveur: Guild, utilisateurId: string, note?: string) {
+  const xp = lireXp(serveur.id, utilisateurId);
+  const p = niveauDepuisXp(xp.xp);
+  const embed = embedEnseigne(serveur)
+    .setTitle('🌟 Ajuster un membre')
+    .setDescription([note, `<@${utilisateurId}>`].filter(Boolean).join('\n\n'))
+    .addFields(
+      { name: 'Niveau', value: `**${p.niveau}** · rang ${rangDuNiveau(p.niveau).lettre}`, inline: true },
+      { name: 'XP', value: formaterNombre(xp.xp), inline: true },
+      { name: 'Gold', value: montantGold(serveur.id, portefeuille(serveur.id, utilisateurId).solde), inline: true },
+      { name: 'Avatar', value: lireJoueur(serveur.id, utilisateurId) ? 'Créé' : '—', inline: true },
+    );
+  return {
+    embeds: [embed],
+    components: [
+      rangee(
+        bouton(`prga:xp:${utilisateurId}`, 'XP', ButtonStyle.Primary, '✨'),
+        bouton(`prga:niv:${utilisateurId}`, 'Niveau', ButtonStyle.Primary, '🎯'),
+        bouton(`prga:gold:${utilisateurId}`, 'Gold', ButtonStyle.Primary, '🪙'),
+      ),
+      rangee(bouton(`prga:avatar:${utilisateurId}`, 'Effacer l’avatar', ButtonStyle.Secondary, '🧍'), bouton(`prga:reset:${utilisateurId}`, 'Tout remettre à zéro', ButtonStyle.Danger, '🧹')),
+    ],
+  };
+}
+
+async function ajusterMembre(serveur: Guild, auteur: User, utilisateurId: string, action: string, valeur: number): Promise<string> {
+  if (action === 'gold') {
     let solde: number;
     try {
-      solde = ajouterPieces(serveur.id, utilisateur.id, montant, 'admin');
+      solde = ajouterPieces(serveur.id, utilisateurId, valeur, 'admin');
     } catch {
       throw new ErreurUtilisateur('Le solde ne peut pas devenir négatif.');
     }
-    void journal(serveur, 'community', { titre: 'Gold modifié', ton: 'info', lignes: [`**Membre** : <@${utilisateur.id}>`, `**Montant** : ${montant}`, `**Nouveau solde** : ${solde}`], par: i.user });
-    return ok(serveur, `<@${utilisateur.id}> : ${montant >= 0 ? '+' : ''}${formaterNombre(montant)} → ${montantGold(serveur.id, solde)}.`);
+    void journal(serveur, 'community', { titre: 'Gold modifié', ton: 'info', lignes: [`**Membre** : <@${utilisateurId}>`, `**Montant** : ${valeur}`, `**Nouveau solde** : ${solde}`], par: auteur });
+    return `🪙 ${valeur >= 0 ? '+' : ''}${formaterNombre(valeur)} → ${montantGold(serveur.id, solde)}`;
   }
-  if (sous === 'avatar-reset') {
+  if (action === 'avatar') {
     transaction(() => {
-      executer('DELETE FROM joueurs WHERE serveur_id = ? AND utilisateur_id = ?', serveur.id, utilisateur.id);
-      executer('DELETE FROM objets WHERE serveur_id = ? AND utilisateur_id = ?', serveur.id, utilisateur.id);
+      executer('DELETE FROM joueurs WHERE serveur_id = ? AND utilisateur_id = ?', serveur.id, utilisateurId);
+      executer('DELETE FROM objets WHERE serveur_id = ? AND utilisateur_id = ?', serveur.id, utilisateurId);
     });
-    return ok(serveur, `L’avatar de <@${utilisateur.id}> est effacé : le prochain \`=avatar\` le recrée.`);
+    return '🧍 Avatar effacé : il sera recréé à la prochaine ouverture.';
   }
-  let niveau: number;
-  if (sous === 'xp') niveau = ajouterXp(serveur.id, utilisateur.id, i.options.getInteger('quantite', true)).nouveauNiveau;
-  else if (sous === 'niveau') niveau = poserXp(serveur.id, utilisateur.id, xpTotalePourNiveau(i.options.getInteger('niveau', true)));
-  else niveau = poserXp(serveur.id, utilisateur.id, 0);
-  const membre = await serveur.members.fetch(utilisateur.id).catch(() => null);
+  const niveau = action === 'xp' ? ajouterXp(serveur.id, utilisateurId, valeur).nouveauNiveau : poserXp(serveur.id, utilisateurId, action === 'niv' ? xpTotalePourNiveau(valeur) : 0);
+  const membre = await serveur.members.fetch(utilisateurId).catch(() => null);
   if (membre) await synchroniserRolesNiveau(membre, niveau);
-  return ok(serveur, `<@${utilisateur.id}> est maintenant niveau **${niveau}** (${formaterNombre(lireXp(serveur.id, utilisateur.id).xp)} XP).`);
+  return `🎯 Niveau **${niveau}** (${formaterNombre(lireXp(serveur.id, utilisateurId).xp)} XP)`;
 }
+
+const TYPES_ARTICLE = { role: { libelle: 'Un rôle', emoji: '🎨' }, badge: { libelle: 'Un badge', emoji: '💎' }, item: { libelle: 'À livrer par le staff', emoji: '🎟️' } } as const;
+
+const composantAdmin: GestionnaireComposant = {
+  prefixe: 'prga',
+  niveau: Niveau.ADMIN,
+  async bouton(interaction: ButtonInteraction<'cached'>, [action, cible]) {
+    const serveur = interaction.guild;
+    switch (action) {
+      case 'rajout':
+        return void (await interaction.update({ embeds: [info(serveur, 'Quel rôle donner en montant de niveau ?', { titre: 'Rôle de niveau' })], components: [rangee(new RoleSelectMenuBuilder().setCustomId('prga:rsel').setPlaceholder('Le rôle'))] }));
+      case 'rretrait':
+        return void (await interaction.update({
+          embeds: [info(serveur, 'Quel rôle ne plus donner ?', { titre: 'Rôle de niveau' })],
+          components: [rangee(new StringSelectMenuBuilder().setCustomId('prga:rdel').setPlaceholder('Le rôle').addOptions(rolesNiveau(serveur.id).slice(0, 25).map((r) => ({ label: `Niveau ${r.niveau} · ${tronquer(serveur.roles.cache.get(r.role_id)?.name ?? r.role_id, 80)}`, value: r.role_id }))))],
+        }));
+      case 'aajout':
+        return void (await interaction.update({
+          embeds: [info(serveur, 'Qu’est-ce que l’article donne ?', { titre: 'Nouvel article' })],
+          components: [rangee(new StringSelectMenuBuilder().setCustomId('prga:atype').setPlaceholder('Ce que ça donne').addOptions(Object.entries(TYPES_ARTICLE).map(([value, t]) => ({ label: t.libelle, value, emoji: t.emoji }))))],
+        }));
+      case 'aretrait':
+        return void (await interaction.update({
+          embeds: [info(serveur, 'Quel article retirer ?', { titre: 'Boutique' })],
+          components: [rangee(new StringSelectMenuBuilder().setCustomId('prga:adel').setPlaceholder('L’article').addOptions(articlesBoutique(serveur.id).slice(0, 25).map((a) => ({ label: tronquer(`${a.nom} — ${a.prix}`, 100), value: String(a.id) }))))],
+        }));
+      case 'xp':
+      case 'niv':
+      case 'gold': {
+        const libelle = action === 'xp' ? 'XP à ajouter (négatif = retirer)' : action === 'niv' ? 'Nouveau niveau (0 à 500)' : 'Gold à ajouter (négatif = retirer)';
+        return void (await interaction.showModal(construireFormulaire(`prga:m:${action}:${cible}`, 'Ajuster', [{ id: 'valeur', libelle, indication: action === 'niv' ? '10' : '500', longueurMax: 9 }])));
+      }
+      case 'avatar':
+      case 'reset':
+        return void (await interaction.update(panneauMembreProgression(serveur, cible!, await ajusterMembre(serveur, interaction.user, cible!, action, 0))));
+    }
+  },
+  async menu(interaction: AnySelectMenuInteraction<'cached'>, [action]) {
+    const serveur = interaction.guild;
+    const valeur = interaction.values[0] ?? '';
+    if (action === 'rsel') {
+      if (!rolesAttribuables(serveur, [valeur]).length) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle (au-dessus du mien ou géré par une intégration).');
+      return void (await interaction.showModal(construireFormulaire(`prga:m:rniv:${valeur}`, 'Rôle de niveau', [{ id: 'valeur', libelle: 'À partir de quel niveau ?', indication: '10', longueurMax: 3 }])));
+    }
+    if (action === 'rdel') {
+      retirerRoleNiveau(serveur.id, valeur);
+      return void (await interaction.update(panneauProgression(serveur, `➖ <@&${valeur}> n’est plus un rôle de niveau.`)));
+    }
+    if (action === 'adel') {
+      executer('DELETE FROM articles_boutique WHERE serveur_id = ? AND id = ?', serveur.id, Number(valeur));
+      return void (await interaction.update(panneauProgression(serveur, '➖ Article retiré.')));
+    }
+    if (action === 'atype' && valeur === 'role') {
+      return void (await interaction.update({ embeds: [info(serveur, 'Quel rôle vendre ?', { titre: 'Nouvel article' })], components: [rangee(new RoleSelectMenuBuilder().setCustomId('prga:arole').setPlaceholder('Le rôle'))] }));
+    }
+    if (action === 'arole' && !rolesAttribuables(serveur, [valeur]).length) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle (au-dessus du mien ou géré par une intégration).');
+    const type = action === 'arole' ? 'role' : valeur;
+    if (!(type in TYPES_ARTICLE)) return;
+    await interaction.showModal(
+      construireFormulaire(`prga:m:article:${type}:${action === 'arole' ? valeur : ''}`, 'Nouvel article', [
+        { id: 'nom', libelle: 'Nom', indication: type === 'role' ? 'Couleur VIP' : 'Mention sur le live', longueurMax: 60 },
+        { id: 'prix', libelle: 'Prix en gold', indication: '5000', longueurMax: 9 },
+        ...(type === 'badge' ? [{ id: 'badge', libelle: 'Identifiant du badge', longueurMax: 32 }] : []),
+        { id: 'emoji', libelle: 'Émoji', obligatoire: false, valeur: TYPES_ARTICLE[type as keyof typeof TYPES_ARTICLE].emoji, longueurMax: 64 },
+        { id: 'stock', libelle: 'Stock (vide = illimité)', obligatoire: false, longueurMax: 6 },
+      ]),
+    );
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>, [, action, a, b]) {
+    const serveur = interaction.guild;
+    const champ = (id: string) => {
+      try {
+        return interaction.fields.getTextInputValue(id).trim();
+      } catch {
+        return '';
+      }
+    };
+    const nombre = (id: string, min: number, max: number) => {
+      const n = Number(champ(id).replace(/\s/g, ''));
+      if (!Number.isInteger(n) || n < min || n > max) throw new ErreurUtilisateur(`Un nombre entier entre ${formaterNombre(min)} et ${formaterNombre(max)}.`);
+      return n;
+    };
+    const afficher = async (charge: object) => {
+      if (interaction.isFromMessage()) await interaction.update(charge);
+      else await interaction.reply({ ...charge, flags: 64 });
+    };
+    if (action === 'xp' || action === 'niv' || action === 'gold') {
+      const valeur = action === 'niv' ? nombre('valeur', 0, 500) : nombre('valeur', -10_000_000, 10_000_000);
+      return afficher(panneauMembreProgression(serveur, a!, await ajusterMembre(serveur, interaction.user, a!, action, valeur)));
+    }
+    if (action === 'rniv') {
+      const niveau = nombre('valeur', 1, 500);
+      poserRoleNiveau(serveur.id, niveau, a!);
+      return afficher(panneauProgression(serveur, `➕ Niveau **${niveau}** → <@&${a}>`));
+    }
+    if (action === 'article') {
+      if (articlesBoutique(serveur.id).length >= 25) throw new ErreurUtilisateur('25 articles maximum.');
+      const type = a as keyof typeof TYPES_ARTICLE;
+      const badge = champ('badge');
+      if (type === 'badge' && !badge) throw new ErreurUtilisateur('Indique l’identifiant du badge.');
+      const stock = champ('stock') ? nombre('stock', 1, 100_000) : null;
+      executer(
+        'INSERT INTO articles_boutique (serveur_id, nom, description, emoji, prix, type, valeur, stock, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        serveur.id,
+        champ('nom'),
+        '',
+        champ('emoji') || TYPES_ARTICLE[type].emoji,
+        nombre('prix', 1, 10_000_000),
+        type,
+        type === 'role' ? b : type === 'badge' ? badge : null,
+        stock,
+        Date.now(),
+      );
+      return afficher(panneauProgression(serveur, `➕ **${champ('nom')}** est en vente.`));
+    }
+  },
+};
 
 function embedGold(serveur: Guild, utilisateur: User): EmbedBuilder {
   const w = portefeuille(serveur.id, utilisateur.id);
@@ -1246,6 +1263,12 @@ const composant: GestionnaireComposant = {
           return ecranAvatar(membre);
         });
       }
+      case 'quotidien':
+        await interaction.reply({ embeds: [ok(interaction.guild, recupererQuotidien(membre), { titre: 'Bonus du jour', sujet: '🎁' })], flags: 64 });
+        return;
+      case 'parametres':
+        await interaction.reply({ ...ecranParametres(membre), flags: 64 });
+        return;
       case 'notifications':
         executer('UPDATE joueurs SET notifications = 1 - notifications WHERE serveur_id = ? AND utilisateur_id = ?', interaction.guildId, interaction.user.id);
         await interaction.update({ ...ecranParametres(membre), attachments: [] });
@@ -1282,7 +1305,7 @@ const pageReglage: PageReglage = {
   emoji: '🌟',
   moduleId: 'progression',
   ordre: 1,
-  description: 'XP et gold par message et en vocal, rangs E à S, avatars à débloquer dans les coffres, quêtes et classements.\n-# Rôles de niveau : `/progression role-ajouter`. Variables du message : `{mention}` `{user}` `{level}`',
+  description: 'XP et gold par message et en vocal, rangs E à S, avatars à débloquer dans les coffres, quêtes et classements.\n-# Rôles de niveau et boutique : `/progression`. Variables du message : `{mention}` `{user}` `{level}`',
   champs: [
     {
       genre: 'choice',
@@ -1328,7 +1351,7 @@ export const moduleProgression: ModuleBot = {
   actifParDefaut: true,
   commandes,
   commandesPrefixe,
-  composants: [composant],
+  composants: [composant, composantAdmin],
   pagesReglage: [pageReglage, pageAvatars],
   evenements: [sur('messageCreate', (m: Message) => surMessage(m), 150)],
   taches: [

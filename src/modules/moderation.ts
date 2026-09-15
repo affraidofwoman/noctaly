@@ -1,9 +1,10 @@
 import {
+  type AnySelectMenuInteraction,
   type ButtonInteraction,
   ButtonStyle,
   type CategoryChannel,
   ChannelType,
-  type ChatInputCommandInteraction,
+
   type Collection,
   EmbedBuilder,
   type Client,
@@ -12,17 +13,20 @@ import {
   type GuildMember,
   type GuildTextBasedChannel,
   type Message,
+  type ModalSubmitInteraction,
   PermissionFlagsBits,
   PermissionsBitField,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
   type User,
 } from 'discord.js';
 import { aNiveau, emojiPour, enseigneDe, verifierModerable } from '../coeur/acces';
 import {
   bouton,
+  construireFormulaire,
   couleurPour,
   creerSuivi,
-  demanderConfirmation,
+
   embedEnseigne,
   erreur,
   info,
@@ -31,14 +35,13 @@ import {
   ok,
   paginer,
   rangee,
-  refus,
   repondre,
   suiviReponse,
 } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireJson, lireTout } from '../coeur/base';
 import { historiser, journal } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type GestionnaireComposant, type ModuleBot, sur } from '../coeur/noyau';
 import {
   creerRegistre,
   ErreurUtilisateur,
@@ -459,11 +462,6 @@ export function serveurVerrouille(serveurId: string): boolean {
 
 const registreModeration = creerRegistre('moderation');
 
-async function sanctionParCommande(interaction: ChatInputCommandInteraction<'cached'>, type: TypeSanction, cible: User, raison: string | null, dureeMs?: number, avertissementId?: number) {
-  await interaction.deferReply();
-  const resultat = await appliquerSanction({ serveur: interaction.guild, auteur: interaction.member, cible, type, raison, dureeMs, avertissementId });
-  await interaction.editReply({ embeds: [ok(interaction.guild, decrireResultat(resultat), { titre: 'Sanction', sujet: emojiPour(interaction.guildId, 'sanction') })] });
-}
 
 async function sanctionParMessage(message: Message<true>, type: TypeSanction, cible: User, raison: string | null, dureeMs?: number, avertissementId?: number) {
   if (!message.member) return;
@@ -480,7 +478,7 @@ function pagesAvertissements(serveur: Guild, utilisateur: User) {
       .setAuthor({ name: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) })
       .setTitle(`⚠️ Avertissements — ${liste.length}`)
       .setDescription(contenu)
-      .setFooter({ text: `Page ${page}/${total} · /unwarn pour en retirer un` }),
+      .setFooter({ text: `Page ${page}/${total} · /sanction pour en retirer un` }),
   );
 }
 
@@ -514,152 +512,214 @@ async function effacerMessages(salon: GuildTextBasedChannel, montant: number, fi
   return supprimes;
 }
 
-// - Commandes slash -
+// - /sanction : la fiche d’un compte, les sanctions au clic -
+export interface EtatSanction {
+  present: boolean;
+  muet: boolean;
+  banni: boolean;
+  blacklist: boolean;
+  avertissements: number;
+}
 
-const optionRaison = (o: import('discord.js').SlashCommandStringOption) => o.setName('raison').setDescription('Pourquoi').setMaxLength(400);
+export function actionsSanction(e: EtatSanction): TypeSanction[] {
+  const actions: TypeSanction[] = [];
+  if (e.present) actions.push('warn', e.muet ? 'untimeout' : 'timeout', 'kick');
+  actions.push(e.banni ? 'unban' : 'ban');
+  if (e.avertissements) actions.push('unwarn');
+  actions.push(e.blacklist ? 'unblacklist' : 'blacklist');
+  return actions;
+}
 
-const avertir: CommandeSlash = {
-  categorie: 'moderation',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('warn')
-    .setDescription('Avertir un membre')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addStringOption((o) => optionRaison(o).setRequired(true)),
-  async executer(i) {
-    await sanctionParCommande(i, 'warn', i.options.getUser('membre', true), i.options.getString('raison', true));
-  },
+const BOUTONS_SANCTION: Record<TypeSanction, { libelle: string; style: ButtonStyle }> = {
+  warn: { libelle: 'Avertir', style: ButtonStyle.Primary },
+  unwarn: { libelle: 'Retirer un warn', style: ButtonStyle.Secondary },
+  timeout: { libelle: 'Rendre muet', style: ButtonStyle.Secondary },
+  untimeout: { libelle: 'Lever le mute', style: ButtonStyle.Success },
+  kick: { libelle: 'Expulser', style: ButtonStyle.Danger },
+  ban: { libelle: 'Bannir', style: ButtonStyle.Danger },
+  unban: { libelle: 'Débannir', style: ButtonStyle.Success },
+  blacklist: { libelle: 'Blacklist', style: ButtonStyle.Danger },
+  unblacklist: { libelle: 'Retirer de la blacklist', style: ButtonStyle.Success },
 };
 
-const retirerAvertissement: CommandeSlash = {
-  categorie: 'moderation',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('unwarn')
-    .setDescription('Retirer un avertissement')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addIntegerOption((o) => o.setName('numero').setDescription('Numéro du warn').setMinValue(1))
-    .addStringOption((o) => optionRaison(o)),
-  async executer(i) {
-    await sanctionParCommande(i, 'unwarn', i.options.getUser('membre', true), i.options.getString('raison'), undefined, i.options.getInteger('numero') ?? undefined);
-  },
-};
-
-const avertissements: CommandeSlash = {
-  categorie: 'moderation',
-  niveau: Niveau.STAFF,
-  donnees: new SlashCommandBuilder()
-    .setName('warnings')
-    .setDescription('Ses avertissements')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)),
-  async executer(i) {
-    await paginer(i, pagesAvertissements(i.guild, i.options.getUser('membre', true)), true);
-  },
-};
-
-const exclure: CommandeSlash = {
-  categorie: 'moderation',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('timeout')
-    .setDescription('Rendre muet temporairement')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addStringOption((o) => o.setName('duree').setDescription('Durée (28 j max)').setRequired(true))
-    .addStringOption((o) => optionRaison(o)),
-  async executer(i) {
-    const duree = lireDuree(i.options.getString('duree', true));
-    if (!duree || duree > TIMEOUT_MAX_MS) throw new ErreurUtilisateur('Durée invalide : exemples `10m`, `2h`, `1j` (28 jours maximum).');
-    await sanctionParCommande(i, 'timeout', i.options.getUser('membre', true), i.options.getString('raison'), duree);
-  },
-};
-
-const leverTimeout: CommandeSlash = {
-  categorie: 'moderation',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('untimeout')
-    .setDescription('Lever un timeout')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addStringOption((o) => optionRaison(o)),
-  async executer(i) {
-    await sanctionParCommande(i, 'untimeout', i.options.getUser('membre', true), i.options.getString('raison'));
-  },
-};
-
-const expulser: CommandeSlash = {
-  categorie: 'moderation',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('kick')
-    .setDescription('Expulser un membre')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addStringOption((o) => optionRaison(o)),
-  async executer(i) {
-    await sanctionParCommande(i, 'kick', i.options.getUser('membre', true), i.options.getString('raison'));
-  },
-};
-
-const bannir: CommandeSlash = {
-  categorie: 'moderation',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('ban')
-    .setDescription('Bannir un compte')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui, même absent').setRequired(true))
-    .addStringOption((o) => optionRaison(o)),
-  async executer(i) {
-    await sanctionParCommande(i, 'ban', i.options.getUser('membre', true), i.options.getString('raison'));
-  },
-};
-
-const debannir: CommandeSlash = {
-  categorie: 'moderation',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('unban')
-    .setDescription('Débannir un compte')
-    .addStringOption((o) => o.setName('id').setDescription('Identifiant Discord').setRequired(true))
-    .addStringOption((o) => optionRaison(o)),
-  async executer(i) {
-    const utilisateur = await resoudreUtilisateur(i.client, i.options.getString('id', true));
-    if (!utilisateur) throw new ErreurUtilisateur('Identifiant Discord attendu.');
-    await sanctionParCommande(i, 'unban', utilisateur, i.options.getString('raison'));
-  },
-};
-
-const listeNoire: CommandeSlash = {
-  categorie: 'moderation',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('blacklist')
-    .setDescription('Blacklist du serveur')
-    .addSubcommand((s) =>
-      s
-        .setName('ajouter')
-        .setDescription('Blacklister un compte')
-        .addStringOption((o) => o.setName('id').setDescription('Identifiant ou mention').setRequired(true))
-        .addStringOption((o) => optionRaison(o)),
+async function ficheSanction(serveur: Guild, utilisateur: User, note?: string) {
+  const membre = await serveur.members.fetch(utilisateur.id).catch(() => null);
+  const banni = await serveur.bans.fetch(utilisateur.id).then(() => true).catch(() => false);
+  const liste = avertissementsActifs(serveur.id, utilisateur.id);
+  const bl = estEnListeNoire(serveur.id, utilisateur.id);
+  const muetJusqua = membre?.communicationDisabledUntilTimestamp && membre.communicationDisabledUntilTimestamp > Date.now() ? membre.communicationDisabledUntilTimestamp : null;
+  const etat = { present: Boolean(membre), muet: Boolean(muetJusqua), banni, blacklist: Boolean(bl), avertissements: liste.length };
+  const situation = [
+    bl ? `⛔ Blacklist — ${tronquer(bl.raison, 80)}` : null,
+    banni ? '🔨 Banni' : null,
+    muetJusqua ? `🔇 Muet, fin ${marqueTemps(muetJusqua, 'R')}` : null,
+    !membre && !banni ? '🚪 Pas sur le serveur' : null,
+  ].filter(Boolean);
+  const embed = embedEnseigne(serveur)
+    .setAuthor({ name: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) })
+    .setTitle(`${emojiPour(serveur.id, 'sanction')} ${membre?.displayName ?? utilisateur.username}`)
+    .setThumbnail(utilisateur.displayAvatarURL({ size: 256 }))
+    .setDescription(note ?? null)
+    .addFields(
+      { name: 'Situation', value: situation.join('\n') || '🟢 Rien à signaler', inline: true },
+      { name: 'Compte', value: `Créé ${marqueTemps(utilisateur.createdTimestamp, 'R')}${membre?.joinedTimestamp ? `\nArrivé ${marqueTemps(membre.joinedTimestamp, 'R')}` : ''}`, inline: true },
+      { name: `Avertissements (${liste.length})`, value: liste.slice(0, 3).map((w) => `\`n°${w.id}\` ${tronquer(w.raison, 60)} · ${marqueTemps(w.cree_le, 'R')}`).join('\n') || '—', inline: false },
     )
-    .addSubcommand((s) =>
-      s
-        .setName('retirer')
-        .setDescription('Retirer de la blacklist')
-        .addStringOption((o) => o.setName('id').setDescription('Identifiant').setRequired(true)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('info')
-        .setDescription('Détail d’un compte')
-        .addStringOption((o) => o.setName('id').setDescription('Identifiant').setRequired(true)),
-    )
-    .addSubcommand((s) => s.setName('liste').setDescription('La blacklist')),
+    .setFooter({ text: 'Chaque sanction demande une raison ; le membre est prévenu en MP.' });
+  const boutons = actionsSanction(etat).map((type) => bouton(`sct:${type}:${utilisateur.id}`, BOUTONS_SANCTION[type].libelle, BOUTONS_SANCTION[type].style, LIBELLES[type].emoji));
+  if (liste.length > 3) boutons.push(bouton(`sct:casier:${utilisateur.id}`, 'Tout le casier', ButtonStyle.Secondary, '📋'));
+  const rangees = [];
+  for (let i = 0; i < boutons.length; i += 4) rangees.push(rangee(...boutons.slice(i, i + 4)));
+  return { embeds: [embed], components: rangees };
+}
+
+function fenetreSanction(type: TypeSanction, utilisateurId: string) {
+  const champs: import('../coeur/affichage').ChampFenetre[] = [];
+  if (type === 'timeout') champs.push({ id: 'duree', libelle: 'Durée', valeur: '1h', indication: '10m, 2h, 1j (28 jours maximum)', longueurMax: 10 });
+  if (type === 'unwarn') champs.push({ id: 'numero', libelle: 'Numéro du warn (vide = le dernier)', obligatoire: false, longueurMax: 8 });
+  champs.push({ id: 'raison', libelle: 'Raison', long: true, obligatoire: type === 'warn' || type === 'blacklist', longueurMax: 400 });
+  return construireFormulaire(`sct:m:${type}:${utilisateurId}`, LIBELLES[type].title, champs);
+}
+
+const commandeSanction: CommandeSlash = {
+  categorie: 'moderation',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
+    .setName('sanction')
+    .setDescription('Sanctionner un compte')
+    .addUserOption((o) => o.setName('membre').setDescription('Qui, même absent').setRequired(true)),
   async executer(i) {
-    const sousCommande = i.options.getSubcommand();
-    if (sousCommande === 'liste') return paginer(i, pagesListeNoire(i.guild), true);
-    const utilisateur = await resoudreUtilisateur(i.client, i.options.getString('id', true));
-    if (!utilisateur) throw new ErreurUtilisateur('Identifiant Discord attendu.');
-    if (sousCommande === 'info') return repondre(i, { embeds: [ficheListeNoire(i.guild, utilisateur)], ephemeral: true });
-    return sanctionParCommande(i, sousCommande === 'ajouter' ? 'blacklist' : 'unblacklist', utilisateur, i.options.getString('raison'));
+    await i.deferReply({ flags: 64 });
+    await i.editReply(await ficheSanction(i.guild, i.options.getUser('membre', true)));
+  },
+};
+
+const composantSanction: GestionnaireComposant = {
+  prefixe: 'sct',
+  niveau: Niveau.MODERATEUR,
+  async bouton(interaction: ButtonInteraction<'cached'>, [action, utilisateurId]) {
+    const utilisateur = await resoudreUtilisateur(interaction.client, utilisateurId);
+    if (!utilisateur) throw new ErreurUtilisateur('Compte introuvable.');
+    if (action === 'casier') return paginer(interaction, pagesAvertissements(interaction.guild, utilisateur), true);
+    if (!(action! in LIBELLES)) return;
+    await interaction.showModal(fenetreSanction(action as TypeSanction, utilisateur.id));
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>, [, action, utilisateurId]) {
+    const type = action as TypeSanction;
+    if (!(type in LIBELLES)) return;
+    const utilisateur = await resoudreUtilisateur(interaction.client, utilisateurId);
+    if (!utilisateur) throw new ErreurUtilisateur('Compte introuvable.');
+    const champ = (id: string) => {
+      try {
+        return interaction.fields.getTextInputValue(id).trim();
+      } catch {
+        return '';
+      }
+    };
+    let dureeMs: number | undefined;
+    if (type === 'timeout') {
+      dureeMs = lireDuree(champ('duree')) ?? undefined;
+      if (!dureeMs || dureeMs > TIMEOUT_MAX_MS) throw new ErreurUtilisateur('Durée invalide : exemples `10m`, `2h`, `1j` (28 jours maximum).');
+    }
+    const numero = Number(champ('numero')) || undefined;
+    if (interaction.isFromMessage()) await interaction.deferUpdate();
+    else await interaction.deferReply({ flags: 64 });
+    const resultat = await appliquerSanction({ serveur: interaction.guild, auteur: interaction.member, cible: utilisateur, type, raison: champ('raison') || null, dureeMs, avertissementId: numero });
+    await interaction.editReply(await ficheSanction(interaction.guild, utilisateur, `✅ ${decrireResultat(resultat)}`));
+  },
+};
+
+// - /salon : tenir le salon où l’on est -
+const LENTEURS = [0, 5, 10, 30, 60, 300, 600, 3600];
+
+function ecranSalon(serveur: Guild, salon: GuildTextBasedChannel, note?: string) {
+  const ferme = Boolean(verrouActif(serveur.id, 'channel', salon.id));
+  const lockdown = serveurVerrouille(serveur.id);
+  const lent = 'rateLimitPerUser' in salon ? (salon.rateLimitPerUser ?? 0) : 0;
+  const embed = embedEnseigne(serveur)
+    .setTitle(`🔑 #${'name' in salon ? salon.name : 'salon'}`)
+    .setDescription(note ?? 'Tout se règle ici, pour ce salon.')
+    .addFields(
+      { name: 'Écriture', value: ferme ? '🔒 Fermé' : '🔓 Ouvert', inline: true },
+      { name: 'Mode lent', value: lent ? formaterDuree(lent * 1000) : 'Coupé', inline: true },
+      { name: 'Serveur', value: lockdown ? '🚨 Lockdown en cours' : '🟢 Normal', inline: true },
+    );
+  const lenteur = new StringSelectMenuBuilder()
+    .setCustomId(`sal:slow:${salon.id}`)
+    .setPlaceholder('Mode lent')
+    .addOptions(LENTEURS.map((s) => ({ label: s ? `Mode lent : ${formaterDuree(s * 1000)}` : 'Mode lent coupé', value: String(s), default: s === lent, emoji: s ? '🐢' : '⚡' })));
+  return {
+    embeds: [embed],
+    components: [
+      rangee(
+        bouton(`sal:clear:${salon.id}`, 'Effacer', ButtonStyle.Secondary, '🧹'),
+        ferme ? bouton(`sal:unlock:${salon.id}`, 'Rouvrir', ButtonStyle.Success, '🔓') : bouton(`sal:lock:${salon.id}`, 'Fermer', ButtonStyle.Danger, '🔒'),
+        lockdown ? bouton(`sal:unld:${salon.id}`, 'Fin du lockdown', ButtonStyle.Success, '🟢') : bouton(`sal:ld:${salon.id}`, 'Lockdown serveur', ButtonStyle.Danger, '🚨'),
+      ),
+      rangee(lenteur),
+    ],
+  };
+}
+
+const commandeSalon: CommandeSlash = {
+  categorie: 'salons',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder().setName('salon').setDescription('Tenir ce salon'),
+  async executer(i) {
+    if (!i.channel) return;
+    await repondre(i, { ...ecranSalon(i.guild, i.channel), ephemeral: true });
+  },
+};
+
+const composantSalon: GestionnaireComposant = {
+  prefixe: 'sal',
+  niveau: Niveau.MODERATEUR,
+  async bouton(interaction: ButtonInteraction<'cached'>, [action, salonId]) {
+    const serveur = interaction.guild;
+    const salon = serveur.channels.cache.get(salonId ?? '') as GuildTextBasedChannel | undefined;
+    if (!salon?.isTextBased()) throw new ErreurUtilisateur('Salon introuvable.');
+    if (action === 'clear') {
+      await interaction.showModal(
+        construireFormulaire(`sal:m:${salon.id}`, 'Effacer des messages', [
+          { id: 'nombre', libelle: 'Combien (1 à 1000)', valeur: '50', longueurMax: 4 },
+          { id: 'membre', libelle: 'Seulement ceux de (identifiant)', obligatoire: false, longueurMax: 25 },
+        ]),
+      );
+      return;
+    }
+    if ((action === 'ld' || action === 'unld') && !aNiveau(interaction.member, Niveau.ADMIN)) throw new ErreurUtilisateur('Le lockdown du serveur est réservé aux admins.');
+    await interaction.deferUpdate();
+    let note = '';
+    if (action === 'lock') note = `🔒 Fermé : seuls le staff et le bot écrivent (${(await verrouiller(serveur, 'channel', salon.id, interaction.user, 'Fermé depuis /salon')).verrouilles} salon).`;
+    if (action === 'unlock') note = `🔓 Rouvert (${await deverrouiller(serveur, 'channel', salon.id, interaction.user)} salon).`;
+    if (action === 'ld') {
+      const suivi = suiviReponse(interaction, serveur, 'Lockdown');
+      const r = await verrouiller(serveur, 'server', serveur.id, interaction.user, 'Lockdown depuis /salon', (f, t) => suivi.regler(f, t)).finally(() => suivi.terminer());
+      note = `🚨 Lockdown : **${r.verrouilles}** salon(s) fermés.`;
+    }
+    if (action === 'unld') note = `🟢 Lockdown terminé : **${await deverrouiller(serveur, 'server', serveur.id, interaction.user)}** salon(s) rouverts.`;
+    await interaction.editReply(ecranSalon(serveur, salon, note));
+  },
+  async menu(interaction: AnySelectMenuInteraction<'cached'>, [, salonId]) {
+    const salon = interaction.guild.channels.cache.get(salonId ?? '') as GuildTextBasedChannel | undefined;
+    if (!salon || !('setRateLimitPerUser' in salon)) throw new ErreurUtilisateur('Ce salon ne gère pas le mode lent.');
+    const secondes = Number(interaction.values[0]) || 0;
+    await salon.setRateLimitPerUser(secondes, `Mode lent par ${interaction.user.tag}`);
+    void journal(interaction.guild, 'channel', { titre: 'Mode lent', ton: 'info', lignes: [`**Salon** : <#${salon.id}>`, `**Délai** : ${secondes ? formaterDuree(secondes * 1000) : 'coupé'}`], par: interaction.user });
+    await interaction.update(ecranSalon(interaction.guild, salon, secondes ? `🐢 Mode lent : **${formaterDuree(secondes * 1000)}**.` : '⚡ Mode lent coupé.'));
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>, [, salonId]) {
+    const salon = interaction.guild.channels.cache.get(salonId ?? '') as GuildTextBasedChannel | undefined;
+    if (!salon?.isTextBased()) throw new ErreurUtilisateur('Salon introuvable.');
+    const nombre = Number(interaction.fields.getTextInputValue('nombre'));
+    if (!Number.isInteger(nombre) || nombre < 1 || nombre > 1000) throw new ErreurUtilisateur('Un nombre entre 1 et 1000.');
+    const filtre = interaction.fields.getTextInputValue('membre').replace(/\D/g, '') || null;
+    if (interaction.isFromMessage()) await interaction.deferUpdate();
+    else await interaction.deferReply({ flags: 64 });
+    const suivi = suiviReponse(interaction, interaction.guild, 'Nettoyage');
+    const supprimes = await effacerMessages(salon, nombre, filtre, interaction.user, (f, t) => suivi.regler(f, t));
+    await suivi.terminer();
+    await interaction.editReply(ecranSalon(interaction.guild, salon, `🧹 **${supprimes}** message(s) effacé(s).\n-# Les messages de plus de 14 jours et les épinglés restent.`));
   },
 };
 
@@ -697,141 +757,6 @@ function ficheListeNoire(serveur: Guild, utilisateur: User) {
     { titre: 'Sanction', sujet: emojiPour(serveur.id, 'sanction') },
   );
 }
-
-const effacer: CommandeSlash = {
-  categorie: 'salons',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('clear')
-    .setDescription('Effacer des messages')
-    .addIntegerOption((o) => o.setName('nombre').setDescription('Combien (1 à 1000)').setMinValue(1).setMaxValue(1000).setRequired(true))
-    .addUserOption((o) => o.setName('membre').setDescription('Seulement ses messages')),
-  async executer(i) {
-    if (!i.channel) return;
-    await i.deferReply({ flags: 64 });
-    const suivi = suiviReponse(i, i.guild, 'Nettoyage');
-    const supprimes = await effacerMessages(i.channel, i.options.getInteger('nombre', true), i.options.getUser('membre')?.id ?? null, i.user, (f, total) => suivi.regler(f, total));
-    await suivi.terminer();
-    await i.editReply({ embeds: [ok(i.guild, `**${supprimes}** message(s) supprimé(s).\n-# Les messages de plus de 14 jours et épinglés sont conservés.`)] });
-  },
-};
-
-const modeLent: CommandeSlash = {
-  categorie: 'salons',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('slowmode')
-    .setDescription('Mode lent du salon')
-    .addStringOption((o) => o.setName('duree').setDescription('Délai (0 = coupé)').setRequired(true))
-    .addChannelOption((o) => o.setName('salon').setDescription('Salon').addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)),
-  async executer(i) {
-    const brut = i.options.getString('duree', true).trim();
-    const secondes = brut === '0' ? 0 : Math.round((lireDuree(/^\d+$/.test(brut) ? `${brut}s` : brut) ?? -1000) / 1000);
-    if (secondes < 0 || secondes > 21_600) throw new ErreurUtilisateur('Durée invalide : de `0` à `6h`.');
-    const salon = (i.options.getChannel('salon') ?? i.channel) as GuildTextBasedChannel | null;
-    if (!salon || !('setRateLimitPerUser' in salon)) throw new ErreurUtilisateur('Ce salon ne gère pas le mode lent.');
-    await salon.setRateLimitPerUser(secondes, `Mode lent par ${i.user.tag}`);
-    void journal(i.guild, 'channel', { titre: 'Mode lent', ton: 'info', lignes: [`**Salon** : <#${salon.id}>`, `**Délai** : ${secondes ? formaterDuree(secondes * 1000) : 'coupé'}`], par: i.user });
-    await repondre(i, { embeds: [ok(i.guild, secondes ? `Mode lent de **${formaterDuree(secondes * 1000)}** sur <#${salon.id}>.` : `Mode lent coupé sur <#${salon.id}>.`)], ephemeral: true });
-  },
-};
-
-const commandeVerrouiller: CommandeSlash = {
-  categorie: 'salons',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('lock')
-    .setDescription('Fermer un salon')
-    .addChannelOption((o) => o.setName('salon').setDescription('Salon'))
-    .addStringOption((o) => optionRaison(o)),
-  async executer(i) {
-    const salon = i.options.getChannel('salon') ?? i.channel;
-    if (!salon) return;
-    const r = await verrouiller(i.guild, 'channel', salon.id, i.user, i.options.getString('raison') ?? 'Aucune raison');
-    await repondre(i, { embeds: [ok(i.guild, `🔒 <#${salon.id}> fermé (${r.verrouilles} salon).`)] });
-  },
-};
-
-const commandeDeverrouiller: CommandeSlash = {
-  categorie: 'salons',
-  niveau: Niveau.MODERATEUR,
-  donnees: new SlashCommandBuilder()
-    .setName('unlock')
-    .setDescription('Rouvrir un salon')
-    .addChannelOption((o) => o.setName('salon').setDescription('Salon')),
-  async executer(i) {
-    const salon = i.options.getChannel('salon') ?? i.channel;
-    if (!salon) return;
-    await deverrouiller(i.guild, 'channel', salon.id, i.user);
-    await repondre(i, { embeds: [ok(i.guild, `🔓 <#${salon.id}> rouvert.`)] });
-  },
-};
-
-const verrouillage: CommandeSlash = {
-  categorie: 'salons',
-  niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('lockdown')
-    .setDescription('Tout fermer')
-    .addSubcommand((s) =>
-      s
-        .setName('start')
-        .setDescription('Lancer un lockdown')
-        .addStringOption((o) =>
-          o
-            .setName('portee')
-            .setDescription('Où')
-            .setRequired(true)
-            .addChoices({ name: 'Serveur entier', value: 'server' }, { name: 'Une catégorie', value: 'category' }, { name: 'Un salon', value: 'channel' }),
-        )
-        .addChannelOption((o) => o.setName('cible').setDescription('Catégorie ou salon visé').addChannelTypes(ChannelType.GuildCategory, ChannelType.GuildText, ChannelType.GuildVoice))
-        .addStringOption((o) => optionRaison(o)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('end')
-        .setDescription('Terminer un lockdown')
-        .addStringOption((o) =>
-          o
-            .setName('portee')
-            .setDescription('Où')
-            .setRequired(true)
-            .addChoices({ name: 'Serveur entier', value: 'server' }, { name: 'Une catégorie', value: 'category' }, { name: 'Un salon', value: 'channel' }),
-        )
-        .addChannelOption((o) => o.setName('cible').setDescription('Catégorie ou salon visé')),
-    )
-    .addSubcommand((s) => s.setName('status').setDescription('Les verrouillages en cours')),
-  async executer(i) {
-    const sousCommande = i.options.getSubcommand();
-    if (sousCommande === 'status') {
-      const verrous = verrousActifs(i.guildId);
-      const lignes = verrous.map((l) => `• ${l.portee === 'server' ? '**Serveur entier**' : `<#${l.cible_id}>`} — ${marqueTemps(l.cree_le, 'R')}${l.raison ? ` · ${tronquer(l.raison, 60)}` : ''}`);
-      return repondre(i, { embeds: [info(i.guild, lignes.join('\n') || 'Aucun verrouillage en cours.', { titre: 'Lockdown', sujet: '🔒' })], ephemeral: true });
-    }
-    const portee = i.options.getString('portee', true) as PorteeVerrou;
-    const cible = portee === 'server' ? i.guildId : (i.options.getChannel('cible')?.id ?? i.channelId);
-    const raison = i.options.getString('raison') ?? 'Aucune raison';
-    const filtre = portee === 'server' ? 'tout le serveur' : `<#${cible}>`;
-    if (sousCommande === 'end') {
-      const restaures = await deverrouiller(i.guild, portee, cible, i.user);
-      return repondre(i, { embeds: [ok(i.guild, `🔓 Lockdown terminé sur ${filtre} — **${restaures}** salon(s) rouvert(s).`)] });
-    }
-    return demanderConfirmation(i, {
-      titre: '🔒 LOCKDOWN',
-      description: `Les membres ne pourront plus écrire sur ${filtre}.\nLes permissions d’origine seront restaurées avec \`/lockdown end\`.`,
-      libelleConfirmation: 'Verrouiller',
-      surConfirmation: async (b) => {
-        await b.update({ embeds: [info(b.guild, 'Verrouillage en cours…')], components: [] });
-        const suivi = suiviReponse(b, b.guild, 'Verrouillage');
-        const r = await verrouiller(b.guild, portee, cible, b.user, raison, (f, t) => suivi.regler(f, t)).finally(() => suivi.terminer());
-        await b.editReply({ embeds: [ok(b.guild, `🔒 **${r.verrouilles}** salon(s) verrouillé(s) sur ${filtre}.${r.ignores ? `\n-# ${r.ignores} ignoré(s) (déjà fermés ou inaccessibles).` : ''}`)] });
-        if (b.channel && 'send' in b.channel) {
-          await b.channel.send({ embeds: [refus(b.guild, `**LOCKDOWN** — ${raison}\nLes messages sont temporairement bloqués.`)] }).catch(() => undefined);
-        }
-      },
-    });
-  },
-};
 
 async function exigerCible(message: Message<true>, argument: string | undefined): Promise<User> {
   const membre = await membreCible(message, argument);
@@ -1227,10 +1152,10 @@ export const moduleModeration: ModuleBot = {
   description: 'Warns, timeouts, bans, blacklist, lock et lockdown',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [avertir, retirerAvertissement, avertissements, exclure, leverTimeout, expulser, bannir, debannir, listeNoire, effacer, modeLent, commandeVerrouiller, commandeDeverrouiller, verrouillage],
+  commandes: [commandeSanction, commandeSalon],
   commandesPrefixe,
   pagesReglage: [pageReglage],
-  composants: [{ prefixe: 'modconf', niveau: Niveau.MODERATEUR, bouton: (i, parametres) => surConfirmationModeration(i, parametres) }],
+  composants: [{ prefixe: 'modconf', niveau: Niveau.MODERATEUR, bouton: (i, parametres) => surConfirmationModeration(i, parametres) }, composantSanction, composantSalon],
   evenements: [
     sur('guildMemberAdd', async (membre: GuildMember) => {
       const entree = estEnListeNoire(membre.guild.id, membre.id);

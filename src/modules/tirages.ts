@@ -208,11 +208,11 @@ export async function lancerTirage(saisie: NouveauTirage): Promise<LigneTirage> 
     Date.now(),
   );
   const g = lireTirage(r.lastInsertRowid)!;
-  const ping = lireConfig(serveur.id).tirages.roleMentionId;
+  const roleMention = lireConfig(serveur.id).tirages.roleMentionId;
   const message = await saisie.salon.send({
-    content: ping ? `<@&${ping}>` : undefined,
+    content: roleMention ? `<@&${roleMention}>` : undefined,
     ...construireMessageTirage(serveur, g),
-    allowedMentions: { roles: ping ? [ping] : [] },
+    allowedMentions: { roles: roleMention ? [roleMention] : [] },
   });
   executer('UPDATE tirages SET message_id = ? WHERE id = ?', message.id, g.id);
   historiser(serveur.id, 'giveaway', 'start', null, saisie.organisateur.id, { id: g.id, prize: saisie.lot });

@@ -20,7 +20,7 @@ import {
   type AnySelectMenuInteraction,
   type ButtonInteraction,
   ButtonStyle,
-  type ChatInputCommandInteraction,
+
   type Client,
   EmbedBuilder,
   type Guild,
@@ -757,7 +757,7 @@ export function embedLecture(serveur: Guild, session: LecteurServeur | undefined
   const embed = new EmbedBuilder().setColor(couleurPour(serveur)).setAuthor({ name: '🎵 NOW PLAYING' });
   const piste = session?.actuel;
   if (!session || !piste) {
-    return embed.setDescription('💤 **Rien en lecture.** Lance `/play` ou `m!play <titre ou lien>` pour démarrer.');
+    return embed.setDescription('💤 **Rien en lecture.** Lance `/musique` ou `m!play <titre ou lien>` pour démarrer.');
   }
   const ecoule = Math.min(session.elapsed, piste.duree || session.elapsed);
   embed
@@ -1139,18 +1139,6 @@ const commandesPrefixe: CommandePrefixe[] = [
 
 // - Commandes slash -
 
-function slash(nom: string, description: string, executer: (i: ChatInputCommandInteraction<'cached'>) => Promise<string | void>, construire?: (b: SlashCommandBuilder) => SlashCommandBuilder): CommandeSlash {
-  const constructeur = new SlashCommandBuilder().setName(nom).setDescription(description);
-  return {
-    categorie: 'music',
-    donnees: construire ? construire(constructeur) : constructeur,
-    async executer(interaction) {
-      const texte = await executer(interaction);
-      if (texte) await interaction.reply({ embeds: [new EmbedBuilder().setColor(couleurPour(interaction.guild)).setDescription(texte)] });
-    },
-  };
-}
-
 const panneauMusique: PanneauAffiche = {
   id: 'musique',
   alias: ['lecteur'],
@@ -1163,53 +1151,28 @@ const panneauMusique: PanneauAffiche = {
   },
 };
 
+// - /musique : un titre, ou le lecteur -
 const commandes: CommandeSlash[] = [
   {
     categorie: 'music',
     donnees: new SlashCommandBuilder()
-      .setName('play')
-      .setDescription('Jouer un titre')
-      .addStringOption((o) => o.setName('recherche').setDescription('Titre ou lien').setRequired(true).setMaxLength(500)),
+      .setName('musique')
+      .setDescription('Jouer ou piloter')
+      .addStringOption((o) => o.setName('recherche').setDescription('Titre ou lien').setMaxLength(500)),
     delaiSecondes: 2,
     async executer(interaction) {
+      const recherche = interaction.options.getString('recherche');
+      if (!recherche) {
+        await interaction.reply({ ...affichagePanneau(interaction.guild), flags: MessageFlags.Ephemeral });
+        return;
+      }
       await interaction.deferReply();
-      const embed = await lancerLecture(interaction.member, interaction.channelId, interaction.options.getString('recherche', true));
+      const embed = await lancerLecture(interaction.member, interaction.channelId, recherche);
       await interaction.editReply({ embeds: [embed] });
     },
   },
-  slash('pause', 'Mettre en pause', async (i) => executerAction(i.member, 'pause', i.channelId)),
-  slash('resume', 'Reprendre la lecture', async (i) => executerAction(i.member, 'resume', i.channelId)),
-  slash('skip', 'Passer au suivant', async (i) => executerAction(i.member, 'skip', i.channelId)),
-  slash('stop', 'Tout arrêter et quitter', async (i) => executerAction(i.member, 'stop', i.channelId)),
-  slash('join', 'Rejoindre ton vocal', async (i) => executerAction(i.member, 'join', i.channelId)),
-  slash('leave', 'Quitter le vocal', async (i) => executerAction(i.member, 'leave', i.channelId)),
-  slash('shuffle', 'Mélanger la file', async (i) => executerAction(i.member, 'shuffle', i.channelId)),
-  {
-    categorie: 'music',
-    donnees: new SlashCommandBuilder()
-      .setName('queue')
-      .setDescription('La file d’attente')
-      .addIntegerOption((o) => o.setName('page').setDescription('Page').setMinValue(1)),
-    async executer(interaction) {
-      const session = exigerSession(interaction.guild);
-      await interaction.reply({ embeds: [embedFile(interaction.guild, session, (interaction.options.getInteger('page') ?? 1) - 1)], flags: MessageFlags.Ephemeral });
-    },
-  },
-  {
-    categorie: 'music',
-    donnees: new SlashCommandBuilder().setName('nowplaying').setDescription('Le morceau en cours'),
-    async executer(interaction) {
-      const session = lireSession(interaction.guildId);
-      await interaction.reply({ embeds: [embedLecture(interaction.guild, session)], components: controles(session, interaction.guildId) });
-    },
-  },
-  slash('volume', 'Régler le volume', async (i) => reglerVolume(i.member, String(i.options.getInteger('valeur', true))), (b) =>
-    b.addIntegerOption((o) => o.setName('valeur').setDescription('Volume en %').setMinValue(1).setMaxValue(200).setRequired(true)) as SlashCommandBuilder,
-  ),
-  slash('loop', 'Mode boucle', async (i) => reglerBoucle(i.member, i.options.getString('mode')), (b) =>
-    b.addStringOption((o) => o.setName('mode').setDescription('Mode de boucle').addChoices({ name: 'Désactivée', value: 'off' }, { name: 'Le morceau', value: 'piste' }, { name: 'La file', value: 'file' })) as SlashCommandBuilder,
-  ),
 ];
+
 
 const pageReglage: PageReglage = {
   id: 'music',

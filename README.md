@@ -206,35 +206,37 @@ Pages : accueil, modules, tickets, giveaways, Twitch, modération, logs, personn
 
 ## Liste des commandes
 
+Peu de commandes slash : chacune ouvre un panneau clair. Les gestes rapides passent par les préfixes.
+
 ### 📌 Pour tout le monde
-`/help` · `/ping` · `/photo` · `/userinfo` · `/serverinfo` · `/botinfo` · `/stats` · `=help` · `=ui` · `=si` · `+pic` · `+banner`
+`/help` · `/info` · `/contact` · `=help` · `=ui` · `=si` · `=bot` · `=stats` · `+pic` · `+banner`
 
 ### 🌟 Progression
-`/niveau` · `/classement` · `/rangs` · `/quetes` · `/avatar` · `/boutique` · `/quotidien` · `/gold` · `/donner` · `/rep` · `/parametres` · `=lvl` · `=lb` · `=rangs` · `=quest` · `=avatar` · `=inv` · `=shop` · `=daily` · `=gold` · `=give` · `=rep` · `=bio` · `=settings` · `=jeu`
+`/profil` · `=lvl` · `=lb` · `=rangs` · `=quest` · `=avatar` · `=inv` · `=shop` · `=daily` · `=gold` · `=give` · `=rep` · `=bio` · `=settings` · `=jeu`
 
 ### ⭐ Communauté
-`/suggest` · `/poll` · `/afk` · `/report` · `/feedback` · `/badge` · `/birthday` · `/remind` · `/event` · `/invites` · `/boost` · `/contest` · `/partner` · `/staffapply`
+`/sondage` · `/afk` · `/anniversaire` · `/rappel` · `/evenement` · `/badge` · `/boost` · `/contest` · `=suggest` · `=invites` · `=anniv` · `=rappel`
 
 ### 🎲 Mini-jeux
-`/8ball` · `/coinflip` · `/dice` · `/rps`
+`/jeux` · `=8ball` · `=pf` · `=de` · `=rps`
 
 ### 🎵 Musique
-`/play` · `/pause` · `/resume` · `/skip` · `/stop` · `/join` · `/leave` · `/shuffle` · `/queue` · `/nowplaying` · `/volume` · `/loop` · `m!play` · `m!panel` · `m!help`
+`/musique` · `m!play` · `m!panel` · `m!help`
 
 ### 🔴 Twitch · 🎫 Tickets · 🎉 Giveaways
 `/twitch` · `/ticket` · `/giveaway`
 
 ### 🎭 Rôles
-`/serv` · `/reactionrole` · `/notificationrole`
+`/reactionrole` · `/notificationrole`
 
 ### 🛡️ Sanctions et salons
-`/warn` · `/unwarn` · `/warnings` · `/timeout` · `/untimeout` · `/kick` · `/ban` · `/unban` · `/blacklist` · `/clear` · `/slowmode` · `/lock` · `/unlock` · `/lockdown` · `/antiraid` · `/antinuke` · `+unbanall` · `+gbl` · `+ungbl` · `&l0all` · `&unl0all`
+`/sanction` · `/salon` · `/antiraid` · `/antinuke` · `+ban` · `+kick` · `+mute` · `+warn` · `+warns` · `+unbanall` · `+gbl` · `&clear` · `&lock` · `&unlock` · `&l0all` · `&bl`
 
 ### 📝 Poster et animer
 `/announce` · `/embed` · `/customcommand` · `/autoresponse`
 
 ### ⚙️ Le serveur
-`/setup` · `/installer` · `/modules` · `/config` · `/test` · `/wl` · `/logs` · `/progression` · `/affiche` · `/form` · `/backup`
+`/setup` · `/installer` · `/serv` · `/affiche` · `/modules` · `/config` · `/test` · `/wl` · `/logs` · `/progression` · `/formulaire` · `/backup`
 
 **Variables** utilisables dans les messages : `{user}` `{mention}` `{username}` `{userid}` `{server}` `{membercount}` `{createdat}` `{channel}` `{role}` `{date}` `{time}` `{streamer}` `{game}` `{title}` `{viewers}` `{url}` `{level}` `{boosts}` `{brand}` `{twitch}`.
 

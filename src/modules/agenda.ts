@@ -1,23 +1,28 @@
 import {
+  type ActionRowBuilder,
+  type AnySelectMenuInteraction,
   type ButtonInteraction,
   ButtonStyle,
-  ChannelType,
   type Client,
   EmbedBuilder,
   type Guild,
   type GuildTextBasedChannel,
+  type MessageActionRowComponentBuilder,
   MessageFlags,
+  type ModalSubmitInteraction,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
 } from 'discord.js';
-import { botPeutGererRole, emojiPour, lireNiveau } from '../coeur/acces';
+import { aNiveau, botPeutGererRole, emojiPour } from '../coeur/acces';
 import {
   bouton,
+  construireFormulaire,
   couleurPour,
   embedEnseigne,
   estLienHttp,
-  lignesEnPages,
+
   ok,
-  paginer,
+
   rangee,
   remplirModele,
   repondre,
@@ -25,10 +30,10 @@ import {
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout } from '../coeur/base';
 import { journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type GestionnaireComposant, type ModuleBot } from '../coeur/noyau';
 import {
   ErreurUtilisateur,
-  formaterDuree,
+
   lireDateHeure,
   lireDuree,
   marqueTemps,
@@ -96,65 +101,64 @@ async function traiterServeur(serveur: Guild): Promise<void> {
   }
 }
 
+// - /anniversaire -
+function enregistrerAnniversaire(serveurId: string, utilisateurId: string, jour: number, mois: number): void {
+  if (!anniversaireValide(jour, mois)) throw new ErreurUtilisateur('Cette date n’existe pas.');
+  const reglages = lireConfig(serveurId);
+  const aujourdhui = partiesFuseau(Date.now(), reglages.general.fuseau);
+  const ignorerCetteAnnee = estAnniversaire({ jour, mois }, aujourdhui) && aujourdhui.heure >= reglages.anniversaires.heure;
+  executer(
+    `INSERT INTO anniversaires (serveur_id, utilisateur_id, jour, mois, annee_annoncee) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET jour = excluded.jour, mois = excluded.mois, annee_annoncee = excluded.annee_annoncee`,
+    serveurId,
+    utilisateurId,
+    jour,
+    mois,
+    ignorerCetteAnnee ? aujourdhui.annee : null,
+  );
+}
+
+function panneauAnniversaires(serveur: Guild, utilisateurId: string, note?: string) {
+  const aujourdhui = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau);
+  const rangees = lireTout<LigneAnniversaire>('SELECT * FROM anniversaires WHERE serveur_id = ?', serveur.id);
+  const ecart = (r: LigneAnniversaire) => {
+    const v = (r.mois - aujourdhui.mois) * 31 + (r.jour - aujourdhui.jour);
+    return v < 0 ? v + 12 * 31 : v;
+  };
+  const perso = rangees.find((r) => r.utilisateur_id === utilisateurId);
+  const prochains = rangees.sort((a, b) => ecart(a) - ecart(b)).slice(0, 8).map((r) => `${ecart(r) === 0 ? '🎉' : '🎂'} **${r.jour} ${MOIS[r.mois - 1]}** — <@${r.utilisateur_id}>`);
+  const embed = embedEnseigne(serveur)
+    .setTitle('🎂 Anniversaires')
+    .setDescription([note, `**Le tien** — ${perso ? `${perso.jour} ${MOIS[perso.mois - 1]}` : 'pas encore enregistré'}`].filter(Boolean).join('\n\n'))
+    .addFields({ name: 'Les prochains', value: prochains.join('\n') || '—' });
+  return {
+    embeds: [embed],
+    components: [rangee(bouton('anniv:choisir', perso ? 'Changer ma date' : 'Ajouter ma date', ButtonStyle.Success, '🎂'), bouton('anniv:retirer', 'Retirer', ButtonStyle.Secondary, '🗑️').setDisabled(!perso))],
+  };
+}
+
 const commandeAnniversaire: CommandeSlash = {
   categorie: 'community',
-  donnees: new SlashCommandBuilder()
-    .setName('birthday')
-    .setDescription('Les anniversaires')
-    .addSubcommand((s) =>
-      s
-        .setName('set')
-        .setDescription('Ton anniversaire')
-        .addIntegerOption((o) => o.setName('jour').setDescription('Jour').setRequired(true).setMinValue(1).setMaxValue(31))
-        .addIntegerOption((o) => o.setName('mois').setDescription('Mois').setRequired(true).addChoices(...MOIS.map((m, i) => ({ name: m, value: i + 1 }))))
-        .addUserOption((o) => o.setName('membre').setDescription('Autre membre')),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('remove')
-        .setDescription('Retirer ton anniversaire')
-        .addUserOption((o) => o.setName('membre').setDescription('Autre membre')),
-    )
-    .addSubcommand((s) => s.setName('list').setDescription('Prochains anniversaires')),
+  donnees: new SlashCommandBuilder().setName('anniversaire').setDescription('Les anniversaires'),
   async executer(interaction) {
-    const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    const autre = interaction.options.getUser('membre');
-    if (autre && autre.id !== interaction.user.id && lireNiveau(interaction.member) < Niveau.STAFF) {
-      throw new ErreurUtilisateur('Seul le staff peut modifier l’anniversaire de quelqu’un d’autre.');
-    }
-    const utilisateurId = autre?.id ?? interaction.user.id;
-    if (sousCommande === 'set') {
-      const jour = interaction.options.getInteger('jour', true);
-      const mois = interaction.options.getInteger('mois', true);
-      if (!anniversaireValide(jour, mois)) throw new ErreurUtilisateur('Cette date n’existe pas.');
-      const annee = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau).annee;
-      const aujourdhui = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau);
-      const ignorerCetteAnnee = estAnniversaire({ jour, mois }, aujourdhui) && aujourdhui.heure >= lireConfig(serveur.id).anniversaires.heure;
-      executer(
-        `INSERT INTO anniversaires (serveur_id, utilisateur_id, jour, mois, annee_annoncee) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET jour = excluded.jour, mois = excluded.mois, annee_annoncee = excluded.annee_annoncee`,
-        serveur.id,
-        utilisateurId,
-        jour,
-        mois,
-        ignorerCetteAnnee ? annee : null,
-      );
-      return repondre(interaction, { embeds: [ok(serveur, `🎂 Anniversaire de <@${utilisateurId}> enregistré : **${jour} ${MOIS[mois - 1]}**.`)], ephemeral: true });
-    }
-    if (sousCommande === 'remove') {
-      const r = executer('DELETE FROM anniversaires WHERE serveur_id = ? AND utilisateur_id = ?', serveur.id, utilisateurId);
-      return repondre(interaction, { embeds: [ok(serveur, r.changes ? 'Anniversaire retiré.' : 'Aucun anniversaire enregistré.')], ephemeral: true });
-    }
-    const aujourdhui = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau);
-    const rangees = lireTout<LigneAnniversaire>('SELECT * FROM anniversaires WHERE serveur_id = ?', serveur.id);
-    const score = (r: LigneAnniversaire) => {
-      const v = (r.mois - aujourdhui.mois) * 31 + (r.jour - aujourdhui.jour);
-      return v < 0 ? v + 12 * 31 : v;
-    };
-    const lignes = rangees.sort((a, b) => score(a) - score(b)).map((r) => `${score(r) === 0 ? '🎉' : '🎂'} **${r.jour} ${MOIS[r.mois - 1]}** — <@${r.utilisateur_id}>`);
-    if (!lignes.length) lignes.push('*Aucun anniversaire enregistré. Ajoute le tien avec `/birthday set` !*');
-    return paginer(interaction, lignesEnPages(lignes, 15, (contenu, page, total) => embedEnseigne(serveur).setTitle('🎂 Anniversaires à venir').setDescription(contenu).setFooter({ text: `Page ${page}/${total}` })));
+    await repondre(interaction, { ...panneauAnniversaires(interaction.guild, interaction.user.id), ephemeral: true });
+  },
+};
+
+const composantAnniversaires: GestionnaireComposant = {
+  prefixe: 'anniv',
+  async bouton(interaction: ButtonInteraction<'cached'>, [action]) {
+    if (action === 'choisir') return interaction.showModal(construireFormulaire('anniv:date', 'Ton anniversaire', [{ id: 'date', libelle: 'Jour et mois (JJ/MM)', indication: '14/09', longueurMax: 5 }]));
+    executer('DELETE FROM anniversaires WHERE serveur_id = ? AND utilisateur_id = ?', interaction.guildId, interaction.user.id);
+    await interaction.update(panneauAnniversaires(interaction.guild, interaction.user.id, '🗑️ Anniversaire retiré.'));
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>) {
+    const m = /^(\d{1,2})\s*[/.\- ]\s*(\d{1,2})$/.exec(interaction.fields.getTextInputValue('date').trim());
+    if (!m) throw new ErreurUtilisateur('Format attendu : `JJ/MM`, par exemple `14/09`.');
+    enregistrerAnniversaire(interaction.guildId, interaction.user.id, Number(m[1]), Number(m[2]));
+    const charge = panneauAnniversaires(interaction.guild, interaction.user.id, `✅ C’est noté : **${Number(m[1])} ${MOIS[Number(m[2]) - 1]}**.`);
+    if (interaction.isFromMessage()) await interaction.update(charge);
+    else await interaction.reply({ ...charge, flags: MessageFlags.Ephemeral });
   },
 };
 
@@ -175,8 +179,7 @@ const commandesPrefixe: CommandePrefixe[] = [
       }
       const jour = Number(m[1]);
       const mois = Number(m[2]);
-      if (!anniversaireValide(jour, mois)) throw new ErreurUtilisateur('Cette date n’existe pas.');
-      executer('INSERT INTO anniversaires (serveur_id, utilisateur_id, jour, mois) VALUES (?, ?, ?, ?) ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET jour = excluded.jour, mois = excluded.mois', message.guildId, message.author.id, jour, mois);
+      enregistrerAnniversaire(message.guildId, message.author.id, jour, mois);
       await message.reply({ embeds: [ok(message.guild, `🎂 Anniversaire enregistré : **${jour} ${MOIS[mois - 1]}**.`)], allowedMentions: { repliedUser: false } });
     },
   },
@@ -207,6 +210,7 @@ export const moduleAnniversaires: ModuleBot = {
   actifParDefaut: true,
   commandes: [commandeAnniversaire],
   commandesPrefixe,
+  composants: [composantAnniversaires],
   pagesReglage: [pageReglage],
   taches: [
     {
@@ -294,46 +298,48 @@ async function livrer(client: Client, r: LigneRappel): Promise<void> {
   if (salon?.isTextBased()) await salon.send({ content: `<@${r.utilisateur_id}>`, embeds: [embed], allowedMentions: { users: [r.utilisateur_id] } }).catch(() => undefined);
 }
 
+// - /rappel -
+function panneauRappels(serveur: Guild, utilisateurId: string, note?: string) {
+  const rangees = lireTout<LigneRappel>('SELECT * FROM rappels WHERE utilisateur_id = ? AND envoye = 0 ORDER BY rappel_le LIMIT 25', utilisateurId);
+  const embed = embedEnseigne(serveur)
+    .setTitle('⏰ Tes rappels')
+    .setDescription([note, rangees.map((r) => `${marqueTemps(r.rappel_le, 'R')} — ${tronquer(r.contenu, 90)}`).join('\n') || 'Aucun rappel en attente.', '', `-# Au clavier : \`${lireConfig(serveur.id).prefixes.general}rappel 2h sortir le chien\``].filter((l) => l !== undefined).join('\n'));
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [rangee(bouton('rap:nouveau', 'Nouveau rappel', ButtonStyle.Success, '⏰'))];
+  if (rangees.length) {
+    composants.push(rangee(new StringSelectMenuBuilder().setCustomId('rap:annuler').setPlaceholder('Annuler un rappel').addOptions(rangees.map((r) => ({ label: tronquer(r.contenu, 100), value: String(r.id), description: `Rappel #${r.id}` })))));
+  }
+  return { embeds: [embed], components: composants };
+}
+
 const rappel: CommandeSlash = {
   categorie: 'community',
-  donnees: new SlashCommandBuilder()
-    .setName('remind')
-    .setDescription('Les rappels')
-    .addSubcommand((s) =>
-      s
-        .setName('set')
-        .setDescription('Programmer un rappel')
-        .addStringOption((o) => o.setName('duree').setDescription('Dans combien de temps').setRequired(true))
-        .addStringOption((o) => o.setName('texte').setDescription('De quoi te rappeler').setRequired(true).setMaxLength(1000)),
-    )
-    .addSubcommand((s) => s.setName('list').setDescription('Tes rappels en attente'))
-    .addSubcommand((s) =>
-      s
-        .setName('cancel')
-        .setDescription('Annuler un rappel')
-        .addIntegerOption((o) => o.setName('rappel').setDescription('Le rappel').setRequired(true).setAutocomplete(true)),
-    ),
-  async autocompletion(interaction) {
-    const rangees = lireTout<LigneRappel>('SELECT * FROM rappels WHERE utilisateur_id = ? AND envoye = 0 ORDER BY rappel_le LIMIT 25', interaction.user.id);
-    await interaction.respond(rangees.map((r) => ({ name: tronquer(`#${r.id} · ${r.contenu}`, 100), value: r.id })));
-  },
+  donnees: new SlashCommandBuilder().setName('rappel').setDescription('Tes rappels'),
   async executer(interaction) {
-    const sousCommande = interaction.options.getSubcommand();
-    const serveur = interaction.guild;
-    if (sousCommande === 'set') {
-      const delai = lireDuree(interaction.options.getString('duree', true));
-      if (!delai) throw new ErreurUtilisateur('Durée incomprise : exemples `2h30`, `45m`, `1j 2h`.');
-      const r = creer(serveur.id, interaction.channelId, interaction.user.id, delai, interaction.options.getString('texte', true));
-      return repondre(interaction, { embeds: [ok(serveur, `⏰ Rappel **#${r.id}** programmé ${marqueTemps(r.rappel_le, 'R')} (${formaterDuree(delai)}).\n> ${r.contenu}`)], ephemeral: true });
-    }
-    if (sousCommande === 'cancel') {
-      const reponse = executer('DELETE FROM rappels WHERE id = ? AND utilisateur_id = ? AND envoye = 0', interaction.options.getInteger('rappel', true), interaction.user.id);
-      return repondre(interaction, { embeds: [ok(serveur, reponse.changes ? 'Rappel annulé.' : 'Rappel introuvable.')], ephemeral: true });
-    }
-    const rangees = lireTout<LigneRappel>('SELECT * FROM rappels WHERE utilisateur_id = ? AND envoye = 0 ORDER BY rappel_le', interaction.user.id);
-    const lignes = rangees.map((r) => `**#${r.id}** ${marqueTemps(r.rappel_le, 'R')} — ${tronquer(r.contenu, 100)}`);
-    if (!lignes.length) lignes.push('*Aucun rappel en attente.*');
-    return paginer(interaction, lignesEnPages(lignes, 10, (contenu, page, total) => embedEnseigne(serveur).setTitle('⏰ Tes rappels').setDescription(contenu).setFooter({ text: `Page ${page}/${total}` })), true);
+    await repondre(interaction, { ...panneauRappels(interaction.guild, interaction.user.id), ephemeral: true });
+  },
+};
+
+const composantRappels: GestionnaireComposant = {
+  prefixe: 'rap',
+  async bouton(interaction: ButtonInteraction<'cached'>) {
+    await interaction.showModal(
+      construireFormulaire('rap:creer', 'Nouveau rappel', [
+        { id: 'duree', libelle: 'Dans combien de temps ?', indication: '2h30, 45m, 1j', longueurMax: 20 },
+        { id: 'texte', libelle: 'De quoi te rappeler ?', long: true, longueurMax: 1000 },
+      ]),
+    );
+  },
+  async menu(interaction: AnySelectMenuInteraction<'cached'>) {
+    executer('DELETE FROM rappels WHERE id = ? AND utilisateur_id = ? AND envoye = 0', Number(interaction.values[0]), interaction.user.id);
+    await interaction.update(panneauRappels(interaction.guild, interaction.user.id, '🗑️ Rappel annulé.'));
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>) {
+    const delai = lireDuree(interaction.fields.getTextInputValue('duree'));
+    if (!delai) throw new ErreurUtilisateur('Durée incomprise : exemples `2h30`, `45m`, `1j 2h`.');
+    const r = creer(interaction.guildId, interaction.channelId ?? '', interaction.user.id, delai, interaction.fields.getTextInputValue('texte'));
+    const charge = panneauRappels(interaction.guild, interaction.user.id, `✅ Je te le rappelle ${marqueTemps(r.rappel_le, 'R')}.`);
+    if (interaction.isFromMessage()) await interaction.update(charge);
+    else await interaction.reply({ ...charge, flags: MessageFlags.Ephemeral });
   },
 };
 
@@ -363,6 +369,7 @@ export const moduleRappels: ModuleBot = {
   actifParDefaut: true,
   commandes: [rappel],
   commandesPrefixe: commandesPrefixeRappels,
+  composants: [composantRappels],
   taches: [
     {
       nom: 'reminders',
@@ -414,32 +421,31 @@ function reponsesRsvp(evenementId: number): Record<ReponseRsvp, string[]> {
   return sortie;
 }
 
+// - L’annonce d’un événement -
+// L’essentiel d’un coup d’œil : quoi, quand, combien viennent.
+export function texteEvenement(e: Pick<LigneEvenement, 'description' | 'jeu' | 'debut_le' | 'statut'>, reponses: Record<ReponseRsvp, string[]>): string {
+  const etat = e.statut === 'cancelled' ? '❌ **Annulé**' : e.statut === 'started' ? '🔴 **C’est parti !**' : e.statut === 'ended' ? '🏁 **Terminé**' : null;
+  return [
+    e.description ? `${e.description}\n` : null,
+    e.jeu ? `🎮 ${e.jeu}` : null,
+    `🗓️ ${marqueTemps(e.debut_le, 'F')} · ${marqueTemps(e.debut_le, 'R')}`,
+    `✅ **${reponses.yes.length}** inscrit${reponses.yes.length > 1 ? 's' : ''}${reponses.maybe.length ? ` · ❓ ${reponses.maybe.length} peut-être` : ''}`,
+    etat ? `\n${etat}` : null,
+  ]
+    .filter((l) => l !== null)
+    .join('\n');
+}
+
 function afficher(serveur: Guild, e: LigneEvenement) {
   const liste = reponsesRsvp(e.id);
   const ferme = e.statut === 'cancelled' || e.statut === 'ended';
+  const organisateur = serveur.members.cache.get(e.createur_id);
   const embed = new EmbedBuilder()
     .setColor(couleurPour(serveur, e.statut === 'cancelled' ? 'erreur' : 'principale'))
-    .setTitle(`🎮 ${tronquer(e.nom.toUpperCase(), 240)}`)
-    .setDescription(
-      [
-        e.jeu ? `**${e.jeu}**` : null,
-        e.description || null,
-        '',
-        `📅 ${marqueTemps(e.debut_le, 'F')}`,
-        `🕘 ${marqueTemps(e.debut_le, 'R')}`,
-        e.statut === 'cancelled' ? '\n**❌ Événement annulé**' : e.statut === 'started' ? '\n**🔴 C’est parti !**' : null,
-      ]
-        .filter((l) => l !== null)
-        .join('\n'),
-    )
-    .addFields(
-      (Object.keys(RSVP) as ReponseRsvp[]).map((k) => ({
-        name: `${RSVP[k].emoji} ${RSVP[k].label} (${liste[k].length})`,
-        value: liste[k].length ? listeMentionsCourte(liste[k], 15) : '—',
-        inline: true,
-      })),
-    )
-    .setFooter({ text: `Événement #${e.id} · organisé par ${serveur.members.cache.get(e.createur_id)?.displayName ?? 'le staff'}` });
+    .setTitle(`📅 ${tronquer(e.nom, 240)}`)
+    .setDescription(texteEvenement(e, liste))
+    .setFooter({ text: `Organisé par ${organisateur?.displayName ?? 'le staff'}`, iconURL: organisateur?.displayAvatarURL({ size: 64 }) });
+  if (liste.yes.length) embed.addFields({ name: 'Ils viennent', value: listeMentionsCourte(liste.yes, 20), inline: false });
   if (e.image) embed.setImage(e.image);
   return {
     embeds: [embed],
@@ -447,9 +453,9 @@ function afficher(serveur: Guild, e: LigneEvenement) {
       ? []
       : [
           rangee(
-            bouton(`ev:rsvp:${e.id}:yes`, 'Je participe', ButtonStyle.Success, '✅'),
+            bouton(`ev:rsvp:${e.id}:yes`, 'Je viens', ButtonStyle.Success, '✅'),
             bouton(`ev:rsvp:${e.id}:maybe`, 'Peut-être', ButtonStyle.Secondary, '❓'),
-            bouton(`ev:rsvp:${e.id}:no`, 'Absent', ButtonStyle.Secondary, '❌'),
+            bouton(`ev:rsvp:${e.id}:no`, 'Je ne viens pas', ButtonStyle.Secondary),
           ),
         ],
   };
@@ -469,76 +475,80 @@ async function rafraichir(client: Client, e: LigneEvenement): Promise<void> {
   await message?.edit(afficher(serveur, e)).catch(() => undefined);
 }
 
+// - /evenement : créer, voir, annuler -
+function panneauEvenements(serveur: Guild, staff: boolean, note?: string) {
+  const rangees = lireTout<LigneEvenement>("SELECT * FROM evenements WHERE serveur_id = ? AND statut IN ('scheduled','started') ORDER BY debut_le LIMIT 20", serveur.id);
+  const lignes = rangees.map((e) => `📅 **${tronquer(e.nom, 80)}** — ${marqueTemps(e.debut_le, 'R')} · ✅ ${reponsesRsvp(e.id).yes.length}${e.message_id ? ` · [voir](https://discord.com/channels/${e.serveur_id}/${e.salon_id}/${e.message_id})` : ''}`);
+  const embed = embedEnseigne(serveur)
+    .setTitle('📅 Événements')
+    .setDescription([note, lignes.join('\n') || 'Aucun événement prévu.'].filter(Boolean).join('\n\n'));
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+  if (staff) {
+    composants.push(rangee(bouton('evc:nouveau', 'Créer un événement', ButtonStyle.Success, '➕')));
+    if (rangees.length) composants.push(rangee(new StringSelectMenuBuilder().setCustomId('evc:annuler').setPlaceholder('Annuler un événement').addOptions(rangees.map((e) => ({ label: tronquer(e.nom, 100), value: String(e.id), description: `Le ${new Date(e.debut_le).toLocaleDateString('fr-FR')}` })))));
+  }
+  return { embeds: [embed], components: composants };
+}
+
 const commandeEvenement: CommandeSlash = {
   categorie: 'community',
-  niveau: Niveau.STAFF,
-  donnees: new SlashCommandBuilder()
-    .setName('event')
-    .setDescription('Les événements')
-    .addSubcommand((s) =>
-      s
-        .setName('create')
-        .setDescription('Créer un événement')
-        .addStringOption((o) => o.setName('nom').setDescription('Ex : Soirée communautaire').setRequired(true).setMaxLength(100))
-        .addStringOption((o) => o.setName('date').setDescription('JJ/MM ou JJ/MM/AAAA').setRequired(true))
-        .addStringOption((o) => o.setName('heure').setDescription('Heure (21h30)').setRequired(true))
-        .addStringOption((o) => o.setName('jeu').setDescription('Ex : Minecraft').setMaxLength(100))
-        .addStringOption((o) => o.setName('description').setDescription('Détails').setMaxLength(1500))
-        .addChannelOption((o) => o.setName('salon').setDescription('Où l’annoncer').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-        .addStringOption((o) => o.setName('image').setDescription('Lien d’une image').setMaxLength(500)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('cancel')
-        .setDescription('Annuler un événement')
-        .addIntegerOption((o) => o.setName('evenement').setDescription('L’événement').setRequired(true).setAutocomplete(true)),
-    )
-    .addSubcommand((s) => s.setName('list').setDescription('Les événements à venir')),
-  niveauxSousCommandes: { list: Niveau.MEMBRE },
-  async autocompletion(interaction) {
-    const rangees = lireTout<LigneEvenement>("SELECT * FROM evenements WHERE serveur_id = ? AND statut IN ('scheduled','started') ORDER BY debut_le LIMIT 25", interaction.guildId);
-    await interaction.respond(rangees.map((e) => ({ name: tronquer(`#${e.id} · ${e.nom}`, 100), value: e.id })));
-  },
+  donnees: new SlashCommandBuilder().setName('evenement').setDescription('Les événements'),
   async executer(interaction) {
+    await repondre(interaction, { ...panneauEvenements(interaction.guild, aNiveau(interaction.member, Niveau.STAFF)), ephemeral: true });
+  },
+};
+
+const composantCreationEvenement: GestionnaireComposant = {
+  prefixe: 'evc',
+  niveau: Niveau.STAFF,
+  async bouton(interaction: ButtonInteraction<'cached'>) {
+    await interaction.showModal(
+      construireFormulaire('evc:creer', 'Nouvel événement', [
+        { id: 'nom', libelle: 'Le nom', indication: 'Soirée Valorant', longueurMax: 100 },
+        { id: 'quand', libelle: 'Quand ? (JJ/MM et heure)', indication: '25/12 21h30', longueurMax: 30 },
+        { id: 'jeu', libelle: 'Le jeu (facultatif)', obligatoire: false, longueurMax: 100 },
+        { id: 'description', libelle: 'Les détails (facultatif)', long: true, obligatoire: false, longueurMax: 1500 },
+        { id: 'image', libelle: 'Lien d’une image (facultatif)', obligatoire: false, longueurMax: 500 },
+      ]),
+    );
+  },
+  async menu(interaction: AnySelectMenuInteraction<'cached'>) {
+    const e = exigerEvenement(interaction.guildId, interaction.values[0]);
+    executer("UPDATE evenements SET statut = 'cancelled' WHERE id = ?", e.id);
+    await rafraichir(interaction.client, { ...e, statut: 'cancelled' });
+    await interaction.update(panneauEvenements(interaction.guild, true, `❌ **${e.nom}** annulé.`));
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>) {
     const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    if (sousCommande === 'list') {
-      const rangees = lireTout<LigneEvenement>("SELECT * FROM evenements WHERE serveur_id = ? AND statut IN ('scheduled','started') ORDER BY debut_le LIMIT 20", serveur.id);
-      const lignes = rangees.map((e) => `🎮 **${tronquer(e.nom, 80)}** — ${marqueTemps(e.debut_le, 'f')} (${marqueTemps(e.debut_le, 'R')}) · ✅ ${reponsesRsvp(e.id).yes.length}${e.message_id ? ` · [voir](https://discord.com/channels/${e.serveur_id}/${e.salon_id}/${e.message_id})` : ''}`);
-      return repondre(interaction, { embeds: [new EmbedBuilder().setColor(couleurPour(serveur)).setTitle('📅 Événements à venir').setDescription(lignes.join('\n') || '*Aucun événement prévu.*')], ephemeral: true });
-    }
-    if (sousCommande === 'cancel') {
-      const e = exigerEvenement(serveur.id, interaction.options.getInteger('evenement', true));
-      executer("UPDATE evenements SET statut = 'cancelled' WHERE id = ?", e.id);
-      await rafraichir(interaction.client, { ...e, statut: 'cancelled' });
-      return repondre(interaction, { embeds: [ok(serveur, `Événement **${e.nom}** annulé.`)], ephemeral: true });
-    }
-    const fuseau = lireConfig(serveur.id).general.fuseau;
-    const debutLe = lireDateHeure(interaction.options.getString('date', true), interaction.options.getString('heure', true), fuseau);
-    if (!debutLe) throw new ErreurUtilisateur('Date ou heure invalide : exemples `25/12` et `21h`.');
+    const champ = (id: string) => interaction.fields.getTextInputValue(id).trim();
+    const [date, ...heure] = champ('quand').split(/\s+/);
+    const debutLe = lireDateHeure(date ?? '', heure.join(' ') || '20h', lireConfig(serveur.id).general.fuseau);
+    if (!debutLe) throw new ErreurUtilisateur('Date ou heure invalide : écris par exemple `25/12 21h30`.');
     if (debutLe < Date.now()) throw new ErreurUtilisateur('Cette date est déjà passée.');
-    const image = interaction.options.getString('image');
+    const image = champ('image') || null;
     if (image && !estLienHttp(image)) throw new ErreurUtilisateur('Lien d’image invalide.');
-    const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(serveur, lireConfig(serveur.id).evenements.salonDefautId) ?? interaction.channel) as GuildTextBasedChannel | null;
-    if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
+    const salon = (resoudreSalonTexte(serveur, lireConfig(serveur.id).evenements.salonDefautId) ?? interaction.channel) as GuildTextBasedChannel | null;
+    if (!salon) throw new ErreurUtilisateur('Choisis le salon des événements dans `/setup`.');
     const r = executer(
       'INSERT INTO evenements (serveur_id, salon_id, createur_id, nom, description, jeu, image, debut_le, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       serveur.id,
       salon.id,
       interaction.user.id,
-      neutraliserMentions(interaction.options.getString('nom', true)),
-      neutraliserMentions(interaction.options.getString('description') ?? ''),
-      interaction.options.getString('jeu'),
+      neutraliserMentions(champ('nom')),
+      neutraliserMentions(champ('description')),
+      champ('jeu') || null,
       image,
       debutLe,
       Date.now(),
     );
     const e = exigerEvenement(serveur.id, r.lastInsertRowid);
-    const ping = lireConfig(serveur.id).evenements.roleMentionId;
-    const message = await salon.send({ content: ping ? `<@&${ping}>` : undefined, ...afficher(serveur, e), allowedMentions: { roles: ping ? [ping] : [] } });
+    const roleMention = lireConfig(serveur.id).evenements.roleMentionId;
+    const message = await salon.send({ content: roleMention ? `<@&${roleMention}>` : undefined, ...afficher(serveur, e), allowedMentions: { roles: roleMention ? [roleMention] : [] } });
     executer('UPDATE evenements SET message_id = ? WHERE id = ?', message.id, e.id);
     void journal(serveur, 'community', { titre: 'Événement créé', ton: 'info', lignes: [`**${e.nom}** — ${marqueTemps(debutLe, 'F')}`, `[voir](${message.url})`], par: interaction.user });
-    return repondre(interaction, { embeds: [ok(serveur, `Événement publié : ${message.url}`)], ephemeral: true });
+    const charge = panneauEvenements(serveur, true, `✅ Publié dans <#${salon.id}>.`);
+    if (interaction.isFromMessage()) await interaction.update(charge);
+    else await interaction.reply({ ...charge, flags: MessageFlags.Ephemeral });
   },
 };
 
@@ -567,6 +577,7 @@ export const moduleEvenements: ModuleBot = {
   commandes: [commandeEvenement],
   pagesReglage: [pageReglageEvenements],
   composants: [
+    composantCreationEvenement,
     {
       prefixe: 'ev',
       async bouton(interaction: ButtonInteraction<'cached'>, [action, id, statut]) {

@@ -2,6 +2,7 @@ import {
   type APIEmbed,
   type APIEmbedField,
   ApplicationCommandOptionType,
+  ButtonStyle,
   ChannelType,
   version as djsVersion,
   type Guild,
@@ -10,11 +11,11 @@ import {
   type User,
 } from 'discord.js';
 import { aAcces, libelleNiveauVu, whitelistsMembreVues } from '../coeur/acces';
-import { boutonCorbeille, couleurPour, embedEnseigne, info, nomEnseigne, rangee, rangeeCorbeille, repondre } from '../coeur/affichage';
+import { bouton, boutonCorbeille, couleurPour, embedEnseigne, info, nomEnseigne, rangee, rangeeCorbeille, repondre } from '../coeur/affichage';
 import { type CommandePrefixe, type CommandeSlash, etatBot, lireAiguilleur, type ModuleBot, niveauRequis, sur } from '../coeur/noyau';
 import { formaterDuree, formaterNombre, marqueTemps, membreCible, resoudreUtilisateur, tronquer, type CategorieAide, CATEGORIES_AIDE, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
-import { crediterVocal, resynchroniserVocal, traiterEtatVocal } from './niveaux';
+import { crediterVocal, embedStatistiques, resynchroniserVocal, traiterEtatVocal } from './niveaux';
 
 // - Aide façon Airline -
 // Tout d’un coup, en tableau : une ligne par commande, jumelles regroupées.
@@ -233,81 +234,65 @@ const aide: CommandeSlash = {
   },
 };
 
-const ping: CommandeSlash = {
-  categorie: 'general',
-  donnees: new SlashCommandBuilder().setName('ping').setDescription('La latence du bot'),
-  async executer(interaction) {
-    const ws = interaction.client.ws.ping;
-    const embed = embedEnseigne(interaction.guild)
-      .setTitle('🏓 Pong')
-      .setDescription(
-        [`• Latence — **${ws >= 0 ? `${ws} ms` : '—'}**`, `• En ligne depuis — **${formaterDuree(Date.now() - etatBot.debutLe)}**`].join('\n'),
-      );
-    await repondre(interaction, { embeds: [embed], ephemeral: true });
-  },
-};
+function embedBot(serveur: Guild) {
+  const client = serveur.client;
+  const memoire = process.memoryUsage();
+  return embedEnseigne(serveur)
+    .setTitle('🤖 Le bot')
+    .setThumbnail(client.user.displayAvatarURL())
+    .addFields(
+      { name: 'Latence', value: `${client.ws.ping >= 0 ? client.ws.ping : '—'} ms`, inline: true },
+      { name: 'En ligne depuis', value: formaterDuree(Date.now() - etatBot.debutLe), inline: true },
+      { name: 'Serveurs', value: formaterNombre(client.guilds.cache.size), inline: true },
+      { name: 'Mémoire', value: `${Math.round(memoire.rss / 1024 / 1024)} Mo`, inline: true },
+      { name: 'Versions', value: `Node.js ${process.version} · discord.js v${djsVersion}`, inline: true },
+    );
+}
 
-const avatar: CommandeSlash = {
+// - /info : une fiche, cinq vues -
+type VueInfo = 'membre' | 'photo' | 'banniere' | 'serveur' | 'bot' | 'stats';
+
+const VUES_INFO: { vue: VueInfo; libelle: string; emoji: string }[] = [
+  { vue: 'membre', libelle: 'Membre', emoji: '👤' },
+  { vue: 'photo', libelle: 'Photo', emoji: '🖼️' },
+  { vue: 'banniere', libelle: 'Bannière', emoji: '🎨' },
+  { vue: 'serveur', libelle: 'Serveur', emoji: '🏠' },
+  { vue: 'stats', libelle: 'Stats', emoji: '📈' },
+  { vue: 'bot', libelle: 'Bot', emoji: '🤖' },
+];
+
+async function ecranInfo(serveur: Guild, utilisateurId: string, spectateurId: string, vue: VueInfo) {
+  const utilisateur = await serveur.client.users.fetch(utilisateurId, { force: vue === 'membre' || vue === 'banniere' });
+  const membre = await serveur.members.fetch(utilisateurId).catch(() => null);
+  const embed =
+    vue === 'membre'
+      ? embedInfoMembre(serveur, utilisateur, membre, spectateurId)
+      : vue === 'photo' || vue === 'banniere'
+        ? await embedImage(serveur, utilisateur, membre, vue === 'photo' ? 'avatar' : 'banner')
+        : vue === 'serveur'
+          ? embedInfoServeur(serveur)
+          : vue === 'stats'
+            ? embedStatistiques(serveur)
+            : embedBot(serveur);
+  const vues = VUES_INFO.filter((v) => v.vue !== 'stats' || moduleActif(serveur.id, 'stats'));
+  return {
+    embeds: [embed],
+    components: [
+      rangee(...vues.slice(0, 5).map((v) => bouton(`info:${v.vue}:${utilisateurId}`, v.libelle, v.vue === vue ? ButtonStyle.Primary : ButtonStyle.Secondary, v.emoji).setDisabled(v.vue === vue))),
+      rangee(...vues.slice(5).map((v) => bouton(`info:${v.vue}:${utilisateurId}`, v.libelle, v.vue === vue ? ButtonStyle.Primary : ButtonStyle.Secondary, v.emoji).setDisabled(v.vue === vue)), boutonCorbeille(serveur.id, spectateurId)),
+    ],
+  };
+}
+
+const commandeInfo: CommandeSlash = {
   categorie: 'general',
   donnees: new SlashCommandBuilder()
-    .setName('photo')
-    .setDescription('Photo ou bannière')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)'))
-    .addStringOption((o) =>
-      o.setName('type').setDescription('Quoi').addChoices({ name: 'Photo de profil', value: 'avatar' }, { name: 'Bannière', value: 'banner' }),
-    ),
-  async executer(interaction) {
-    const utilisateur = interaction.options.getUser('membre') ?? interaction.user;
-    const membre = interaction.options.getMember('membre') ?? (utilisateur.id === interaction.user.id ? interaction.member : null);
-    const genre = (interaction.options.getString('type') ?? 'avatar') as 'avatar' | 'banner';
-    const embed = await embedImage(interaction.guild, utilisateur, membre instanceof GuildMember ? membre : null, genre);
-    await repondre(interaction, { embeds: [embed], components: [rangeeCorbeille(interaction.guildId, interaction.user.id)] });
-  },
-};
-
-const infoMembre: CommandeSlash = {
-  categorie: 'general',
-  donnees: new SlashCommandBuilder()
-    .setName('userinfo')
-    .setDescription('Fiche d’un membre')
+    .setName('info')
+    .setDescription('Fiches et infos')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)')),
   async executer(interaction) {
-    const utilisateur = await (interaction.options.getUser('membre') ?? interaction.user).fetch();
-    const membre = interaction.options.getMember('membre') ?? (utilisateur.id === interaction.user.id ? interaction.member : null);
-    await repondre(interaction, {
-      embeds: [embedInfoMembre(interaction.guild, utilisateur, membre instanceof GuildMember ? membre : null, interaction.user.id)],
-      components: [rangeeCorbeille(interaction.guildId, interaction.user.id)],
-    });
-  },
-};
-
-const infoServeur: CommandeSlash = {
-  categorie: 'general',
-  donnees: new SlashCommandBuilder().setName('serverinfo').setDescription('Fiche du serveur'),
-  async executer(interaction) {
-    await repondre(interaction, { embeds: [embedInfoServeur(interaction.guild)], components: [rangeeCorbeille(interaction.guildId, interaction.user.id)] });
-  },
-};
-
-const infoBot: CommandeSlash = {
-  categorie: 'general',
-  donnees: new SlashCommandBuilder().setName('botinfo').setDescription('Le bot en chiffres'),
-  async executer(interaction) {
-    const client = interaction.client;
-    const memoire = process.memoryUsage();
-    const embed = embedEnseigne(interaction.guild)
-      .setTitle('🤖 Le bot')
-      .setThumbnail(client.user.displayAvatarURL())
-      .setDescription(
-        [
-          `• Serveurs — **${formaterNombre(client.guilds.cache.size)}**`,
-          `• En ligne depuis — **${formaterDuree(Date.now() - etatBot.debutLe)}**`,
-          `• Latence — **${client.ws.ping} ms**`,
-          `• Mémoire — **${Math.round(memoire.rss / 1024 / 1024)} Mo**`,
-          `• Node.js — **${process.version}** · discord.js **v${djsVersion}**`,
-        ].join('\n'),
-      );
-    await repondre(interaction, { embeds: [embed], ephemeral: true });
+    await interaction.deferReply();
+    await interaction.editReply(await ecranInfo(interaction.guild, (interaction.options.getUser('membre') ?? interaction.user).id, interaction.user.id, 'membre'));
   },
 };
 
@@ -384,6 +369,26 @@ const commandesPrefixe: CommandePrefixe[] = [
       await message.reply({ embeds: [info(message.guild, `Pong — **${message.client.ws.ping} ms**`)], allowedMentions: { repliedUser: false } });
     },
   },
+  {
+    nom: 'bot',
+    alias: ['botinfo'],
+    domaine: 'general',
+    categorie: 'general',
+    description: 'Le bot en chiffres',
+    async executer(message) {
+      await message.reply({ ...(await ecranInfo(message.guild, message.author.id, message.author.id, 'bot')), allowedMentions: { repliedUser: false } });
+    },
+  },
+  {
+    nom: 'stats',
+    alias: ['statistiques'],
+    domaine: 'general',
+    categorie: 'general',
+    description: 'Les stats du serveur',
+    async executer(message) {
+      await message.reply({ ...(await ecranInfo(message.guild, message.author.id, message.author.id, 'stats')), allowedMentions: { repliedUser: false } });
+    },
+  },
 ];
 
 export const moduleGeneral: ModuleBot = {
@@ -393,8 +398,17 @@ export const moduleGeneral: ModuleBot = {
   description: 'Aide, fiches et informations',
   desactivable: false,
   actifParDefaut: true,
-  commandes: [aide, ping, avatar, infoMembre, infoServeur, infoBot],
+  commandes: [aide, commandeInfo],
   commandesPrefixe,
+  composants: [
+    {
+      prefixe: 'info',
+      async bouton(interaction, [vue, utilisateurId]) {
+        await interaction.deferUpdate();
+        await interaction.editReply(await ecranInfo(interaction.guild, utilisateurId ?? interaction.user.id, interaction.user.id, vue as VueInfo));
+      },
+    },
+  ],
   evenements: [sur('voiceStateUpdate', (avant, apres) => traiterEtatVocal(avant, apres), 5)],
   taches: [
     {

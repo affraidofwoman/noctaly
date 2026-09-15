@@ -1,6 +1,8 @@
 import {
+  type AnySelectMenuInteraction,
   type ButtonInteraction,
   ButtonStyle,
+  ChannelSelectMenuBuilder,
   ChannelType,
   type Client,
   EmbedBuilder,
@@ -9,6 +11,7 @@ import {
   MessageFlags,
   type ModalSubmitInteraction,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
 } from 'discord.js';
 import { aNiveau, botPeutGererRole } from '../coeur/acces';
 import { bouton, type ChampFenetre, construireFormulaire, couleurPour, estLienHttp, ok, rangee, repondre } from '../coeur/affichage';
@@ -435,79 +438,28 @@ async function soumettre(interaction: ModalSubmitInteraction<'cached'>, formulai
   await interaction.reply({ embeds: [ok(serveur, 'Merci ! Ta réponse a bien été envoyée au staff. Tu recevras un message privé quand elle sera traitée.')], flags: MessageFlags.Ephemeral });
 }
 
-const partenariat: CommandeSlash = {
-  categorie: 'community',
-  delaiSecondes: 60,
-  donnees: new SlashCommandBuilder().setName('partner').setDescription('Proposer un partenariat'),
-  async executer(interaction) {
-    await interaction.showModal(fenetreFormulaire(integre(interaction.guild, 'partenariat')!));
-  },
-};
-
-const candidatureStaff: CommandeSlash = {
-  categorie: 'community',
-  delaiSecondes: 60,
-  donnees: new SlashCommandBuilder().setName('staffapply').setDescription('Candidater pour le staff'),
-  async executer(interaction) {
-    await interaction.showModal(fenetreFormulaire(integre(interaction.guild, 'staff')!));
-  },
-};
+// - /formulaire : créer, lister, supprimer -
+function panneauFormulaires(serveur: Guild, note?: string) {
+  const rangees = lireTout<LigneFormulaire>('SELECT * FROM formulaires WHERE serveur_id = ? ORDER BY nom', serveur.id);
+  const lignes = ['🤝 **Partenariat** — intégré', '📋 **Candidature staff** — intégré', ...rangees.map((r) => `📝 **${r.titre}** — ${lireJson<Question[]>(r.questions, []).length} question(s) → <#${r.salon_id}>`)];
+  const embed = new EmbedBuilder()
+    .setColor(couleurPour(serveur))
+    .setTitle('📝 Formulaires')
+    .setDescription([note, lignes.join('\n'), '', '-# Les membres y accèdent par `/contact`, ou par un bouton posé avec `/affiche`.'].filter((l) => l !== undefined).join('\n'));
+  return {
+    embeds: [embed],
+    components: [rangee(bouton('form:nouveau', 'Créer un formulaire', ButtonStyle.Success, '➕'), bouton('form:suppression', 'Supprimer', ButtonStyle.Secondary, '🗑️').setDisabled(!rangees.length))],
+  };
+}
 
 const commandeFormulaire: CommandeSlash = {
   categorie: 'admin',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('form')
-    .setDescription('Formulaires personnalisés')
-    .addSubcommand((s) =>
-      s
-        .setName('create')
-        .setDescription('Créer un formulaire')
-        .addStringOption((o) => o.setName('titre').setDescription('Ex : Recrutement monteur').setRequired(true).setMaxLength(45))
-        .addChannelOption((o) => o.setName('salon').setDescription('Où arrivent les réponses').setRequired(true).addChannelTypes(ChannelType.GuildText)),
-    )
-
-    .addSubcommand((s) =>
-      s
-        .setName('delete')
-        .setDescription('Supprimer un formulaire')
-        .addStringOption((o) => o.setName('formulaire').setDescription('Le formulaire').setRequired(true).setAutocomplete(true)),
-    )
-    .addSubcommand((s) => s.setName('list').setDescription('Les formulaires')),
-  async autocompletion(interaction) {
-    const rangees = lireTout<LigneFormulaire>('SELECT * FROM formulaires WHERE serveur_id = ? ORDER BY nom', interaction.guildId);
-    const options = [{ name: '🤝 Partenariat (intégré)', value: 'partenariat' }, { name: '📋 Candidature staff (intégré)', value: 'staff' }, ...rangees.map((r) => ({ name: tronquer(r.titre, 100), value: r.nom }))];
-    const saisie = String(interaction.options.getFocused()).toLowerCase();
-    await interaction.respond(options.filter((o) => o.name.toLowerCase().includes(saisie)).slice(0, 25));
-  },
+  donnees: new SlashCommandBuilder().setName('formulaire').setDescription('Les formulaires'),
   async executer(interaction) {
-    const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    if (sousCommande === 'list') {
-      const rangees = lireTout<LigneFormulaire>('SELECT * FROM formulaires WHERE serveur_id = ? ORDER BY nom', serveur.id);
-      const lignes = ['🤝 **Partenariat** — intégré (`/partner`)', '📋 **Candidature staff** — intégré (`/staffapply`)', ...rangees.map((r) => `📝 **${r.titre}** \`${r.nom}\` — ${lireJson<Question[]>(r.questions, []).length} question(s) → <#${r.salon_id}>`)];
-      return repondre(interaction, { embeds: [new EmbedBuilder().setColor(couleurPour(serveur)).setTitle('📝 Formulaires').setDescription(lignes.join('\n'))], ephemeral: true });
-    }
-    if (sousCommande === 'create') {
-      const titre = interaction.options.getString('titre', true);
-      const salon = interaction.options.getChannel('salon', true);
-      return interaction.showModal(
-        construireFormulaire(`form:create:${salon.id}`, `Questions — ${titre}`.slice(0, 45), [
-          { id: 'title', libelle: 'Titre', valeur: titre, longueurMax: 45 },
-          { id: 'description', libelle: 'Description du formulaire', obligatoire: false, longueurMax: 300 },
-          { id: 'questions', libelle: 'Questions (une par ligne, 5 max)', long: true, longueurMax: 400, indication: 'Âge\nDisponibilités*\n?Lien vers ton portfolio\n(* = réponse longue, ? = facultative)' },
-        ]),
-      );
-    }
-    const nom = interaction.options.getString('formulaire', true);
-    if (sousCommande === 'delete') {
-      if (integre(serveur, nom)) throw new ErreurUtilisateur('Les formulaires intégrés se désactivent en coupant le module.');
-      const r = executer('DELETE FROM formulaires WHERE serveur_id = ? AND nom = ?', serveur.id, nom);
-      return repondre(interaction, { embeds: [ok(serveur, r.changes ? 'Formulaire supprimé.' : 'Introuvable.')], ephemeral: true });
-    }
+    await repondre(interaction, { ...panneauFormulaires(interaction.guild), ephemeral: true });
   },
 };
-
 const panneauFormulaire: PanneauAffiche = {
   id: 'formulaire',
   alias: ['form', 'candidature'],
@@ -537,7 +489,7 @@ const pageReglageFormulaires: PageReglage = {
   emoji: '📝',
   moduleId: 'forms',
   ordre: 15,
-  description: 'Où arrivent les candidatures intégrées (`/partner`, `/staffapply`). Les formulaires personnalisés se créent avec `/form create`.',
+  description: 'Où arrivent les candidatures intégrées (via `/contact`). Les formulaires personnalisés se créent avec `/formulaire`.',
   champs: [
     { genre: 'channel', cle: 'partner', libelle: 'Salon des partenariats', lire: (c) => c.formulaires.salonPartenariatsId, ecrire: (c, v) => void (c.formulaires.salonPartenariatsId = v) },
     { genre: 'channel', cle: 'staff', libelle: 'Salon des candidatures staff', lire: (c) => c.formulaires.salonCandidaturesId, ecrire: (c, v) => void (c.formulaires.salonCandidaturesId = v) },
@@ -551,7 +503,7 @@ export const moduleFormulaires: ModuleBot = {
   description: 'Partenariats, candidatures staff et formulaires personnalisés',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [partenariat, candidatureStaff, commandeFormulaire],
+  commandes: [commandeFormulaire],
   panneaux: [panneauFormulaire],
   commandesPrefixe: [prefixePanneau(panneauFormulaire, 'Poser un formulaire')],
   pagesReglage: [pageReglageFormulaires],
@@ -563,6 +515,15 @@ export const moduleFormulaires: ModuleBot = {
           const formulaire = lireFormulaire(interaction.guild, argument ?? '');
           if (!formulaire) throw new ErreurUtilisateur('Ce formulaire n’existe plus.');
           return interaction.showModal(fenetreFormulaire(formulaire));
+        }
+        if (action === 'nouveau' || action === 'suppression') {
+          if (!aNiveau(interaction.member, Niveau.ADMIN)) throw new ErreurUtilisateur('Réservé aux admins.');
+          const rangees = lireTout<LigneFormulaire>('SELECT * FROM formulaires WHERE serveur_id = ? ORDER BY nom', interaction.guildId);
+          const menu =
+            action === 'nouveau'
+              ? new ChannelSelectMenuBuilder().setCustomId('form:salon').setPlaceholder('Où arrivent les réponses ?').addChannelTypes(ChannelType.GuildText)
+              : new StringSelectMenuBuilder().setCustomId('form:suppr').setPlaceholder('Lequel supprimer ?').addOptions(rangees.slice(0, 25).map((r) => ({ label: tronquer(r.titre, 100), value: r.nom })));
+          return interaction.update({ embeds: [new EmbedBuilder().setColor(couleurPour(interaction.guild)).setTitle('📝 Formulaires').setDescription(action === 'nouveau' ? 'Choisis le salon où arriveront les réponses.' : 'Quel formulaire supprimer ?')], components: [rangee(menu)] });
         }
         if (!aNiveau(interaction.member, Niveau.STAFF)) throw new ErreurUtilisateur('Réservé au staff.');
         const sousCommande = lire<{ id: number; utilisateur_id: string; formulaire: string; statut: string }>('SELECT id, utilisateur_id, formulaire, statut FROM reponses_formulaires WHERE id = ? AND serveur_id = ?', Number(argument), interaction.guildId);
@@ -577,6 +538,23 @@ export const moduleFormulaires: ModuleBot = {
           .catch(() => undefined);
         const embed = EmbedBuilder.from(interaction.message.embeds[0]!).setColor(couleurPour(interaction.guild, accepte ? 'succes' : 'erreur')).setFooter({ text: `${accepte ? 'Acceptée' : 'Refusée'} par ${interaction.user.tag}` });
         await interaction.update({ embeds: [embed], components: [] });
+      },
+      async menu(interaction: AnySelectMenuInteraction<'cached'>, [action]) {
+        if (!aNiveau(interaction.member, Niveau.ADMIN)) throw new ErreurUtilisateur('Réservé aux admins.');
+        const valeur = interaction.values[0] ?? '';
+        if (action === 'salon') {
+          return interaction.showModal(
+            construireFormulaire(`form:create:${valeur}`, 'Nouveau formulaire', [
+              { id: 'title', libelle: 'Titre', indication: 'Recrutement monteur', longueurMax: 45 },
+              { id: 'description', libelle: 'Description du formulaire', obligatoire: false, longueurMax: 300 },
+              { id: 'questions', libelle: 'Questions (une par ligne, 5 max)', long: true, longueurMax: 400, indication: 'Âge\nDisponibilités*\n?Lien vers ton portfolio\n(* = réponse longue, ? = facultative)' },
+            ]),
+          );
+        }
+        if (action === 'suppr') {
+          executer('DELETE FROM formulaires WHERE serveur_id = ? AND nom = ?', interaction.guildId, valeur);
+          return interaction.update(panneauFormulaires(interaction.guild, '🗑️ Formulaire supprimé.'));
+        }
       },
       async fenetre(interaction: ModalSubmitInteraction<'cached'>, [action, argument]) {
         if (action === 'submit') {
@@ -602,7 +580,9 @@ export const moduleFormulaires: ModuleBot = {
             argument,
             Date.now(),
           );
-          await interaction.reply({ embeds: [ok(interaction.guild, `Formulaire **${titre}** enregistré (\`${nom}\`, ${questions.length} question(s)).\nPoste son bouton avec \`/affiche\`.`)], flags: MessageFlags.Ephemeral });
+          const note = `✅ **${titre}** enregistré (${questions.length} question(s)). Pose son bouton avec \`/affiche\`.`;
+          if (interaction.isFromMessage()) await interaction.update(panneauFormulaires(interaction.guild, note));
+          else await interaction.reply({ ...panneauFormulaires(interaction.guild, note), flags: MessageFlags.Ephemeral });
         }
       },
     },

@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { type ButtonInteraction, ButtonStyle, EmbedBuilder, type Guild, MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { bouton, couleurPour, rangee, repondre } from '../coeur/affichage';
+import { bouton, construireFormulaire, couleurPour, rangee } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
 import type { CommandePrefixe, CommandeSlash, ModuleBot } from '../coeur/noyau';
 import { ErreurUtilisateur, neutraliserMentions, tronquer } from '../coeur/outils';
@@ -47,34 +47,25 @@ function lancerDes(serveur: Guild, nombre: number, faces: number) {
   };
 }
 
-const bouleMagique: CommandeSlash = {
+// - /jeux : les mini-jeux au clic -
+const jeux: CommandeSlash = {
   categorie: 'economy',
-  donnees: new SlashCommandBuilder()
-    .setName('8ball')
-    .setDescription('Boule magique')
-    .addStringOption((o) => o.setName('question').setDescription('Ta question').setRequired(true).setMaxLength(200)),
+  donnees: new SlashCommandBuilder().setName('jeux').setDescription('Les mini-jeux'),
   async executer(i) {
-    await repondre(i, boule(i.guild, i.options.getString('question', true)));
-  },
-};
-
-const pileOuFace: CommandeSlash = {
-  categorie: 'economy',
-  donnees: new SlashCommandBuilder().setName('coinflip').setDescription('Pile ou face'),
-  async executer(i) {
-    await repondre(i, piece(i.guild));
-  },
-};
-
-const des: CommandeSlash = {
-  categorie: 'economy',
-  donnees: new SlashCommandBuilder()
-    .setName('dice')
-    .setDescription('Lancer des dés')
-    .addIntegerOption((o) => o.setName('faces').setDescription('Nombre de faces').setMinValue(2).setMaxValue(1000))
-    .addIntegerOption((o) => o.setName('nombre').setDescription('Nombre de dés').setMinValue(1).setMaxValue(20)),
-  async executer(i) {
-    await repondre(i, lancerDes(i.guild, i.options.getInteger('nombre') ?? 1, i.options.getInteger('faces') ?? 6));
+    const actifs = lireConfig(i.guildId).jeux;
+    const prefixe = lireConfig(i.guildId).prefixes.general;
+    const liste = [
+      { id: 'boule', actif: actifs.bouleMagique, libelle: 'Boule magique', emoji: '🎱', quoi: 'Pose une question, elle répond' },
+      { id: 'piece', actif: actifs.pileOuFace, libelle: 'Pile ou face', emoji: '🪙', quoi: 'La pièce décide' },
+      { id: 'des', actif: actifs.des, libelle: 'Dés', emoji: '🎲', quoi: 'De 1 à 20 dés, jusqu’à 1000 faces' },
+      { id: 'duel', actif: actifs.pierreFeuilleCiseaux, libelle: 'Chifoumi', emoji: '✊', quoi: 'Contre le bot, ou `=rps @membre`' },
+    ].filter((j) => j.actif);
+    if (!liste.length) throw new ErreurUtilisateur('Aucun mini-jeu n’est activé sur ce serveur.');
+    await i.reply({
+      embeds: [embed(i.guild).setTitle('🎲 Mini-jeux').setDescription([...liste.map((j) => `${j.emoji} **${j.libelle}** — ${j.quoi}`), '', `-# Au clavier : \`${prefixe}8ball\`, \`${prefixe}pf\`, \`${prefixe}de 3d20\`, \`${prefixe}rps\``].join('\n'))],
+      components: [rangee(...liste.map((j) => bouton(`jeu:${j.id}`, j.libelle, ButtonStyle.Secondary, j.emoji)))],
+      flags: MessageFlags.Ephemeral,
+    });
   },
 };
 
@@ -84,16 +75,6 @@ const COUPS: Record<string, { label: string; emoji: string; bat: string }> = {
   ciseaux: { label: 'Ciseaux', emoji: '✂️', bat: 'feuille' },
 };
 
-const pierreFeuilleCiseaux: CommandeSlash = {
-  categorie: 'economy',
-  donnees: new SlashCommandBuilder()
-    .setName('rps')
-    .setDescription('Pierre, feuille, ciseaux')
-    .addUserOption((o) => o.setName('adversaire').setDescription('Adversaire')),
-  async executer(i) {
-    await repondre(i, duel(i.guild, i.user.id, i.options.getUser('adversaire')));
-  },
-};
 
 function duel(serveur: Guild, joueurId: string, adversaire: { id: string; bot: boolean } | null) {
   exigerJeu(serveur.id, 'pierreFeuilleCiseaux');
@@ -134,7 +115,7 @@ async function surPierreFeuille(interaction: ButtonInteraction<'cached'>, [defie
   if (!coup || !COUPS[coup]) return;
   const joueurs = [defieur, adversaire];
   if (adversaire === 'bot') {
-    if (interaction.user.id !== defieur) throw new ErreurUtilisateur('Lance ta propre partie avec `/rps`.');
+    if (interaction.user.id !== defieur) throw new ErreurUtilisateur('Lance ta propre partie avec `/jeux`.');
     const coupBot = Object.keys(COUPS)[randomInt(3)]!;
     const resultat = coup === coupBot ? 'Égalité !' : COUPS[coup]!.bat === coupBot ? 'Tu gagnes ! 🎉' : 'Le bot gagne ! 🤖';
     await interaction.update({ embeds: [embed(interaction.guild).setTitle('✊ Pierre, feuille, ciseaux').setDescription(`Toi : ${COUPS[coup]!.emoji} **${COUPS[coup]!.label}**\nBot : ${COUPS[coupBot]!.emoji} **${COUPS[coupBot]!.label}**\n\n**${resultat}**`)], components: [] });
@@ -181,8 +162,24 @@ export const moduleJeux: ModuleBot = {
   description: '8ball, pile ou face, dés, pierre-feuille-ciseaux',
   desactivable: true,
   actifParDefaut: false,
-  commandes: [bouleMagique, pileOuFace, des, pierreFeuilleCiseaux],
+  commandes: [jeux],
   commandesPrefixe: prefixesJeux,
   pagesReglage: [pageReglage],
-  composants: [{ prefixe: 'rps', bouton: (i, parametres) => surPierreFeuille(i, parametres) }],
+  composants: [
+    { prefixe: 'rps', bouton: (i, parametres) => surPierreFeuille(i, parametres) },
+    {
+      prefixe: 'jeu',
+      async bouton(i, [id]) {
+        if (id === 'boule') return i.showModal(construireFormulaire('jeu:boule', 'Boule magique', [{ id: 'question', libelle: 'Ta question', indication: 'Est-ce que le live sera long ce soir ?', longueurMax: 200 }]));
+        if (id === 'des') return i.showModal(construireFormulaire('jeu:des', 'Lancer des dés', [{ id: 'des', libelle: 'Combien de dés, combien de faces', valeur: '1d6', indication: '3d20', longueurMax: 8 }]));
+        if (id === 'piece') return i.reply(piece(i.guild));
+        if (id === 'duel') return i.reply(duel(i.guild, i.user.id, null));
+      },
+      async fenetre(i, [id]) {
+        if (id === 'boule') return i.reply(boule(i.guild, i.fields.getTextInputValue('question')));
+        const { nombre, faces } = lireDes([i.fields.getTextInputValue('des').trim()]);
+        return i.reply(lancerDes(i.guild, nombre, faces));
+      },
+    },
+  ],
 };

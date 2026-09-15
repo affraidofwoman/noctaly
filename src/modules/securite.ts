@@ -102,7 +102,7 @@ async function surArrivee(membre: GuildMember): Promise<'stop' | void> {
   let texteVerrouillage = '';
   if (reglages.verrouillageAuto && !serveurVerrouille(serveur.id) && serveur.members.me) {
     const r = await verrouiller(serveur, 'server', serveur.id, serveur.members.me.user, 'Anti-raid automatique').catch(() => null);
-    if (r) texteVerrouillage = `🔒 Lockdown automatique : **${r.verrouilles}** salon(s) fermés (\`/lockdown end\` pour rouvrir).`;
+    if (r) texteVerrouillage = `🔒 Lockdown automatique : **${r.verrouilles}** salon(s) fermés (\`/salon\` ou \`&unl0all\` pour rouvrir).`;
   }
   historiser(serveur.id, 'security', 'raid', null, null, { joins: nombre, young: jeunes });
   await alerter(serveur, 'Anti-raid — arrivées massives', [
@@ -148,7 +148,7 @@ const antiraid: CommandeSlash = {
       await interaction.deferReply({ flags: 64 });
       await activerModeRaid(serveur);
       const r = serveurVerrouille(serveur.id) ? null : await verrouiller(serveur, 'server', serveur.id, interaction.user, 'Mode panique anti-raid').catch(() => null);
-      return interaction.editReply({ embeds: [ok(serveur, `🚨 Mode raid activé : vérification élevée${r ? `, **${r.verrouilles}** salon(s) verrouillés` : ''}.\n-# \`/antiraid fin\` puis \`/lockdown end portee:Serveur\` pour revenir à la normale.`)] });
+      return interaction.editReply({ embeds: [ok(serveur, `🚨 Mode raid activé : vérification élevée${r ? `, **${r.verrouilles}** salon(s) verrouillés` : ''}.\n-# \`/antiraid fin\` puis \`&unl0all\` pour revenir à la normale.`)] });
     }
     if (sousCommande === 'fin') {
       const etat = modeRaid.get(serveur.id);
