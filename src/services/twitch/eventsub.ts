@@ -1,11 +1,11 @@
 import type { Client } from 'discord.js';
-import { env } from '../../core/env';
-import { createLogger } from '../../core/logger';
-import { formatNumber } from '../../core/text';
-import { loadUserToken, refreshUserToken, validateUserToken, type UserToken } from './api';
-import { dispatchTwitchEvent, listChannels } from './notifier';
+import { environnement } from '../../core/env';
+import { creerRegistre } from '../../core/logger';
+import { formaterNombre } from '../../core/text';
+import { chargerJetonUtilisateur, renouvelerJetonUtilisateur, validerJetonUtilisateur, type JetonUtilisateur } from './api';
+import { diffuserEvenementTwitch, listerChaines } from './notifier';
 
-const log = createLogger('eventsub');
+const registre = creerRegistre('eventsub');
 
 interface WsMessage {
   metadata: { message_type: string; subscription_type?: string };
@@ -21,156 +21,156 @@ interface WsMessage {
  * Raids : pour toutes les chaînes suivies. Follows et abonnements : seulement la chaîne du compte du jeton
  * (Twitch exige que le jeton appartienne au streamer ou à un modérateur).
  */
-export class EventSubClient {
-  private socket: WebSocket | null = null;
-  private token: UserToken | null = loadUserToken();
-  private tokenUser: { user_id: string; login: string; scopes: string[] } | null = null;
-  private keepaliveTimer: NodeJS.Timeout | null = null;
-  private reconnectDelay = 5_000;
-  private stopped = false;
-  private subscribed = new Set<string>();
+export class ClientAbonnementsTwitch {
+  private prise: WebSocket | null = null;
+  private jeton: JetonUtilisateur | null = chargerJetonUtilisateur();
+  private compteJeton: { user_id: string; login: string; scopes: string[] } | null = null;
+  private minuteurMaintien: NodeJS.Timeout | null = null;
+  private delaiReconnexion = 5_000;
+  private arrete = false;
+  private abonnes = new Set<string>();
 
   constructor(private readonly client: Client<true>) {}
 
   get enabled(): boolean {
-    return !!this.token && !!env.twitchClientId;
+    return !!this.jeton && !!environnement.twitchClientId;
   }
 
-  async start(): Promise<void> {
+  async demarrer(): Promise<void> {
     if (!this.enabled) return;
-    this.tokenUser = await validateUserToken(this.token!);
-    if (!this.tokenUser) {
-      const refreshed = await refreshUserToken(this.token!).catch(() => null);
-      if (refreshed) {
-        this.token = refreshed;
-        this.tokenUser = await validateUserToken(refreshed);
+    this.compteJeton = await validerJetonUtilisateur(this.jeton!);
+    if (!this.compteJeton) {
+      const renouvele = await renouvelerJetonUtilisateur(this.jeton!).catch(() => null);
+      if (renouvele) {
+        this.jeton = renouvele;
+        this.compteJeton = await validerJetonUtilisateur(renouvele);
       }
     }
-    if (!this.tokenUser) {
-      log.warn('TWITCH_USER_TOKEN invalide ou expiré : EventSub (raids, follows, subs) désactivé.');
+    if (!this.compteJeton) {
+      registre.avertir('TWITCH_USER_TOKEN invalide ou expiré : EventSub (raids, follows, subs) désactivé.');
       return;
     }
-    log.info(`EventSub connecté au compte Twitch ${this.tokenUser.login}.`);
-    this.connect('wss://eventsub.wss.twitch.tv/ws');
+    registre.info(`EventSub connecté au compte Twitch ${this.compteJeton.login}.`);
+    this.connecter('wss://eventsub.wss.twitch.tv/ws');
   }
 
-  stop(): void {
-    this.stopped = true;
-    if (this.keepaliveTimer) clearTimeout(this.keepaliveTimer);
-    this.socket?.close();
+  arreter(): void {
+    this.arrete = true;
+    if (this.minuteurMaintien) clearTimeout(this.minuteurMaintien);
+    this.prise?.close();
   }
 
-  private connect(url: string): void {
-    if (this.stopped) return;
-    const socket = new WebSocket(url);
-    this.socket = socket;
-    socket.addEventListener('message', (event) => {
-      void this.onMessage(String(event.data)).catch((err: unknown) => log.warn(`Message EventSub en échec : ${(err as Error).message}`));
+  private connecter(url: string): void {
+    if (this.arrete) return;
+    const prise = new WebSocket(url);
+    this.prise = prise;
+    prise.addEventListener('message', (evenement) => {
+      void this.surMessage(String(evenement.data)).catch((echec: unknown) => registre.avertir(`Message EventSub en échec : ${(echec as Error).message}`));
     });
-    socket.addEventListener('close', () => {
-      if (this.socket !== socket || this.stopped) return;
-      this.subscribed.clear();
-      log.warn(`EventSub déconnecté, reconnexion dans ${this.reconnectDelay / 1000} s`);
-      setTimeout(() => this.connect('wss://eventsub.wss.twitch.tv/ws'), this.reconnectDelay).unref();
-      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 300_000);
+    prise.addEventListener('close', () => {
+      if (this.prise !== prise || this.arrete) return;
+      this.abonnes.clear();
+      registre.avertir(`EventSub déconnecté, reconnexion dans ${this.delaiReconnexion / 1000} s`);
+      setTimeout(() => this.connecter('wss://eventsub.wss.twitch.tv/ws'), this.delaiReconnexion).unref();
+      this.delaiReconnexion = Math.min(this.delaiReconnexion * 2, 300_000);
     });
-    socket.addEventListener('error', () => undefined);
+    prise.addEventListener('error', () => undefined);
   }
 
-  private armKeepalive(seconds: number): void {
-    if (this.keepaliveTimer) clearTimeout(this.keepaliveTimer);
-    this.keepaliveTimer = setTimeout(() => this.socket?.close(), (seconds + 10) * 1000);
-    this.keepaliveTimer.unref();
+  private armerMaintien(secondes: number): void {
+    if (this.minuteurMaintien) clearTimeout(this.minuteurMaintien);
+    this.minuteurMaintien = setTimeout(() => this.prise?.close(), (secondes + 10) * 1000);
+    this.minuteurMaintien.unref();
   }
 
-  private async onMessage(raw: string): Promise<void> {
-    const msg = JSON.parse(raw) as WsMessage;
-    const type = msg.metadata.message_type;
-    if (msg.payload.session?.keepalive_timeout_seconds) this.armKeepalive(msg.payload.session.keepalive_timeout_seconds);
-    else if (type === 'session_keepalive' || type === 'notification') this.armKeepalive(30);
+  private async surMessage(brut: string): Promise<void> {
+    const charge = JSON.parse(brut) as WsMessage;
+    const type = charge.metadata.message_type;
+    if (charge.payload.session?.keepalive_timeout_seconds) this.armerMaintien(charge.payload.session.keepalive_timeout_seconds);
+    else if (type === 'session_keepalive' || type === 'notification') this.armerMaintien(30);
 
-    if (type === 'session_welcome' && msg.payload.session) {
-      this.reconnectDelay = 5_000;
-      await this.subscribeAll(msg.payload.session.id);
-    } else if (type === 'session_reconnect' && msg.payload.session?.reconnect_url) {
-      const old = this.socket;
-      this.connect(msg.payload.session.reconnect_url);
-      setTimeout(() => old?.close(), 5_000).unref();
-    } else if (type === 'notification' && msg.payload.subscription && msg.payload.event) {
-      await this.onEvent(msg.payload.subscription.type, msg.payload.event);
+    if (type === 'session_welcome' && charge.payload.session) {
+      this.delaiReconnexion = 5_000;
+      await this.abonnerTout(charge.payload.session.id);
+    } else if (type === 'session_reconnect' && charge.payload.session?.reconnect_url) {
+      const ancien = this.prise;
+      this.connecter(charge.payload.session.reconnect_url);
+      setTimeout(() => ancien?.close(), 5_000).unref();
+    } else if (type === 'notification' && charge.payload.subscription && charge.payload.event) {
+      await this.surEvenement(charge.payload.subscription.type, charge.payload.event);
     }
   }
 
-  private async createSubscription(sessionId: string, type: string, version: string, condition: Record<string, string>): Promise<void> {
-    const key = `${type}:${JSON.stringify(condition)}`;
-    if (this.subscribed.has(key)) return;
-    const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+  private async creerAbonnement(sessionId: string, type: string, version: string, condition: Record<string, string>): Promise<void> {
+    const cle = `${type}:${JSON.stringify(condition)}`;
+    if (this.abonnes.has(cle)) return;
+    const reponse = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
       method: 'POST',
-      headers: { 'Client-Id': env.twitchClientId, Authorization: `Bearer ${this.token!.access}`, 'Content-Type': 'application/json' },
+      headers: { 'Client-Id': environnement.twitchClientId, Authorization: `Bearer ${this.jeton!.access}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ type, version, condition, transport: { method: 'websocket', session_id: sessionId } }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (res.status === 401) {
-      const refreshed = await refreshUserToken(this.token!).catch(() => null);
-      if (refreshed) this.token = refreshed;
+    if (reponse.status === 401) {
+      const renouvele = await renouvelerJetonUtilisateur(this.jeton!).catch(() => null);
+      if (renouvele) this.jeton = renouvele;
       return;
     }
-    if (res.ok || res.status === 409) this.subscribed.add(key);
-    else log.debug(`Abonnement EventSub ${type} refusé (HTTP ${res.status})`);
+    if (reponse.ok || reponse.status === 409) this.abonnes.add(cle);
+    else registre.debogage(`Abonnement EventSub ${type} refusé (HTTP ${reponse.status})`);
   }
 
-  private async subscribeAll(sessionId: string): Promise<void> {
-    const me = this.tokenUser!;
-    const broadcasters = [...new Set(listChannels().filter((c) => c.notify_events && c.broadcaster_id).map((c) => c.broadcaster_id!))];
-    for (const id of broadcasters.slice(0, 250)) {
-      await this.createSubscription(sessionId, 'channel.raid', '1', { to_broadcaster_user_id: id });
+  private async abonnerTout(sessionId: string): Promise<void> {
+    const moi = this.compteJeton!;
+    const diffuseurs = [...new Set(listerChaines().filter((c) => c.notifier_evenements && c.diffuseur_id).map((c) => c.diffuseur_id!))];
+    for (const id of diffuseurs.slice(0, 250)) {
+      await this.creerAbonnement(sessionId, 'channel.raid', '1', { to_broadcaster_user_id: id });
     }
-    if (broadcasters.includes(me.user_id)) {
-      if (me.scopes.includes('moderator:read:followers')) await this.createSubscription(sessionId, 'channel.follow', '2', { broadcaster_user_id: me.user_id, moderator_user_id: me.user_id });
-      if (me.scopes.includes('channel:read:subscriptions')) {
-        await this.createSubscription(sessionId, 'channel.subscribe', '1', { broadcaster_user_id: me.user_id });
-        await this.createSubscription(sessionId, 'channel.subscription.gift', '1', { broadcaster_user_id: me.user_id });
-        await this.createSubscription(sessionId, 'channel.subscription.message', '1', { broadcaster_user_id: me.user_id });
+    if (diffuseurs.includes(moi.user_id)) {
+      if (moi.scopes.includes('moderator:read:followers')) await this.creerAbonnement(sessionId, 'channel.follow', '2', { broadcaster_user_id: moi.user_id, moderator_user_id: moi.user_id });
+      if (moi.scopes.includes('channel:read:subscriptions')) {
+        await this.creerAbonnement(sessionId, 'channel.subscribe', '1', { broadcaster_user_id: moi.user_id });
+        await this.creerAbonnement(sessionId, 'channel.subscription.gift', '1', { broadcaster_user_id: moi.user_id });
+        await this.creerAbonnement(sessionId, 'channel.subscription.message', '1', { broadcaster_user_id: moi.user_id });
       }
     }
   }
 
   /** À appeler quand une chaîne est ajoutée : réabonne sans attendre une reconnexion. */
-  resync(): void {
-    this.socket?.close();
+  resynchroniser(): void {
+    this.prise?.close();
   }
 
-  private async onEvent(type: string, e: Record<string, unknown>): Promise<void> {
-    const str = (k: string) => String(e[k] ?? '');
+  private async surEvenement(type: string, e: Record<string, unknown>): Promise<void> {
+    const texte = (k: string) => String(e[k] ?? '');
     switch (type) {
       case 'channel.raid':
-        return dispatchTwitchEvent(
+        return diffuserEvenementTwitch(
           this.client,
-          str('to_broadcaster_user_id'),
+          texte('to_broadcaster_user_id'),
           '⚔️ Raid entrant !',
-          `**${str('from_broadcaster_user_name')}** débarque avec **${formatNumber(Number(e.viewers ?? 0))}** viewers !`,
-          `https://twitch.tv/${str('to_broadcaster_user_login')}`,
+          `**${texte('from_broadcaster_user_name')}** débarque avec **${formaterNombre(Number(e.viewers ?? 0))}** viewers !`,
+          `https://twitch.tv/${texte('to_broadcaster_user_login')}`,
         );
       case 'channel.follow':
-        return dispatchTwitchEvent(this.client, str('broadcaster_user_id'), '💜 Nouveau follow', `Merci **${str('user_name')}** pour le follow !`, `https://twitch.tv/${str('broadcaster_user_login')}`);
+        return diffuserEvenementTwitch(this.client, texte('broadcaster_user_id'), '💜 Nouveau follow', `Merci **${texte('user_name')}** pour le follow !`, `https://twitch.tv/${texte('broadcaster_user_login')}`);
       case 'channel.subscribe':
         if (e.is_gift) return;
-        return dispatchTwitchEvent(this.client, str('broadcaster_user_id'), '⭐ Nouvel abonnement', `**${str('user_name')}** vient de s’abonner (tier ${Number(str('tier')) / 1000}) !`, `https://twitch.tv/${str('broadcaster_user_login')}`);
+        return diffuserEvenementTwitch(this.client, texte('broadcaster_user_id'), '⭐ Nouvel abonnement', `**${texte('user_name')}** vient de s’abonner (tier ${Number(texte('tier')) / 1000}) !`, `https://twitch.tv/${texte('broadcaster_user_login')}`);
       case 'channel.subscription.message':
-        return dispatchTwitchEvent(
+        return diffuserEvenementTwitch(
           this.client,
-          str('broadcaster_user_id'),
+          texte('broadcaster_user_id'),
           '⭐ Réabonnement',
-          `**${str('user_name')}** se réabonne — **${str('cumulative_months')} mois** !`,
-          `https://twitch.tv/${str('broadcaster_user_login')}`,
+          `**${texte('user_name')}** se réabonne — **${texte('cumulative_months')} mois** !`,
+          `https://twitch.tv/${texte('broadcaster_user_login')}`,
         );
       case 'channel.subscription.gift':
-        return dispatchTwitchEvent(
+        return diffuserEvenementTwitch(
           this.client,
-          str('broadcaster_user_id'),
+          texte('broadcaster_user_id'),
           '🎁 Abonnements offerts',
-          `**${e.is_anonymous ? 'Un anonyme' : str('user_name')}** offre **${str('total')}** abonnement(s) !`,
-          `https://twitch.tv/${str('broadcaster_user_login')}`,
+          `**${e.is_anonymous ? 'Un anonyme' : texte('user_name')}** offre **${texte('total')}** abonnement(s) !`,
+          `https://twitch.tv/${texte('broadcaster_user_login')}`,
         );
     }
   }

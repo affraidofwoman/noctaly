@@ -11,208 +11,208 @@ import {
   type Message,
   type User,
 } from 'discord.js';
-import { get, run } from '../../database/db';
-import { emojiFor } from '../../core/brand';
-import { askConfirmation } from '../../core/confirm';
-import { brandEmbed, erreur, info, ok, refus } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { reply } from '../../core/interactions';
-import { journal, recordLog } from '../../core/logService';
-import { createLogger } from '../../core/logger';
-import { linesToPages, paginate } from '../../core/pagination';
-import { hasLevel } from '../../core/permissions';
-import { resolveUser, targetMember } from '../../core/resolve';
-import type { SetupPage } from '../../core/setup';
-import { truncate } from '../../core/text';
-import { formatDuration, parseDuration, ts } from '../../core/time';
-import { button, row } from '../../core/ui';
-import { on, PermLevel, type BotModule, type PrefixCommand, type SlashCommand } from '../../core/types';
-import { activeLocks, lock, unlock, type LockScope } from '../../services/lockdown';
+import { lire, executer } from '../../database/db';
+import { emojiPour } from '../../core/brand';
+import { demanderConfirmation } from '../../core/confirm';
+import { embedEnseigne, erreur, info, ok, refus } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { repondre } from '../../core/interactions';
+import { journal, historiser } from '../../core/logService';
+import { creerRegistre } from '../../core/logger';
+import { lignesEnPages, paginer } from '../../core/pagination';
+import { aNiveau } from '../../core/permissions';
+import { resoudreUtilisateur, membreCible } from '../../core/resolve';
+import type { PageReglage } from '../../core/setup';
+import { tronquer } from '../../core/text';
+import { formaterDuree, lireDuree, marqueTemps } from '../../core/time';
+import { bouton, rangee } from '../../core/ui';
+import { sur, Niveau, type ModuleBot, type CommandePrefixe, type CommandeSlash } from '../../core/types';
+import { verrousActifs, verrouiller, deverrouiller, type PorteeVerrou } from '../../services/lockdown';
 import {
-  activeWarnings,
-  applySanction,
-  blacklistEntries,
-  describeResult,
-  formatAutoActions,
-  isBlacklisted,
-  MAX_TIMEOUT_MS,
-  parseAutoActions,
-  type SanctionType,
+  avertissementsActifs,
+  appliquerSanction,
+  entreesListeNoire,
+  decrireResultat,
+  formaterActionsAuto,
+  estEnListeNoire,
+  TIMEOUT_MAX_MS,
+  lireActionsAuto,
+  type TypeSanction,
 } from '../../services/moderation';
 
-const log = createLogger('moderation');
+const registre = creerRegistre('moderation');
 
-async function sanctionReply(interaction: ChatInputCommandInteraction<'cached'>, type: SanctionType, target: User, reason: string | null, durationMs?: number, warningId?: number) {
+async function sanctionParCommande(interaction: ChatInputCommandInteraction<'cached'>, type: TypeSanction, cible: User, raison: string | null, dureeMs?: number, avertissementId?: number) {
   await interaction.deferReply();
-  const result = await applySanction({ guild: interaction.guild, actor: interaction.member, target, type, reason, durationMs, warningId });
-  await interaction.editReply({ embeds: [ok(interaction.guild, describeResult(result), { titre: 'Sanction', sujet: emojiFor(interaction.guildId, 'sanction') })] });
+  const resultat = await appliquerSanction({ serveur: interaction.guild, auteur: interaction.member, cible, type, raison, dureeMs, avertissementId });
+  await interaction.editReply({ embeds: [ok(interaction.guild, decrireResultat(resultat), { titre: 'Sanction', sujet: emojiPour(interaction.guildId, 'sanction') })] });
 }
 
-async function sanctionMessage(message: Message<true>, type: SanctionType, target: User, reason: string | null, durationMs?: number, warningId?: number) {
+async function sanctionParMessage(message: Message<true>, type: TypeSanction, cible: User, raison: string | null, dureeMs?: number, avertissementId?: number) {
   if (!message.member) return;
-  const result = await applySanction({ guild: message.guild, actor: message.member, target, type, reason, durationMs, warningId });
-  await message.reply({ embeds: [ok(message.guild, describeResult(result), { titre: 'Sanction', sujet: emojiFor(message.guildId, 'sanction') })], allowedMentions: { repliedUser: false } });
+  const resultat = await appliquerSanction({ serveur: message.guild, auteur: message.member, cible, type, raison, dureeMs, avertissementId });
+  await message.reply({ embeds: [ok(message.guild, decrireResultat(resultat), { titre: 'Sanction', sujet: emojiPour(message.guildId, 'sanction') })], allowedMentions: { repliedUser: false } });
 }
 
-function warningsPages(guild: Guild, user: User) {
-  const list = activeWarnings(guild.id, user.id);
-  const lines = list.map((w, i) => `**${i + 1}.** \`n°${w.id}\` ${ts(w.created_at, 'd')} — ${truncate(w.reason, 120)}\n-# par <@${w.moderator_id}>`);
-  if (!lines.length) lines.push('*Aucun avertissement actif.*');
-  return linesToPages(lines, 8, (content, page, total) =>
-    brandEmbed(guild)
-      .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ size: 64 }) })
-      .setTitle(`⚠️ Avertissements — ${list.length}`)
-      .setDescription(content)
+function pagesAvertissements(serveur: Guild, utilisateur: User) {
+  const liste = avertissementsActifs(serveur.id, utilisateur.id);
+  const lignes = liste.map((w, i) => `**${i + 1}.** \`n°${w.id}\` ${marqueTemps(w.cree_le, 'd')} — ${tronquer(w.raison, 120)}\n-# par <@${w.moderateur_id}>`);
+  if (!lignes.length) lignes.push('*Aucun avertissement actif.*');
+  return lignesEnPages(lignes, 8, (contenu, page, total) =>
+    embedEnseigne(serveur)
+      .setAuthor({ name: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) })
+      .setTitle(`⚠️ Avertissements — ${liste.length}`)
+      .setDescription(contenu)
       .setFooter({ text: `Page ${page}/${total} · /unwarn pour en retirer un` }),
   );
 }
 
 // ─── Nettoyage ─────────────────────────────────────────────────────────────
 
-async function clearMessages(channel: GuildTextBasedChannel, amount: number, filterUserId: string | null, actor: User): Promise<number> {
-  const max = Math.min(Math.max(amount, 1), 1000);
-  let deleted = 0;
-  let before: string | undefined;
-  const cutoff = Date.now() - 14 * 86_400_000 + 60_000;
-  while (deleted < max) {
-    const batch: Collection<string, Message> = await channel.messages.fetch({ limit: 100, before });
-    if (!batch.size) break;
-    before = batch.last()?.id;
-    const candidates = batch.filter((m) => m.createdTimestamp > cutoff && !m.pinned && (!filterUserId || m.author.id === filterUserId));
-    const toDelete = [...candidates.values()].slice(0, max - deleted);
-    if (toDelete.length) {
-      const removed = await channel.bulkDelete(toDelete, true);
-      deleted += removed.size;
+async function effacerMessages(salon: GuildTextBasedChannel, montant: number, filtreMembreId: string | null, auteur: User): Promise<number> {
+  const max = Math.min(Math.max(montant, 1), 1000);
+  let supprimes = 0;
+  let avant: string | undefined;
+  const limite = Date.now() - 14 * 86_400_000 + 60_000;
+  while (supprimes < max) {
+    const lot: Collection<string, Message> = await salon.messages.fetch({ limit: 100, before: avant });
+    if (!lot.size) break;
+    avant = lot.last()?.id;
+    const candidats = lot.filter((m) => m.createdTimestamp > limite && !m.pinned && (!filtreMembreId || m.author.id === filtreMembreId));
+    const aSupprimer = [...candidats.values()].slice(0, max - supprimes);
+    if (aSupprimer.length) {
+      const retiree = await salon.bulkDelete(aSupprimer, true);
+      supprimes += retiree.size;
     }
-    if (batch.size < 100 || batch.last()!.createdTimestamp < cutoff) break;
+    if (lot.size < 100 || lot.last()!.createdTimestamp < limite) break;
   }
-  recordLog(channel.guild.id, 'clear', 'clear', filterUserId, actor.id, { channelId: channel.id, deleted });
-  void journal(channel.guild, 'clear', {
-    title: 'Salon nettoyé',
-    tone: 'alerte',
-    lines: [`**Salon** : <#${channel.id}>`, `**Messages supprimés** : ${deleted}`, filterUserId ? `**Filtre** : <@${filterUserId}>` : null],
-    by: actor,
+  historiser(salon.guild.id, 'clear', 'clear', filtreMembreId, auteur.id, { channelId: salon.id, deleted: supprimes });
+  void journal(salon.guild, 'clear', {
+    titre: 'Salon nettoyé',
+    ton: 'alerte',
+    lignes: [`**Salon** : <#${salon.id}>`, `**Messages supprimés** : ${supprimes}`, filtreMembreId ? `**Filtre** : <@${filtreMembreId}>` : null],
+    par: auteur,
   });
-  return deleted;
+  return supprimes;
 }
 
 // ─── Commandes slash ───────────────────────────────────────────────────────
 
-const reasonOpt = (o: import('discord.js').SlashCommandStringOption) => o.setName('raison').setDescription('Pourquoi').setMaxLength(400);
+const optionRaison = (o: import('discord.js').SlashCommandStringOption) => o.setName('raison').setDescription('Pourquoi').setMaxLength(400);
 
-const warn: SlashCommand = {
-  category: 'moderation',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const avertir: CommandeSlash = {
+  categorie: 'moderation',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('warn')
     .setDescription('Avertir un membre')
     .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addStringOption((o) => reasonOpt(o).setRequired(true)),
-  async execute(i) {
-    await sanctionReply(i, 'warn', i.options.getUser('membre', true), i.options.getString('raison', true));
+    .addStringOption((o) => optionRaison(o).setRequired(true)),
+  async executer(i) {
+    await sanctionParCommande(i, 'warn', i.options.getUser('membre', true), i.options.getString('raison', true));
   },
 };
 
-const unwarn: SlashCommand = {
-  category: 'moderation',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const retirerAvertissement: CommandeSlash = {
+  categorie: 'moderation',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('unwarn')
     .setDescription('Retirer un avertissement')
     .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
     .addIntegerOption((o) => o.setName('numero').setDescription('Numéro du warn (le dernier par défaut)').setMinValue(1))
-    .addStringOption((o) => reasonOpt(o)),
-  async execute(i) {
-    await sanctionReply(i, 'unwarn', i.options.getUser('membre', true), i.options.getString('raison'), undefined, i.options.getInteger('numero') ?? undefined);
+    .addStringOption((o) => optionRaison(o)),
+  async executer(i) {
+    await sanctionParCommande(i, 'unwarn', i.options.getUser('membre', true), i.options.getString('raison'), undefined, i.options.getInteger('numero') ?? undefined);
   },
 };
 
-const warnings: SlashCommand = {
-  category: 'moderation',
-  level: PermLevel.STAFF,
-  data: new SlashCommandBuilder()
+const avertissements: CommandeSlash = {
+  categorie: 'moderation',
+  niveau: Niveau.STAFF,
+  donnees: new SlashCommandBuilder()
     .setName('warnings')
     .setDescription('Les avertissements d’un membre')
     .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)),
-  async execute(i) {
-    await paginate(i, warningsPages(i.guild, i.options.getUser('membre', true)), true);
+  async executer(i) {
+    await paginer(i, pagesAvertissements(i.guild, i.options.getUser('membre', true)), true);
   },
 };
 
-const timeout: SlashCommand = {
-  category: 'moderation',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const exclure: CommandeSlash = {
+  categorie: 'moderation',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('timeout')
     .setDescription('Rendre muet temporairement')
     .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
     .addStringOption((o) => o.setName('duree').setDescription('Ex : 10m, 2h, 1j (28 j max)').setRequired(true))
-    .addStringOption((o) => reasonOpt(o)),
-  async execute(i) {
-    const duration = parseDuration(i.options.getString('duree', true));
-    if (!duration || duration > MAX_TIMEOUT_MS) throw new UserError('Durée invalide : exemples `10m`, `2h`, `1j` (28 jours maximum).');
-    await sanctionReply(i, 'timeout', i.options.getUser('membre', true), i.options.getString('raison'), duration);
+    .addStringOption((o) => optionRaison(o)),
+  async executer(i) {
+    const duree = lireDuree(i.options.getString('duree', true));
+    if (!duree || duree > TIMEOUT_MAX_MS) throw new ErreurUtilisateur('Durée invalide : exemples `10m`, `2h`, `1j` (28 jours maximum).');
+    await sanctionParCommande(i, 'timeout', i.options.getUser('membre', true), i.options.getString('raison'), duree);
   },
 };
 
-const untimeout: SlashCommand = {
-  category: 'moderation',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const leverTimeout: CommandeSlash = {
+  categorie: 'moderation',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('untimeout')
     .setDescription('Lever un timeout')
     .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addStringOption((o) => reasonOpt(o)),
-  async execute(i) {
-    await sanctionReply(i, 'untimeout', i.options.getUser('membre', true), i.options.getString('raison'));
+    .addStringOption((o) => optionRaison(o)),
+  async executer(i) {
+    await sanctionParCommande(i, 'untimeout', i.options.getUser('membre', true), i.options.getString('raison'));
   },
 };
 
-const kick: SlashCommand = {
-  category: 'moderation',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const expulser: CommandeSlash = {
+  categorie: 'moderation',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('kick')
     .setDescription('Expulser un membre')
     .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addStringOption((o) => reasonOpt(o)),
-  async execute(i) {
-    await sanctionReply(i, 'kick', i.options.getUser('membre', true), i.options.getString('raison'));
+    .addStringOption((o) => optionRaison(o)),
+  async executer(i) {
+    await sanctionParCommande(i, 'kick', i.options.getUser('membre', true), i.options.getString('raison'));
   },
 };
 
-const ban: SlashCommand = {
-  category: 'moderation',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const bannir: CommandeSlash = {
+  categorie: 'moderation',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('ban')
     .setDescription('Bannir un compte')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (même hors du serveur)').setRequired(true))
-    .addStringOption((o) => reasonOpt(o)),
-  async execute(i) {
-    await sanctionReply(i, 'ban', i.options.getUser('membre', true), i.options.getString('raison'));
+    .addStringOption((o) => optionRaison(o)),
+  async executer(i) {
+    await sanctionParCommande(i, 'ban', i.options.getUser('membre', true), i.options.getString('raison'));
   },
 };
 
-const unban: SlashCommand = {
-  category: 'moderation',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const debannir: CommandeSlash = {
+  categorie: 'moderation',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('unban')
     .setDescription('Débannir un compte')
     .addStringOption((o) => o.setName('id').setDescription('Identifiant Discord').setRequired(true))
-    .addStringOption((o) => reasonOpt(o)),
-  async execute(i) {
-    const user = await resolveUser(i.client, i.options.getString('id', true));
-    if (!user) throw new UserError('Identifiant Discord attendu.');
-    await sanctionReply(i, 'unban', user, i.options.getString('raison'));
+    .addStringOption((o) => optionRaison(o)),
+  async executer(i) {
+    const utilisateur = await resoudreUtilisateur(i.client, i.options.getString('id', true));
+    if (!utilisateur) throw new ErreurUtilisateur('Identifiant Discord attendu.');
+    await sanctionParCommande(i, 'unban', utilisateur, i.options.getString('raison'));
   },
 };
 
-const blacklist: SlashCommand = {
-  category: 'moderation',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const listeNoire: CommandeSlash = {
+  categorie: 'moderation',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('blacklist')
     .setDescription('Blacklist du serveur (re-ban automatique)')
     .addSubcommand((s) =>
@@ -220,7 +220,7 @@ const blacklist: SlashCommand = {
         .setName('ajouter')
         .setDescription('Blacklister un compte')
         .addStringOption((o) => o.setName('id').setDescription('Identifiant ou mention').setRequired(true))
-        .addStringOption((o) => reasonOpt(o)),
+        .addStringOption((o) => optionRaison(o)),
     )
     .addSubcommand((s) =>
       s
@@ -235,112 +235,112 @@ const blacklist: SlashCommand = {
         .addStringOption((o) => o.setName('id').setDescription('Identifiant').setRequired(true)),
     )
     .addSubcommand((s) => s.setName('liste').setDescription('La blacklist')),
-  async execute(i) {
-    const sub = i.options.getSubcommand();
-    if (sub === 'liste') return paginate(i, blacklistPages(i.guild), true);
-    const user = await resolveUser(i.client, i.options.getString('id', true));
-    if (!user) throw new UserError('Identifiant Discord attendu.');
-    if (sub === 'info') return reply(i, { embeds: [blacklistInfo(i.guild, user)], ephemeral: true });
-    return sanctionReply(i, sub === 'ajouter' ? 'blacklist' : 'unblacklist', user, i.options.getString('raison'));
+  async executer(i) {
+    const sousCommande = i.options.getSubcommand();
+    if (sousCommande === 'liste') return paginer(i, pagesListeNoire(i.guild), true);
+    const utilisateur = await resoudreUtilisateur(i.client, i.options.getString('id', true));
+    if (!utilisateur) throw new ErreurUtilisateur('Identifiant Discord attendu.');
+    if (sousCommande === 'info') return repondre(i, { embeds: [ficheListeNoire(i.guild, utilisateur)], ephemeral: true });
+    return sanctionParCommande(i, sousCommande === 'ajouter' ? 'blacklist' : 'unblacklist', utilisateur, i.options.getString('raison'));
   },
 };
 
-function blacklistPages(guild: Guild) {
-  const local = blacklistEntries(guild.id);
-  const lines = local.map((b) => `• <@${b.user_id}> \`${b.user_id}\` — ${truncate(b.reason, 80)}\n-# ${ts(b.added_at, 'd')} par <@${b.added_by}>`);
-  if (!lines.length) lines.push('*La blacklist est vide.*');
-  return linesToPages(lines, 10, (content, page, total) =>
-    brandEmbed(guild).setTitle(`⛔ Blacklist (${local.length})`).setDescription(content).setFooter({ text: `Page ${page}/${total}` }),
+function pagesListeNoire(serveur: Guild) {
+  const local = entreesListeNoire(serveur.id);
+  const lignes = local.map((b) => `• <@${b.utilisateur_id}> \`${b.utilisateur_id}\` — ${tronquer(b.raison, 80)}\n-# ${marqueTemps(b.ajoute_le, 'd')} par <@${b.ajoute_par}>`);
+  if (!lignes.length) lignes.push('*La blacklist est vide.*');
+  return lignesEnPages(lignes, 10, (contenu, page, total) =>
+    embedEnseigne(serveur).setTitle(`⛔ Blacklist (${local.length})`).setDescription(contenu).setFooter({ text: `Page ${page}/${total}` }),
   );
 }
 
-function blacklistInfo(guild: Guild, user: User) {
-  const entry = isBlacklisted(guild.id, user.id);
-  if (!entry) return info(guild, 'Rien pour ce compte.', { titre: 'Sanction', sujet: emojiFor(guild.id, 'sanction') });
+function ficheListeNoire(serveur: Guild, utilisateur: User) {
+  const entree = estEnListeNoire(serveur.id, utilisateur.id);
+  if (!entree) return info(serveur, 'Rien pour ce compte.', { titre: 'Sanction', sujet: emojiPour(serveur.id, 'sanction') });
   return info(
-    guild,
+    serveur,
     [
-      `**Compte** — ${user.tag} (\`${user.id}\`)`,
-      `**Raison** — ${entry.reason}`,
-      `**Par** — <@${entry.added_by}>`,
-      `**Le** — ${ts(entry.added_at, 'f')}`,
-      `-# ${entry.scope === 'global' ? 'Blacklist globale : tous les serveurs du bot' : 'Blacklist de ce serveur'}`,
+      `**Compte** — ${utilisateur.tag} (\`${utilisateur.id}\`)`,
+      `**Raison** — ${entree.raison}`,
+      `**Par** — <@${entree.ajoute_par}>`,
+      `**Le** — ${marqueTemps(entree.ajoute_le, 'f')}`,
+      `-# ${entree.portee === 'global' ? 'Blacklist globale : tous les serveurs du bot' : 'Blacklist de ce serveur'}`,
     ].join('\n'),
-    { titre: 'Sanction', sujet: emojiFor(guild.id, 'sanction') },
+    { titre: 'Sanction', sujet: emojiPour(serveur.id, 'sanction') },
   );
 }
 
-const clear: SlashCommand = {
-  category: 'salons',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const effacer: CommandeSlash = {
+  categorie: 'salons',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('clear')
     .setDescription('Effacer des messages')
     .addIntegerOption((o) => o.setName('nombre').setDescription('Combien (1 à 1000)').setMinValue(1).setMaxValue(1000).setRequired(true))
     .addUserOption((o) => o.setName('membre').setDescription('Seulement ses messages')),
-  async execute(i) {
+  async executer(i) {
     if (!i.channel) return;
     await i.deferReply({ flags: 64 });
-    const deleted = await clearMessages(i.channel, i.options.getInteger('nombre', true), i.options.getUser('membre')?.id ?? null, i.user);
-    await i.editReply({ embeds: [ok(i.guild, `**${deleted}** message(s) supprimé(s).\n-# Les messages de plus de 14 jours et épinglés sont conservés.`)] });
+    const supprimes = await effacerMessages(i.channel, i.options.getInteger('nombre', true), i.options.getUser('membre')?.id ?? null, i.user);
+    await i.editReply({ embeds: [ok(i.guild, `**${supprimes}** message(s) supprimé(s).\n-# Les messages de plus de 14 jours et épinglés sont conservés.`)] });
   },
 };
 
-const slowmode: SlashCommand = {
-  category: 'salons',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const modeLent: CommandeSlash = {
+  categorie: 'salons',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('slowmode')
     .setDescription('Mode lent du salon')
     .addStringOption((o) => o.setName('duree').setDescription('Ex : 5s, 1m, 0 pour couper (6 h max)').setRequired(true))
     .addChannelOption((o) => o.setName('salon').setDescription('Le salon (celui-ci par défaut)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)),
-  async execute(i) {
-    const raw = i.options.getString('duree', true).trim();
-    const seconds = raw === '0' ? 0 : Math.round((parseDuration(/^\d+$/.test(raw) ? `${raw}s` : raw) ?? -1000) / 1000);
-    if (seconds < 0 || seconds > 21_600) throw new UserError('Durée invalide : de `0` à `6h`.');
-    const channel = (i.options.getChannel('salon') ?? i.channel) as GuildTextBasedChannel | null;
-    if (!channel || !('setRateLimitPerUser' in channel)) throw new UserError('Ce salon ne gère pas le mode lent.');
-    await channel.setRateLimitPerUser(seconds, `Mode lent par ${i.user.tag}`);
-    void journal(i.guild, 'channel', { title: 'Mode lent', tone: 'info', lines: [`**Salon** : <#${channel.id}>`, `**Délai** : ${seconds ? formatDuration(seconds * 1000) : 'coupé'}`], by: i.user });
-    await reply(i, { embeds: [ok(i.guild, seconds ? `Mode lent de **${formatDuration(seconds * 1000)}** sur <#${channel.id}>.` : `Mode lent coupé sur <#${channel.id}>.`)], ephemeral: true });
+  async executer(i) {
+    const brut = i.options.getString('duree', true).trim();
+    const secondes = brut === '0' ? 0 : Math.round((lireDuree(/^\d+$/.test(brut) ? `${brut}s` : brut) ?? -1000) / 1000);
+    if (secondes < 0 || secondes > 21_600) throw new ErreurUtilisateur('Durée invalide : de `0` à `6h`.');
+    const salon = (i.options.getChannel('salon') ?? i.channel) as GuildTextBasedChannel | null;
+    if (!salon || !('setRateLimitPerUser' in salon)) throw new ErreurUtilisateur('Ce salon ne gère pas le mode lent.');
+    await salon.setRateLimitPerUser(secondes, `Mode lent par ${i.user.tag}`);
+    void journal(i.guild, 'channel', { titre: 'Mode lent', ton: 'info', lignes: [`**Salon** : <#${salon.id}>`, `**Délai** : ${secondes ? formaterDuree(secondes * 1000) : 'coupé'}`], par: i.user });
+    await repondre(i, { embeds: [ok(i.guild, secondes ? `Mode lent de **${formaterDuree(secondes * 1000)}** sur <#${salon.id}>.` : `Mode lent coupé sur <#${salon.id}>.`)], ephemeral: true });
   },
 };
 
-const lockCommand: SlashCommand = {
-  category: 'salons',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const commandeVerrouiller: CommandeSlash = {
+  categorie: 'salons',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('lock')
     .setDescription('Fermer un salon')
     .addChannelOption((o) => o.setName('salon').setDescription('Le salon (celui-ci par défaut)'))
-    .addStringOption((o) => reasonOpt(o)),
-  async execute(i) {
-    const channel = i.options.getChannel('salon') ?? i.channel;
-    if (!channel) return;
-    const r = await lock(i.guild, 'channel', channel.id, i.user, i.options.getString('raison') ?? 'Aucune raison');
-    await reply(i, { embeds: [ok(i.guild, `🔒 <#${channel.id}> fermé (${r.locked} salon).`)] });
+    .addStringOption((o) => optionRaison(o)),
+  async executer(i) {
+    const salon = i.options.getChannel('salon') ?? i.channel;
+    if (!salon) return;
+    const r = await verrouiller(i.guild, 'channel', salon.id, i.user, i.options.getString('raison') ?? 'Aucune raison');
+    await repondre(i, { embeds: [ok(i.guild, `🔒 <#${salon.id}> fermé (${r.verrouilles} salon).`)] });
   },
 };
 
-const unlockCommand: SlashCommand = {
-  category: 'salons',
-  level: PermLevel.MODERATOR,
-  data: new SlashCommandBuilder()
+const commandeDeverrouiller: CommandeSlash = {
+  categorie: 'salons',
+  niveau: Niveau.MODERATEUR,
+  donnees: new SlashCommandBuilder()
     .setName('unlock')
     .setDescription('Rouvrir un salon')
     .addChannelOption((o) => o.setName('salon').setDescription('Le salon (celui-ci par défaut)')),
-  async execute(i) {
-    const channel = i.options.getChannel('salon') ?? i.channel;
-    if (!channel) return;
-    await unlock(i.guild, 'channel', channel.id, i.user);
-    await reply(i, { embeds: [ok(i.guild, `🔓 <#${channel.id}> rouvert.`)] });
+  async executer(i) {
+    const salon = i.options.getChannel('salon') ?? i.channel;
+    if (!salon) return;
+    await deverrouiller(i.guild, 'channel', salon.id, i.user);
+    await repondre(i, { embeds: [ok(i.guild, `🔓 <#${salon.id}> rouvert.`)] });
   },
 };
 
-const lockdown: SlashCommand = {
-  category: 'salons',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder()
+const verrouillage: CommandeSlash = {
+  categorie: 'salons',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder()
     .setName('lockdown')
     .setDescription('Bloquer les messages des membres')
     .addSubcommand((s) =>
@@ -355,7 +355,7 @@ const lockdown: SlashCommand = {
             .addChoices({ name: 'Serveur entier', value: 'server' }, { name: 'Une catégorie', value: 'category' }, { name: 'Un salon', value: 'channel' }),
         )
         .addChannelOption((o) => o.setName('cible').setDescription('Catégorie ou salon visé').addChannelTypes(ChannelType.GuildCategory, ChannelType.GuildText, ChannelType.GuildVoice))
-        .addStringOption((o) => reasonOpt(o)),
+        .addStringOption((o) => optionRaison(o)),
     )
     .addSubcommand((s) =>
       s
@@ -371,31 +371,31 @@ const lockdown: SlashCommand = {
         .addChannelOption((o) => o.setName('cible').setDescription('Catégorie ou salon visé')),
     )
     .addSubcommand((s) => s.setName('status').setDescription('Les verrouillages en cours')),
-  async execute(i) {
-    const sub = i.options.getSubcommand();
-    if (sub === 'status') {
-      const locks = activeLocks(i.guildId);
-      const lines = locks.map((l) => `• ${l.scope === 'server' ? '**Serveur entier**' : `<#${l.target_id}>`} — ${ts(l.created_at, 'R')}${l.reason ? ` · ${truncate(l.reason, 60)}` : ''}`);
-      return reply(i, { embeds: [info(i.guild, lines.join('\n') || 'Aucun verrouillage en cours.', { titre: 'Lockdown', sujet: '🔒' })], ephemeral: true });
+  async executer(i) {
+    const sousCommande = i.options.getSubcommand();
+    if (sousCommande === 'status') {
+      const verrous = verrousActifs(i.guildId);
+      const lignes = verrous.map((l) => `• ${l.portee === 'server' ? '**Serveur entier**' : `<#${l.cible_id}>`} — ${marqueTemps(l.cree_le, 'R')}${l.raison ? ` · ${tronquer(l.raison, 60)}` : ''}`);
+      return repondre(i, { embeds: [info(i.guild, lignes.join('\n') || 'Aucun verrouillage en cours.', { titre: 'Lockdown', sujet: '🔒' })], ephemeral: true });
     }
-    const scope = i.options.getString('portee', true) as LockScope;
-    const target = scope === 'server' ? i.guildId : (i.options.getChannel('cible')?.id ?? i.channelId);
-    const reason = i.options.getString('raison') ?? 'Aucune raison';
-    const where = scope === 'server' ? 'tout le serveur' : `<#${target}>`;
-    if (sub === 'end') {
-      const restored = await unlock(i.guild, scope, target, i.user);
-      return reply(i, { embeds: [ok(i.guild, `🔓 Lockdown terminé sur ${where} — **${restored}** salon(s) rouvert(s).`)] });
+    const portee = i.options.getString('portee', true) as PorteeVerrou;
+    const cible = portee === 'server' ? i.guildId : (i.options.getChannel('cible')?.id ?? i.channelId);
+    const raison = i.options.getString('raison') ?? 'Aucune raison';
+    const filtre = portee === 'server' ? 'tout le serveur' : `<#${cible}>`;
+    if (sousCommande === 'end') {
+      const restaures = await deverrouiller(i.guild, portee, cible, i.user);
+      return repondre(i, { embeds: [ok(i.guild, `🔓 Lockdown terminé sur ${filtre} — **${restaures}** salon(s) rouvert(s).`)] });
     }
-    return askConfirmation(i, {
-      title: '🔒 LOCKDOWN',
-      description: `Les membres ne pourront plus écrire sur ${where}.\nLes permissions d’origine seront restaurées avec \`/lockdown end\`.`,
-      confirmLabel: 'Verrouiller',
-      onConfirm: async (b) => {
+    return demanderConfirmation(i, {
+      titre: '🔒 LOCKDOWN',
+      description: `Les membres ne pourront plus écrire sur ${filtre}.\nLes permissions d’origine seront restaurées avec \`/lockdown end\`.`,
+      libelleConfirmation: 'Verrouiller',
+      surConfirmation: async (b) => {
         await b.update({ embeds: [info(b.guild, 'Verrouillage en cours…')], components: [] });
-        const r = await lock(b.guild, scope, target, b.user, reason);
-        await b.editReply({ embeds: [ok(b.guild, `🔒 **${r.locked}** salon(s) verrouillé(s) sur ${where}.${r.skipped ? `\n-# ${r.skipped} ignoré(s) (déjà fermés ou inaccessibles).` : ''}`)] });
+        const r = await verrouiller(b.guild, portee, cible, b.user, raison);
+        await b.editReply({ embeds: [ok(b.guild, `🔒 **${r.verrouilles}** salon(s) verrouillé(s) sur ${filtre}.${r.ignores ? `\n-# ${r.ignores} ignoré(s) (déjà fermés ou inaccessibles).` : ''}`)] });
         if (b.channel && 'send' in b.channel) {
-          await b.channel.send({ embeds: [refus(b.guild, `**LOCKDOWN** — ${reason}\nLes messages sont temporairement bloqués.`)] }).catch(() => undefined);
+          await b.channel.send({ embeds: [refus(b.guild, `**LOCKDOWN** — ${raison}\nLes messages sont temporairement bloqués.`)] }).catch(() => undefined);
         }
       },
     });
@@ -404,407 +404,407 @@ const lockdown: SlashCommand = {
 
 // ─── Commandes à préfixe (façon Airline) ───────────────────────────────────
 
-async function needTarget(message: Message<true>, arg: string | undefined): Promise<User> {
-  const member = await targetMember(message, arg);
-  if (member) return member.user;
-  const user = await resolveUser(message.client, arg);
-  if (!user) throw new UserError('Mention ou identifiant Discord attendu.');
-  return user;
+async function exigerCible(message: Message<true>, argument: string | undefined): Promise<User> {
+  const membre = await membreCible(message, argument);
+  if (membre) return membre.user;
+  const utilisateur = await resoudreUtilisateur(message.client, argument);
+  if (!utilisateur) throw new ErreurUtilisateur('Mention ou identifiant Discord attendu.');
+  return utilisateur;
 }
 
-const prefixCommands: PrefixCommand[] = [
+const commandesPrefixe: CommandePrefixe[] = [
   {
-    name: 'ban',
-    domain: 'sanction',
-    category: 'moderation',
+    nom: 'ban',
+    domaine: 'sanction',
+    categorie: 'moderation',
     description: 'Bannit / débannit',
     usage: '<membre|id> [raison]',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      const user = await needTarget(message, args[0]);
-      const banned = await message.guild.bans.fetch(user.id).catch(() => null);
-      await sanctionMessage(message, banned ? 'unban' : 'ban', user, args.slice(1).join(' ') || null);
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      const utilisateur = await exigerCible(message, parametres[0]);
+      const banni = await message.guild.bans.fetch(utilisateur.id).catch(() => null);
+      await sanctionParMessage(message, banni ? 'unban' : 'ban', utilisateur, parametres.slice(1).join(' ') || null);
     },
   },
   {
-    name: 'kick',
-    domain: 'sanction',
-    category: 'moderation',
+    nom: 'kick',
+    domaine: 'sanction',
+    categorie: 'moderation',
     description: 'Expulse',
     usage: '<membre> [raison]',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      await sanctionMessage(message, 'kick', await needTarget(message, args[0]), args.slice(1).join(' ') || null);
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      await sanctionParMessage(message, 'kick', await exigerCible(message, parametres[0]), parametres.slice(1).join(' ') || null);
     },
   },
   {
-    name: 'mute',
-    aliases: ['timeout', 'to'],
-    domain: 'sanction',
-    category: 'moderation',
+    nom: 'mute',
+    alias: ['timeout', 'to'],
+    domaine: 'sanction',
+    categorie: 'moderation',
     description: 'Timeout',
     usage: '<membre> <durée> [raison]',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      const user = await needTarget(message, args[0]);
-      const duration = parseDuration(args[1] ?? '');
-      if (!duration || duration > MAX_TIMEOUT_MS) throw new UserError('Durée attendue : `10m`, `2h`, `1j`…');
-      await sanctionMessage(message, 'timeout', user, args.slice(2).join(' ') || null, duration);
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      const utilisateur = await exigerCible(message, parametres[0]);
+      const duree = lireDuree(parametres[1] ?? '');
+      if (!duree || duree > TIMEOUT_MAX_MS) throw new ErreurUtilisateur('Durée attendue : `10m`, `2h`, `1j`…');
+      await sanctionParMessage(message, 'timeout', utilisateur, parametres.slice(2).join(' ') || null, duree);
     },
   },
   {
-    name: 'unmute',
-    aliases: ['untimeout'],
-    domain: 'sanction',
-    category: 'moderation',
+    nom: 'unmute',
+    alias: ['untimeout'],
+    domaine: 'sanction',
+    categorie: 'moderation',
     description: 'Lève un timeout',
     usage: '<membre>',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      await sanctionMessage(message, 'untimeout', await needTarget(message, args[0]), args.slice(1).join(' ') || null);
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      await sanctionParMessage(message, 'untimeout', await exigerCible(message, parametres[0]), parametres.slice(1).join(' ') || null);
     },
   },
   {
-    name: 'warn',
-    domain: 'sanction',
-    category: 'moderation',
+    nom: 'warn',
+    domaine: 'sanction',
+    categorie: 'moderation',
     description: 'Avertit',
     usage: '<membre> <raison>',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      const user = await needTarget(message, args[0]);
-      const reason = args.slice(1).join(' ');
-      if (!reason) throw new UserError('Une raison est attendue.');
-      await sanctionMessage(message, 'warn', user, reason);
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      const utilisateur = await exigerCible(message, parametres[0]);
+      const raison = parametres.slice(1).join(' ');
+      if (!raison) throw new ErreurUtilisateur('Une raison est attendue.');
+      await sanctionParMessage(message, 'warn', utilisateur, raison);
     },
   },
   {
-    name: 'unwarn',
-    domain: 'sanction',
-    category: 'moderation',
+    nom: 'unwarn',
+    domaine: 'sanction',
+    categorie: 'moderation',
     description: 'Retire un warn',
     usage: '<membre> [numéro]',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      const user = await needTarget(message, args[0]);
-      await sanctionMessage(message, 'unwarn', user, null, undefined, args[1] ? Number(args[1]) || undefined : undefined);
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      const utilisateur = await exigerCible(message, parametres[0]);
+      await sanctionParMessage(message, 'unwarn', utilisateur, null, undefined, parametres[1] ? Number(parametres[1]) || undefined : undefined);
     },
   },
   {
-    name: 'warns',
-    aliases: ['warnings'],
-    domain: 'sanction',
-    category: 'moderation',
+    nom: 'warns',
+    alias: ['warnings'],
+    domaine: 'sanction',
+    categorie: 'moderation',
     description: 'Les warns d’un membre',
     usage: '<membre>',
-    level: PermLevel.STAFF,
-    async execute(message, args) {
-      const pages = warningsPages(message.guild, await needTarget(message, args[0]));
+    niveau: Niveau.STAFF,
+    async executer(message, parametres) {
+      const pages = pagesAvertissements(message.guild, await exigerCible(message, parametres[0]));
       await message.reply({ embeds: [pages[0]!], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'baninfo',
-    domain: 'sanction',
-    category: 'moderation',
+    nom: 'baninfo',
+    domaine: 'sanction',
+    categorie: 'moderation',
     description: 'Détail d’un ban',
     usage: '<id>',
-    level: PermLevel.STAFF,
-    async execute(message, args) {
-      const user = await needTarget(message, args[0]);
-      const ban = await message.guild.bans.fetch(user.id).catch(() => null);
-      const last = get<{ actor_id: string; data: string; created_at: number }>(
-        "SELECT actor_id, data, created_at FROM logs WHERE guild_id = ? AND user_id = ? AND type IN ('ban','blacklist') ORDER BY created_at DESC LIMIT 1",
+    niveau: Niveau.STAFF,
+    async executer(message, parametres) {
+      const utilisateur = await exigerCible(message, parametres[0]);
+      const bannir = await message.guild.bans.fetch(utilisateur.id).catch(() => null);
+      const dernier = lire<{ acteur_id: string; donnees: string; cree_le: number }>(
+        "SELECT acteur_id, donnees, cree_le FROM journaux WHERE serveur_id = ? AND utilisateur_id = ? AND type IN ('ban','blacklist') ORDER BY cree_le DESC LIMIT 1",
         message.guildId,
-        user.id,
+        utilisateur.id,
       );
-      const embed = ban
+      const embed = bannir
         ? info(
             message.guild,
             [
-              `**Compte** — ${user.tag} (\`${user.id}\`)`,
-              `**Raison** — ${ban.reason ?? '*aucune raison enregistrée*'}`,
-              last ? `**Par** — <@${last.actor_id}>` : null,
-              last ? `**Le** — ${ts(last.created_at, 'f')}` : null,
+              `**Compte** — ${utilisateur.tag} (\`${utilisateur.id}\`)`,
+              `**Raison** — ${bannir.reason ?? '*aucune raison enregistrée*'}`,
+              dernier ? `**Par** — <@${dernier.acteur_id}>` : null,
+              dernier ? `**Le** — ${marqueTemps(dernier.cree_le, 'f')}` : null,
             ]
               .filter(Boolean)
               .join('\n'),
-            { titre: 'Sanction', sujet: emojiFor(message.guildId, 'sanction') },
+            { titre: 'Sanction', sujet: emojiPour(message.guildId, 'sanction') },
           )
-        : info(message.guild, 'Rien pour ce compte.', { titre: 'Sanction', sujet: emojiFor(message.guildId, 'sanction') });
+        : info(message.guild, 'Rien pour ce compte.', { titre: 'Sanction', sujet: emojiPour(message.guildId, 'sanction') });
       await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'unbanall',
-    domain: 'sanction',
-    category: 'moderation',
+    nom: 'unbanall',
+    domaine: 'sanction',
+    categorie: 'moderation',
     description: 'Débannit tout',
-    level: PermLevel.STREAMER,
-    async execute(message) {
-      const bans = await message.guild.bans.fetch();
-      const blacklisted = new Set(blacklistEntries(message.guildId).map((b) => b.user_id));
-      const count = bans.filter((b) => !blacklisted.has(b.user.id)).size;
+    niveau: Niveau.STREAMER,
+    async executer(message) {
+      const bannissements = await message.guild.bans.fetch();
+      const enListeNoire = new Set(entreesListeNoire(message.guildId).map((b) => b.utilisateur_id));
+      const nombre = bannissements.filter((b) => !enListeNoire.has(b.user.id)).size;
       await message.reply({
-        embeds: [info(message.guild, `Débannir **${count}** compte(s) ?\n-# Les comptes blacklistés restent bannis.`, { titre: 'Confirmation', sujet: '⚠️' })],
-        components: [row(button(`modconf:unbanall:${message.author.id}`, 'Tout débannir', ButtonStyle.Danger, '🕊️'))],
+        embeds: [info(message.guild, `Débannir **${nombre}** compte(s) ?\n-# Les comptes blacklistés restent bannis.`, { titre: 'Confirmation', sujet: '⚠️' })],
+        components: [rangee(bouton(`modconf:unbanall:${message.author.id}`, 'Tout débannir', ButtonStyle.Danger, '🕊️'))],
         allowedMentions: { repliedUser: false },
       });
     },
   },
   {
-    name: 'clear',
-    domain: 'salon',
-    category: 'salons',
+    nom: 'clear',
+    domaine: 'salon',
+    categorie: 'salons',
     description: 'Efface',
     usage: '[n] [membre]',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      const n = Number(args[0] ?? 50);
-      if (!Number.isInteger(n) || n < 1 || n > 1000) throw new UserError('Nombre entre 1 et 1000.');
-      const target = args[1] ? await needTarget(message, args[1]) : null;
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      const n = Number(parametres[0] ?? 50);
+      if (!Number.isInteger(n) || n < 1 || n > 1000) throw new ErreurUtilisateur('Nombre entre 1 et 1000.');
+      const cible = parametres[1] ? await exigerCible(message, parametres[1]) : null;
       await message.delete().catch(() => undefined);
-      const deleted = await clearMessages(message.channel, n, target?.id ?? null, message.author);
-      const note = await message.channel.send({ embeds: [ok(message.guild, `**${deleted}** message(s) supprimé(s).`)] });
+      const supprimes = await effacerMessages(message.channel, n, cible?.id ?? null, message.author);
+      const note = await message.channel.send({ embeds: [ok(message.guild, `**${supprimes}** message(s) supprimé(s).`)] });
       setTimeout(() => void note.delete().catch(() => undefined), 5_000).unref();
     },
   },
   {
-    name: 'lock',
-    domain: 'salon',
-    category: 'salons',
+    nom: 'lock',
+    domaine: 'salon',
+    categorie: 'salons',
     description: 'Ce salon',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      await lock(message.guild, 'channel', message.channelId, message.author, args.join(' ') || 'Aucune raison');
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      await verrouiller(message.guild, 'channel', message.channelId, message.author, parametres.join(' ') || 'Aucune raison');
       await message.reply({ embeds: [ok(message.guild, '🔒 Salon fermé.')], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'unlock',
-    domain: 'salon',
-    category: 'salons',
+    nom: 'unlock',
+    domaine: 'salon',
+    categorie: 'salons',
     description: 'Ce salon',
-    level: PermLevel.MODERATOR,
-    async execute(message) {
-      await unlock(message.guild, 'channel', message.channelId, message.author);
+    niveau: Niveau.MODERATEUR,
+    async executer(message) {
+      await deverrouiller(message.guild, 'channel', message.channelId, message.author);
       await message.reply({ embeds: [ok(message.guild, '🔓 Salon rouvert.')], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'l0all',
-    aliases: ['lockall'],
-    domain: 'salon',
-    category: 'salons',
+    nom: 'l0all',
+    alias: ['lockall'],
+    domaine: 'salon',
+    categorie: 'salons',
     description: 'Tout le serveur',
-    level: PermLevel.ADMIN,
-    async execute(message, args) {
+    niveau: Niveau.ADMIN,
+    async executer(message, parametres) {
       await message.reply({
         embeds: [info(message.guild, 'Verrouiller **tout le serveur** ?\n-# `&unl0all` pour tout rouvrir.', { titre: 'LOCKDOWN', sujet: '🔒' })],
-        components: [row(button(`modconf:lockall:${message.author.id}:${encodeURIComponent(args.join(' ').slice(0, 60))}`, 'Verrouiller', ButtonStyle.Danger, '🔒'))],
+        components: [rangee(bouton(`modconf:lockall:${message.author.id}:${encodeURIComponent(parametres.join(' ').slice(0, 60))}`, 'Verrouiller', ButtonStyle.Danger, '🔒'))],
         allowedMentions: { repliedUser: false },
       });
     },
   },
   {
-    name: 'unl0all',
-    aliases: ['unlockall'],
-    domain: 'salon',
-    category: 'salons',
+    nom: 'unl0all',
+    alias: ['unlockall'],
+    domaine: 'salon',
+    categorie: 'salons',
     description: 'Rouvre tout le serveur',
-    level: PermLevel.ADMIN,
-    async execute(message) {
-      const restored = await unlock(message.guild, 'server', message.guildId, message.author);
-      await message.reply({ embeds: [ok(message.guild, `🔓 **${restored}** salon(s) rouvert(s).`)], allowedMentions: { repliedUser: false } });
+    niveau: Niveau.ADMIN,
+    async executer(message) {
+      const restaures = await deverrouiller(message.guild, 'server', message.guildId, message.author);
+      await message.reply({ embeds: [ok(message.guild, `🔓 **${restaures}** salon(s) rouvert(s).`)], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'slowmode',
-    aliases: ['slow'],
-    domain: 'salon',
-    category: 'salons',
+    nom: 'slowmode',
+    alias: ['slow'],
+    domaine: 'salon',
+    categorie: 'salons',
     description: 'Mode lent',
     usage: '<durée|0>',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      const raw = args[0] ?? '0';
-      const seconds = raw === '0' ? 0 : Math.round((parseDuration(/^\d+$/.test(raw) ? `${raw}s` : raw) ?? -1000) / 1000);
-      if (seconds < 0 || seconds > 21_600 || !('setRateLimitPerUser' in message.channel)) throw new UserError('Durée de `0` à `6h`.');
-      await message.channel.setRateLimitPerUser(seconds, `Mode lent par ${message.author.tag}`);
-      await message.reply({ embeds: [ok(message.guild, seconds ? `Mode lent : **${formatDuration(seconds * 1000)}**.` : 'Mode lent coupé.')], allowedMentions: { repliedUser: false } });
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      const brut = parametres[0] ?? '0';
+      const secondes = brut === '0' ? 0 : Math.round((lireDuree(/^\d+$/.test(brut) ? `${brut}s` : brut) ?? -1000) / 1000);
+      if (secondes < 0 || secondes > 21_600 || !('setRateLimitPerUser' in message.channel)) throw new ErreurUtilisateur('Durée de `0` à `6h`.');
+      await message.channel.setRateLimitPerUser(secondes, `Mode lent par ${message.author.tag}`);
+      await message.reply({ embeds: [ok(message.guild, secondes ? `Mode lent : **${formaterDuree(secondes * 1000)}**.` : 'Mode lent coupé.')], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'bl',
-    domain: 'salon',
-    category: 'moderation',
+    nom: 'bl',
+    domaine: 'salon',
+    categorie: 'moderation',
     description: 'Blacklist (seul : liste)',
     usage: '[id] [raison]',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      if (!args[0]) {
-        await message.reply({ embeds: [blacklistPages(message.guild)[0]!], allowedMentions: { repliedUser: false } });
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      if (!parametres[0]) {
+        await message.reply({ embeds: [pagesListeNoire(message.guild)[0]!], allowedMentions: { repliedUser: false } });
         return;
       }
-      await sanctionMessage(message, 'blacklist', await needTarget(message, args[0]), args.slice(1).join(' ') || null);
+      await sanctionParMessage(message, 'blacklist', await exigerCible(message, parametres[0]), parametres.slice(1).join(' ') || null);
     },
   },
   {
-    name: 'unbl',
-    domain: 'salon',
-    category: 'moderation',
+    nom: 'unbl',
+    domaine: 'salon',
+    categorie: 'moderation',
     description: 'Retire de la blacklist',
     usage: '<id>',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      await sanctionMessage(message, 'unblacklist', await needTarget(message, args[0]), null);
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      await sanctionParMessage(message, 'unblacklist', await exigerCible(message, parametres[0]), null);
     },
   },
   {
-    name: 'blinfo',
-    domain: 'salon',
-    category: 'moderation',
+    nom: 'blinfo',
+    domaine: 'salon',
+    categorie: 'moderation',
     description: 'Détail blacklist',
     usage: '<id>',
-    level: PermLevel.STAFF,
-    async execute(message, args) {
-      await message.reply({ embeds: [blacklistInfo(message.guild, await needTarget(message, args[0]))], allowedMentions: { repliedUser: false } });
+    niveau: Niveau.STAFF,
+    async executer(message, parametres) {
+      await message.reply({ embeds: [ficheListeNoire(message.guild, await exigerCible(message, parametres[0]))], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'gbl',
-    domain: 'owner',
-    category: 'owner',
+    nom: 'gbl',
+    domaine: 'owner',
+    categorie: 'owner',
     description: 'Blacklist globale (seul : liste)',
     usage: '[id] [raison]',
-    level: PermLevel.BOT_OWNER,
-    async execute(message, args) {
-      if (!args[0]) {
-        const lines = blacklistEntries('global').map((b) => `• <@${b.user_id}> \`${b.user_id}\` — ${truncate(b.reason, 80)}`);
-        await message.reply({ embeds: [info(message.guild, truncate(lines.join('\n') || 'Vide.', 4000), { titre: 'Blacklist globale', sujet: '⛔' })], allowedMentions: { repliedUser: false } });
+    niveau: Niveau.PROPRIETAIRE_BOT,
+    async executer(message, parametres) {
+      if (!parametres[0]) {
+        const lignes = entreesListeNoire('global').map((b) => `• <@${b.utilisateur_id}> \`${b.utilisateur_id}\` — ${tronquer(b.raison, 80)}`);
+        await message.reply({ embeds: [info(message.guild, tronquer(lignes.join('\n') || 'Vide.', 4000), { titre: 'Blacklist globale', sujet: '⛔' })], allowedMentions: { repliedUser: false } });
         return;
       }
-      const user = await needTarget(message, args[0]);
-      const reason = args.slice(1).join(' ') || 'Aucune raison';
-      run(
-        `INSERT INTO blacklist (scope, user_id, reason, added_by, added_at) VALUES ('global', ?, ?, ?, ?)
-         ON CONFLICT(scope, user_id) DO UPDATE SET reason = excluded.reason`,
-        user.id,
-        reason,
+      const utilisateur = await exigerCible(message, parametres[0]);
+      const raison = parametres.slice(1).join(' ') || 'Aucune raison';
+      executer(
+        `INSERT INTO liste_noire (portee, utilisateur_id, raison, ajoute_par, ajoute_le) VALUES ('global', ?, ?, ?, ?)
+         ON CONFLICT(portee, utilisateur_id) DO UPDATE SET raison = excluded.raison`,
+        utilisateur.id,
+        raison,
         message.author.id,
         Date.now(),
       );
-      let banned = 0;
-      for (const guild of message.client.guilds.cache.values()) {
-        const ok2 = await guild.members.ban(user.id, { reason: `Blacklist globale : ${reason}`.slice(0, 500) }).then(() => true).catch(() => false);
-        if (ok2) {
-          banned++;
-          recordLog(guild.id, 'blacklist', 'global', user.id, message.author.id, { reason });
-          void journal(guild, 'blacklist', { title: 'Blacklist globale', tone: 'alerte', lines: [`**Cible** : <@${user.id}> \`${user.id}\``, `**Raison** : ${reason}`], by: message.author });
+      let banni = 0;
+      for (const serveur of message.client.guilds.cache.values()) {
+        const reussi = await serveur.members.ban(utilisateur.id, { reason: `Blacklist globale : ${raison}`.slice(0, 500) }).then(() => true).catch(() => false);
+        if (reussi) {
+          banni++;
+          historiser(serveur.id, 'blacklist', 'global', utilisateur.id, message.author.id, { reason: raison });
+          void journal(serveur, 'blacklist', { titre: 'Blacklist globale', ton: 'alerte', lignes: [`**Cible** : <@${utilisateur.id}> \`${utilisateur.id}\``, `**Raison** : ${raison}`], par: message.author });
         }
       }
-      await message.reply({ embeds: [ok(message.guild, `<@${user.id}> blacklisté partout — banni de **${banned}** serveur(s).`)], allowedMentions: { repliedUser: false } });
+      await message.reply({ embeds: [ok(message.guild, `<@${utilisateur.id}> blacklisté partout — banni de **${banni}** serveur(s).`)], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'ungbl',
-    domain: 'owner',
-    category: 'owner',
+    nom: 'ungbl',
+    domaine: 'owner',
+    categorie: 'owner',
     description: 'Retire de la blacklist globale',
     usage: '<id>',
-    level: PermLevel.BOT_OWNER,
-    async execute(message, args) {
-      const user = await needTarget(message, args[0]);
-      const r = run("DELETE FROM blacklist WHERE scope = 'global' AND user_id = ?", user.id);
-      if (!r.changes) throw new UserError('Ce compte n’est pas dans la blacklist globale.');
-      let unbanned = 0;
-      for (const guild of message.client.guilds.cache.values()) {
-        if (isBlacklisted(guild.id, user.id)) continue;
-        if (await guild.bans.remove(user.id, 'Retrait de la blacklist globale').then(() => true).catch(() => false)) unbanned++;
+    niveau: Niveau.PROPRIETAIRE_BOT,
+    async executer(message, parametres) {
+      const utilisateur = await exigerCible(message, parametres[0]);
+      const r = executer("DELETE FROM liste_noire WHERE portee = 'global' AND utilisateur_id = ?", utilisateur.id);
+      if (!r.changes) throw new ErreurUtilisateur('Ce compte n’est pas dans la blacklist globale.');
+      let debannis = 0;
+      for (const serveur of message.client.guilds.cache.values()) {
+        if (estEnListeNoire(serveur.id, utilisateur.id)) continue;
+        if (await serveur.bans.remove(utilisateur.id, 'Retrait de la blacklist globale').then(() => true).catch(() => false)) debannis++;
       }
-      await message.reply({ embeds: [ok(message.guild, `<@${user.id}> retiré de la blacklist globale — débanni de **${unbanned}** serveur(s).`)], allowedMentions: { repliedUser: false } });
+      await message.reply({ embeds: [ok(message.guild, `<@${utilisateur.id}> retiré de la blacklist globale — débanni de **${debannis}** serveur(s).`)], allowedMentions: { repliedUser: false } });
     },
   },
 ];
 
-async function onModConfirm(interaction: ButtonInteraction<'cached'>, [action, ownerId, extra]: string[]) {
-  if (interaction.user.id !== ownerId) {
+async function surConfirmationModeration(interaction: ButtonInteraction<'cached'>, [action, proprietaireId, extra]: string[]) {
+  if (interaction.user.id !== proprietaireId) {
     await interaction.reply({ embeds: [erreur(interaction.guild, 'Seul l’auteur de la commande peut confirmer.')], flags: 64 });
     return;
   }
   if (action === 'lockall') {
     await interaction.update({ embeds: [info(interaction.guild, 'Verrouillage en cours…')], components: [] });
-    const r = await lock(interaction.guild, 'server', interaction.guildId, interaction.user, decodeURIComponent(extra ?? '') || 'Aucune raison');
-    await interaction.editReply({ embeds: [ok(interaction.guild, `🔒 **${r.locked}** salon(s) verrouillé(s).`)] });
+    const r = await verrouiller(interaction.guild, 'server', interaction.guildId, interaction.user, decodeURIComponent(extra ?? '') || 'Aucune raison');
+    await interaction.editReply({ embeds: [ok(interaction.guild, `🔒 **${r.verrouilles}** salon(s) verrouillé(s).`)] });
     return;
   }
   if (action === 'unbanall') {
-    if (!hasLevel(interaction.member, PermLevel.STREAMER)) throw new UserError('Accès Streamer requis.');
+    if (!aNiveau(interaction.member, Niveau.STREAMER)) throw new ErreurUtilisateur('Accès Streamer requis.');
     await interaction.update({ embeds: [info(interaction.guild, 'Débannissement en cours…')], components: [] });
-    const bans = await interaction.guild.bans.fetch();
-    const blacklisted = new Set(blacklistEntries(interaction.guildId).map((b) => b.user_id));
-    let done = 0;
-    for (const b of bans.values()) {
-      if (blacklisted.has(b.user.id) || isBlacklisted(interaction.guildId, b.user.id)) continue;
-      if (await interaction.guild.bans.remove(b.user.id, `+unbanall par ${interaction.user.tag}`).then(() => true).catch(() => false)) done++;
+    const bannissements = await interaction.guild.bans.fetch();
+    const enListeNoire = new Set(entreesListeNoire(interaction.guildId).map((b) => b.utilisateur_id));
+    let fait = 0;
+    for (const b of bannissements.values()) {
+      if (enListeNoire.has(b.user.id) || estEnListeNoire(interaction.guildId, b.user.id)) continue;
+      if (await interaction.guild.bans.remove(b.user.id, `+unbanall par ${interaction.user.tag}`).then(() => true).catch(() => false)) fait++;
     }
-    recordLog(interaction.guildId, 'sanction', 'unbanall', null, interaction.user.id, { count: done });
-    void journal(interaction.guild, 'sanction', { title: 'Débannissement général', tone: 'ok', lines: [`**Comptes débannis** : ${done}`], by: interaction.user });
-    await interaction.editReply({ embeds: [ok(interaction.guild, `🕊️ **${done}** compte(s) débanni(s).`)] });
+    historiser(interaction.guildId, 'sanction', 'unbanall', null, interaction.user.id, { count: fait });
+    void journal(interaction.guild, 'sanction', { titre: 'Débannissement général', ton: 'ok', lignes: [`**Comptes débannis** : ${fait}`], par: interaction.user });
+    await interaction.editReply({ embeds: [ok(interaction.guild, `🕊️ **${fait}** compte(s) débanni(s).`)] });
   }
 }
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'moderation',
   section: 'moderation',
-  title: 'Sanctions',
+  titre: 'Sanctions',
   emoji: '🛡️',
   moduleId: 'moderation',
-  order: 1,
+  ordre: 1,
   description: 'Avertissements, actions automatiques et messages privés de sanction.\n-# Actions automatiques : `3:timeout:60, 5:kick, 7:ban` (nombre de warns : action : minutes).',
-  fields: [
-    { kind: 'toggle', key: 'dm', label: 'Prévenir en MP', get: (c) => c.moderation.dmOnAction, set: (c, v) => void (c.moderation.dmOnAction = v) },
+  champs: [
+    { kind: 'toggle', cle: 'dm', libelle: 'Prévenir en MP', get: (c) => c.moderation.mpSanction, set: (c, v) => void (c.moderation.mpSanction = v) },
     {
       kind: 'text',
-      key: 'auto',
-      label: 'Actions automatiques',
+      cle: 'auto',
+      libelle: 'Actions automatiques',
       maxLength: 200,
-      get: (c) => formatAutoActions(c.moderation.autoActions),
-      set: (c, v) => void (c.moderation.autoActions = parseAutoActions(v) ?? c.moderation.autoActions),
-      validate: (v) => (parseAutoActions(v) ? null : 'Format attendu : `3:timeout:60, 5:kick, 7:ban`.'),
+      get: (c) => formaterActionsAuto(c.moderation.actionsAuto),
+      set: (c, v) => void (c.moderation.actionsAuto = lireActionsAuto(v) ?? c.moderation.actionsAuto),
+      validate: (v) => (lireActionsAuto(v) ? null : 'Format attendu : `3:timeout:60, 5:kick, 7:ban`.'),
     },
-    { kind: 'text', key: 'contact', label: 'Phrase de contact (MP)', long: true, maxLength: 300, get: (c) => c.moderation.contactText, set: (c, v) => void (c.moderation.contactText = v) },
-    { kind: 'number', key: 'timeout', label: 'Timeout par défaut', min: 1, max: 40_320, unit: 'min', get: (c) => c.moderation.defaultTimeoutMinutes, set: (c, v) => void (c.moderation.defaultTimeoutMinutes = v) },
-    { kind: 'number', key: 'bandelete', label: 'Messages effacés au ban', min: 0, max: 168, unit: 'h', get: (c) => c.moderation.banDeleteHours, set: (c, v) => void (c.moderation.banDeleteHours = v) },
+    { kind: 'text', cle: 'contact', libelle: 'Phrase de contact (MP)', long: true, maxLength: 300, get: (c) => c.moderation.texteContact, set: (c, v) => void (c.moderation.texteContact = v) },
+    { kind: 'number', cle: 'timeout', libelle: 'Timeout par défaut', min: 1, max: 40_320, unit: 'min', get: (c) => c.moderation.minutesTimeoutDefaut, set: (c, v) => void (c.moderation.minutesTimeoutDefaut = v) },
+    { kind: 'number', cle: 'bandelete', libelle: 'Messages effacés au ban', min: 0, max: 168, unit: 'h', get: (c) => c.moderation.heuresEffaceesBan, set: (c, v) => void (c.moderation.heuresEffaceesBan = v) },
   ],
 };
 
-export const moderationModule: BotModule = {
+export const moduleModeration: ModuleBot = {
   id: 'moderation',
-  name: 'Modération',
+  nom: 'Modération',
   emoji: '🛡️',
   description: 'Warns, timeouts, bans, blacklist, lock et lockdown',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [warn, unwarn, warnings, timeout, untimeout, kick, ban, unban, blacklist, clear, slowmode, lockCommand, unlockCommand, lockdown],
-  prefixCommands,
-  setupPages: [setupPage],
-  components: [{ prefix: 'modconf', level: PermLevel.MODERATOR, button: (i, args) => onModConfirm(i, args) }],
-  events: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [avertir, retirerAvertissement, avertissements, exclure, leverTimeout, expulser, bannir, debannir, listeNoire, effacer, modeLent, commandeVerrouiller, commandeDeverrouiller, verrouillage],
+  commandesPrefixe,
+  pagesReglage: [pageReglage],
+  composants: [{ prefixe: 'modconf', niveau: Niveau.MODERATEUR, bouton: (i, parametres) => surConfirmationModeration(i, parametres) }],
+  evenements: [
     // Blacklist : re-ban immédiat, avant tout accueil.
-    on('guildMemberAdd', async (member: GuildMember) => {
-      const entry = isBlacklisted(member.guild.id, member.id);
-      if (!entry) return;
+    sur('guildMemberAdd', async (membre: GuildMember) => {
+      const entree = estEnListeNoire(membre.guild.id, membre.id);
+      if (!entree) return;
       try {
-        await member.ban({ reason: `Blacklist${entry.scope === 'global' ? ' globale' : ''} : tentative de retour (${entry.reason})`.slice(0, 500) });
-        void journal(member.guild, 'blacklist', {
-          title: 'Retour bloqué',
-          tone: 'alerte',
-          lines: [`**Compte** : <@${member.id}> \`${member.id}\``, `**Blacklist** : ${entry.scope === 'global' ? 'globale' : 'serveur'}`, `**Raison** : ${entry.reason}`],
+        await membre.ban({ reason: `Blacklist${entree.portee === 'global' ? ' globale' : ''} : tentative de retour (${entree.raison})`.slice(0, 500) });
+        void journal(membre.guild, 'blacklist', {
+          titre: 'Retour bloqué',
+          ton: 'alerte',
+          lignes: [`**Compte** : <@${membre.id}> \`${membre.id}\``, `**Blacklist** : ${entree.portee === 'global' ? 'globale' : 'serveur'}`, `**Raison** : ${entree.raison}`],
         });
         return 'stop';
-      } catch (err) {
-        log.warn(`Re-ban impossible de ${member.id} : ${(err as Error).message}`);
+      } catch (echec) {
+        registre.avertir(`Re-ban impossible de ${membre.id} : ${(echec as Error).message}`);
       }
     }, 1),
   ],

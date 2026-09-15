@@ -1,158 +1,158 @@
 import { ButtonStyle, EmbedBuilder, MessageFlags, SlashCommandBuilder, type ButtonInteraction, type Client, type Guild } from 'discord.js';
-import { all, get, parseJson, run } from '../../database/db';
-import { colorFor, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { recordLog } from '../../core/logService';
-import { hasLevel } from '../../core/permissions';
-import { neutralizeMentions, progressBar, truncate } from '../../core/text';
-import { parseDuration, ts } from '../../core/time';
-import { button, row } from '../../core/ui';
-import { PermLevel, type BotModule, type SlashCommand } from '../../core/types';
+import { lireTout, lire, lireJson, executer } from '../../database/db';
+import { couleurPour, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { historiser } from '../../core/logService';
+import { aNiveau } from '../../core/permissions';
+import { neutraliserMentions, barreProgression, tronquer } from '../../core/text';
+import { lireDuree, marqueTemps } from '../../core/time';
+import { bouton, rangee } from '../../core/ui';
+import { Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
 
-interface PollRow {
+interface LigneSondage {
   id: number;
-  guild_id: string;
-  channel_id: string;
+  serveur_id: string;
+  salon_id: string;
   message_id: string | null;
-  author_id: string;
+  auteur_id: string;
   question: string;
-  choices: string;
+  propositions: string;
   multiple: number;
-  ends_at: number | null;
-  status: 'open' | 'closed';
-  created_at: number;
+  fin_le: number | null;
+  statut: 'open' | 'closed';
+  cree_le: number;
 }
 
-const NUMBERS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+const NUMEROS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 
-function tally(poll: PollRow): { counts: number[]; voters: number } {
-  const choices = parseJson<string[]>(poll.choices, []);
-  const counts = choices.map(() => 0);
-  for (const r of all<{ choice: number; n: number }>('SELECT choice, COUNT(*) AS n FROM poll_votes WHERE poll_id = ? GROUP BY choice', poll.id)) {
-    if (counts[r.choice] !== undefined) counts[r.choice] = r.n;
+function decompte(sondage: LigneSondage): { counts: number[]; voters: number } {
+  const propositions = lireJson<string[]>(sondage.propositions, []);
+  const comptes = propositions.map(() => 0);
+  for (const r of lireTout<{ choix: number; n: number }>('SELECT choix, COUNT(*) AS n FROM votes_sondages WHERE sondage_id = ? GROUP BY choix', sondage.id)) {
+    if (comptes[r.choix] !== undefined) comptes[r.choix] = r.n;
   }
-  const voters = get<{ n: number }>('SELECT COUNT(DISTINCT user_id) AS n FROM poll_votes WHERE poll_id = ?', poll.id)?.n ?? 0;
-  return { counts, voters };
+  const votants = lire<{ n: number }>('SELECT COUNT(DISTINCT utilisateur_id) AS n FROM votes_sondages WHERE sondage_id = ?', sondage.id)?.n ?? 0;
+  return { counts: comptes, voters: votants };
 }
 
-function render(guild: Guild, poll: PollRow) {
-  const choices = parseJson<string[]>(poll.choices, []);
-  const { counts, voters } = tally(poll);
-  const total = counts.reduce((a, b) => a + b, 0);
-  const closed = poll.status === 'closed';
-  const max = Math.max(...counts);
-  const lines = choices.map((c, i) => {
-    const pct = total ? Math.round((counts[i]! / total) * 100) : 0;
-    const win = closed && max > 0 && counts[i] === max ? ' 🏆' : '';
-    return `${NUMBERS[i]} **${truncate(c, 80)}**${win}\n${progressBar(total ? counts[i]! / total : 0, 14)} ${pct}% · ${counts[i]} vote${counts[i]! > 1 ? 's' : ''}`;
+function afficher(serveur: Guild, sondage: LigneSondage) {
+  const propositions = lireJson<string[]>(sondage.propositions, []);
+  const { counts: comptes, voters: votants } = decompte(sondage);
+  const total = comptes.reduce((a, b) => a + b, 0);
+  const ferme = sondage.statut === 'closed';
+  const max = Math.max(...comptes);
+  const lignes = propositions.map((c, i) => {
+    const pourcentage = total ? Math.round((comptes[i]! / total) * 100) : 0;
+    const victoire = ferme && max > 0 && comptes[i] === max ? ' 🏆' : '';
+    return `${NUMEROS[i]} **${tronquer(c, 80)}**${victoire}\n${barreProgression(total ? comptes[i]! / total : 0, 14)} ${pourcentage}% · ${comptes[i]} vote${comptes[i]! > 1 ? 's' : ''}`;
   });
   const embed = new EmbedBuilder()
-    .setColor(colorFor(guild, closed ? 'info' : 'primary'))
-    .setAuthor({ name: closed ? '📊 SONDAGE TERMINÉ' : '📊 SONDAGE' })
-    .setTitle(truncate(poll.question, 256))
-    .setDescription(lines.join('\n\n'))
-    .setFooter({ text: `${voters} participant${voters > 1 ? 's' : ''} · ${poll.multiple ? 'plusieurs choix possibles' : 'un seul choix'} · #${poll.id}` });
-  if (poll.ends_at && !closed) embed.addFields({ name: 'Fin', value: `${ts(poll.ends_at, 'R')}`, inline: true });
-  const buttons = choices.map((_, i) => button(`poll:vote:${poll.id}:${i}`, String(counts[i]), ButtonStyle.Secondary, NUMBERS[i]).setDisabled(closed));
-  const rows = [];
-  for (let i = 0; i < buttons.length; i += 5) rows.push(row(...buttons.slice(i, i + 5)));
-  if (!closed) rows.push(row(button(`poll:end:${poll.id}`, 'Terminer', ButtonStyle.Danger, '⏹️')));
-  return { embeds: [embed], components: rows };
+    .setColor(couleurPour(serveur, ferme ? 'info' : 'primary'))
+    .setAuthor({ name: ferme ? '📊 SONDAGE TERMINÉ' : '📊 SONDAGE' })
+    .setTitle(tronquer(sondage.question, 256))
+    .setDescription(lignes.join('\n\n'))
+    .setFooter({ text: `${votants} participant${votants > 1 ? 's' : ''} · ${sondage.multiple ? 'plusieurs choix possibles' : 'un seul choix'} · #${sondage.id}` });
+  if (sondage.fin_le && !ferme) embed.addFields({ name: 'Fin', value: `${marqueTemps(sondage.fin_le, 'R')}`, inline: true });
+  const boutons = propositions.map((_, i) => bouton(`poll:vote:${sondage.id}:${i}`, String(comptes[i]), ButtonStyle.Secondary, NUMEROS[i]).setDisabled(ferme));
+  const rangees = [];
+  for (let i = 0; i < boutons.length; i += 5) rangees.push(rangee(...boutons.slice(i, i + 5)));
+  if (!ferme) rangees.push(rangee(bouton(`poll:end:${sondage.id}`, 'Terminer', ButtonStyle.Danger, '⏹️')));
+  return { embeds: [embed], components: rangees };
 }
 
-function requirePoll(guildId: string, id: string | undefined): PollRow {
-  const poll = get<PollRow>('SELECT * FROM polls WHERE id = ? AND guild_id = ?', Number(id), guildId);
-  if (!poll) throw new UserError('Sondage introuvable.');
-  return poll;
+function exigerSondage(serveurId: string, id: string | undefined): LigneSondage {
+  const sondage = lire<LigneSondage>('SELECT * FROM sondages WHERE id = ? AND serveur_id = ?', Number(id), serveurId);
+  if (!sondage) throw new ErreurUtilisateur('Sondage introuvable.');
+  return sondage;
 }
 
-async function closePoll(client: Client, poll: PollRow): Promise<void> {
-  run("UPDATE polls SET status = 'closed' WHERE id = ?", poll.id);
-  const guild = client.guilds.cache.get(poll.guild_id);
-  const channel = guild?.channels.cache.get(poll.channel_id);
-  if (!guild || !channel?.isTextBased() || !poll.message_id) return;
-  const message = await channel.messages.fetch(poll.message_id).catch(() => null);
-  await message?.edit(render(guild, { ...poll, status: 'closed' })).catch(() => undefined);
+async function cloreSondage(client: Client, sondage: LigneSondage): Promise<void> {
+  executer("UPDATE sondages SET statut = 'closed' WHERE id = ?", sondage.id);
+  const serveur = client.guilds.cache.get(sondage.serveur_id);
+  const salon = serveur?.channels.cache.get(sondage.salon_id);
+  if (!serveur || !salon?.isTextBased() || !sondage.message_id) return;
+  const message = await salon.messages.fetch(sondage.message_id).catch(() => null);
+  await message?.edit(afficher(serveur, { ...sondage, statut: 'closed' })).catch(() => undefined);
 }
 
-const poll: SlashCommand = {
-  category: 'community',
-  level: PermLevel.MEMBER,
-  cooldownSeconds: 20,
-  data: new SlashCommandBuilder()
+const sondage: CommandeSlash = {
+  categorie: 'community',
+  niveau: Niveau.MEMBRE,
+  delaiSecondes: 20,
+  donnees: new SlashCommandBuilder()
     .setName('poll')
     .setDescription('Créer un sondage')
     .addStringOption((o) => o.setName('question').setDescription('La question').setRequired(true).setMaxLength(250))
     .addStringOption((o) => o.setName('choix').setDescription('Les choix séparés par | (2 à 10). Vide = Oui | Non').setMaxLength(1000))
     .addStringOption((o) => o.setName('duree').setDescription('Ex : 1h, 2j (vide = sans fin)'))
     .addBooleanOption((o) => o.setName('multiple').setDescription('Autoriser plusieurs choix')),
-  async execute(interaction) {
-    const raw = interaction.options.getString('choix');
-    const choices = (raw ? raw.split('|') : ['Oui', 'Non']).map((c) => neutralizeMentions(c.trim())).filter(Boolean).slice(0, 10);
-    if (choices.length < 2) throw new UserError('Il faut au moins 2 choix, séparés par `|`.');
-    const durationRaw = interaction.options.getString('duree');
-    const duration = durationRaw ? parseDuration(durationRaw) : null;
-    if (durationRaw && (!duration || duration > 30 * 86_400_000)) throw new UserError('Durée invalide (ex : `1h`, `2j`, 30 jours max).');
-    const r = run(
-      'INSERT INTO polls (guild_id, channel_id, author_id, question, choices, multiple, ends_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  async executer(interaction) {
+    const brut = interaction.options.getString('choix');
+    const propositions = (brut ? brut.split('|') : ['Oui', 'Non']).map((c) => neutraliserMentions(c.trim())).filter(Boolean).slice(0, 10);
+    if (propositions.length < 2) throw new ErreurUtilisateur('Il faut au moins 2 choix, séparés par `|`.');
+    const dureeBrute = interaction.options.getString('duree');
+    const duree = dureeBrute ? lireDuree(dureeBrute) : null;
+    if (dureeBrute && (!duree || duree > 30 * 86_400_000)) throw new ErreurUtilisateur('Durée invalide (ex : `1h`, `2j`, 30 jours max).');
+    const r = executer(
+      'INSERT INTO sondages (serveur_id, salon_id, auteur_id, question, propositions, multiple, fin_le, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       interaction.guildId,
       interaction.channelId,
       interaction.user.id,
-      neutralizeMentions(interaction.options.getString('question', true)),
-      JSON.stringify(choices),
+      neutraliserMentions(interaction.options.getString('question', true)),
+      JSON.stringify(propositions),
       interaction.options.getBoolean('multiple') ? 1 : 0,
-      duration ? Date.now() + duration : null,
+      duree ? Date.now() + duree : null,
       Date.now(),
     );
-    const created = requirePoll(interaction.guildId, String(r.lastInsertRowid));
-    const message = await interaction.reply({ ...render(interaction.guild, created), withResponse: true });
-    run('UPDATE polls SET message_id = ? WHERE id = ?', message.resource?.message?.id ?? null, created.id);
-    recordLog(interaction.guildId, 'community', 'poll', null, interaction.user.id, { id: created.id });
+    const cree = exigerSondage(interaction.guildId, String(r.lastInsertRowid));
+    const message = await interaction.reply({ ...afficher(interaction.guild, cree), withResponse: true });
+    executer('UPDATE sondages SET message_id = ? WHERE id = ?', message.resource?.message?.id ?? null, cree.id);
+    historiser(interaction.guildId, 'community', 'poll', null, interaction.user.id, { id: cree.id });
   },
 };
 
-export const pollsModule: BotModule = {
+export const moduleSondages: ModuleBot = {
   id: 'polls',
-  name: 'Sondages',
+  nom: 'Sondages',
   emoji: '📊',
   description: 'Sondages à boutons avec résultats en direct',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [poll],
-  components: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [sondage],
+  composants: [
     {
-      prefix: 'poll',
-      async button(interaction: ButtonInteraction<'cached'>, [action, id, choice]) {
-        const p = requirePoll(interaction.guildId, id);
-        if (p.status === 'closed') throw new UserError('Ce sondage est terminé.');
+      prefixe: 'poll',
+      async bouton(interaction: ButtonInteraction<'cached'>, [action, id, choix]) {
+        const p = exigerSondage(interaction.guildId, id);
+        if (p.statut === 'closed') throw new ErreurUtilisateur('Ce sondage est terminé.');
         if (action === 'end') {
-          if (p.author_id !== interaction.user.id && !hasLevel(interaction.member, PermLevel.STAFF)) throw new UserError('Seul l’auteur ou le staff peut terminer ce sondage.');
+          if (p.auteur_id !== interaction.user.id && !aNiveau(interaction.member, Niveau.STAFF)) throw new ErreurUtilisateur('Seul l’auteur ou le staff peut terminer ce sondage.');
           await interaction.deferUpdate();
-          await closePoll(interaction.client, p);
+          await cloreSondage(interaction.client, p);
           return;
         }
-        const index = Number(choice);
-        const count = parseJson<string[]>(p.choices, []).length;
-        if (!Number.isInteger(index) || index < 0 || index >= count) return;
-        const already = get('SELECT 1 FROM poll_votes WHERE poll_id = ? AND user_id = ? AND choice = ?', p.id, interaction.user.id, index);
-        if (already) run('DELETE FROM poll_votes WHERE poll_id = ? AND user_id = ? AND choice = ?', p.id, interaction.user.id, index);
+        const indice = Number(choix);
+        const nombre = lireJson<string[]>(p.propositions, []).length;
+        if (!Number.isInteger(indice) || indice < 0 || indice >= nombre) return;
+        const deja = lire('SELECT 1 FROM votes_sondages WHERE sondage_id = ? AND utilisateur_id = ? AND choix = ?', p.id, interaction.user.id, indice);
+        if (deja) executer('DELETE FROM votes_sondages WHERE sondage_id = ? AND utilisateur_id = ? AND choix = ?', p.id, interaction.user.id, indice);
         else {
-          if (!p.multiple) run('DELETE FROM poll_votes WHERE poll_id = ? AND user_id = ?', p.id, interaction.user.id);
-          run('INSERT OR IGNORE INTO poll_votes (poll_id, user_id, choice) VALUES (?, ?, ?)', p.id, interaction.user.id, index);
+          if (!p.multiple) executer('DELETE FROM votes_sondages WHERE sondage_id = ? AND utilisateur_id = ?', p.id, interaction.user.id);
+          executer('INSERT OR IGNORE INTO votes_sondages (sondage_id, utilisateur_id, choix) VALUES (?, ?, ?)', p.id, interaction.user.id, indice);
         }
-        await interaction.update(render(interaction.guild, p));
-        if (!already) await interaction.followUp({ embeds: [ok(interaction.guild, `Vote enregistré : **${truncate(parseJson<string[]>(p.choices, [])[index] ?? '', 80)}**`)], flags: MessageFlags.Ephemeral });
+        await interaction.update(afficher(interaction.guild, p));
+        if (!deja) await interaction.followUp({ embeds: [ok(interaction.guild, `Vote enregistré : **${tronquer(lireJson<string[]>(p.propositions, [])[indice] ?? '', 80)}**`)], flags: MessageFlags.Ephemeral });
       },
     },
   ],
-  tasks: [
+  taches: [
     {
-      name: 'polls-end',
-      intervalMs: 30_000,
-      runOnStart: true,
-      async run(client) {
-        for (const p of all<PollRow>("SELECT * FROM polls WHERE status = 'open' AND ends_at IS NOT NULL AND ends_at <= ? LIMIT 20", Date.now())) {
-          await closePoll(client, p);
+      nom: 'polls-end',
+      intervalleMs: 30_000,
+      auDemarrage: true,
+      async executer(client) {
+        for (const p of lireTout<LigneSondage>("SELECT * FROM sondages WHERE statut = 'open' AND fin_le IS NOT NULL AND fin_le <= ? LIMIT 20", Date.now())) {
+          await cloreSondage(client, p);
         }
       },
     },

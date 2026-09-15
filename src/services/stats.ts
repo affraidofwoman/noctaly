@@ -1,37 +1,38 @@
-import { get, run } from '../database/db';
-import { getConfig } from '../core/guildConfig';
-import { dayKey } from '../core/time';
+import { lire, executer } from '../database/db';
+import { lireConfig } from '../core/guildConfig';
+import { cleJour } from '../core/time';
 
-type DailyColumn = 'messages' | 'joins' | 'leaves' | 'voice_seconds' | 'commands';
+export const COLONNES_JOUR = ['messages', 'arrivees', 'departs', 'secondes_vocal', 'commandes'] as const;
+type ColonneJour = (typeof COLONNES_JOUR)[number];
 
 /** Incrémente un compteur journalier du serveur (dans son fuseau horaire). */
-export function bumpDaily(guildId: string, column: DailyColumn, amount = 1): void {
-  const day = dayKey(Date.now(), getConfig(guildId).general.timezone);
-  run(
-    `INSERT INTO stats_daily (guild_id, day, ${column}) VALUES (?, ?, ?)
-     ON CONFLICT(guild_id, day) DO UPDATE SET ${column} = ${column} + excluded.${column}`,
-    guildId,
-    day,
-    amount,
+export function incrementerJour(serveurId: string, colonne: ColonneJour, montant = 1): void {
+  const jour = cleJour(Date.now(), lireConfig(serveurId).general.fuseau);
+  executer(
+    `INSERT INTO statistiques_jour (serveur_id, jour, ${colonne}) VALUES (?, ?, ?)
+     ON CONFLICT(serveur_id, jour) DO UPDATE SET ${colonne} = ${colonne} + excluded.${colonne}`,
+    serveurId,
+    jour,
+    montant,
   );
 }
 
 /** Profil d'activité d'un membre (créé à la première rencontre). */
-export function touchUser(guildId: string, userId: string): void {
-  run('INSERT OR IGNORE INTO users (guild_id, user_id, first_seen) VALUES (?, ?, ?)', guildId, userId, Date.now());
+export function noterMembre(serveurId: string, utilisateurId: string): void {
+  executer('INSERT OR IGNORE INTO membres (serveur_id, utilisateur_id, vu_le) VALUES (?, ?, ?)', serveurId, utilisateurId, Date.now());
 }
 
-export function bumpUser(guildId: string, userId: string, column: 'messages' | 'voice_seconds', amount = 1): void {
-  run(
-    `INSERT INTO users (guild_id, user_id, first_seen, ${column}) VALUES (?, ?, ?, ?)
-     ON CONFLICT(guild_id, user_id) DO UPDATE SET ${column} = ${column} + excluded.${column}`,
-    guildId,
-    userId,
+export function incrementerMembre(serveurId: string, utilisateurId: string, colonne: 'messages' | 'secondes_vocal', montant = 1): void {
+  executer(
+    `INSERT INTO membres (serveur_id, utilisateur_id, vu_le, ${colonne}) VALUES (?, ?, ?, ?)
+     ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET ${colonne} = ${colonne} + excluded.${colonne}`,
+    serveurId,
+    utilisateurId,
     Date.now(),
-    amount,
+    montant,
   );
 }
 
-export function userActivity(guildId: string, userId: string): { messages: number; voice_seconds: number; first_seen: number } | undefined {
-  return get('SELECT messages, voice_seconds, first_seen FROM users WHERE guild_id = ? AND user_id = ?', guildId, userId);
+export function activiteMembre(serveurId: string, utilisateurId: string): { messages: number; secondes_vocal: number; vu_le: number } | undefined {
+  return lire('SELECT messages, secondes_vocal, vu_le FROM membres WHERE serveur_id = ? AND utilisateur_id = ?', serveurId, utilisateurId);
 }

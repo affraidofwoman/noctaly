@@ -1,58 +1,58 @@
 import { randomBytes } from 'node:crypto';
 
 /** Map avec expiration, nettoyée paresseusement (aucun timer permanent par entrée). */
-export class TtlMap<K, V> {
-  private readonly store = new Map<K, { value: V; expires: number }>();
-  private lastSweep = Date.now();
+export class CarteExpirante<K, V> {
+  private readonly stockage = new Map<K, { value: V; expires: number }>();
+  private dernierNettoyage = Date.now();
 
-  constructor(private readonly ttlMs: number) {}
+  constructor(private readonly dureeVieMs: number) {}
 
-  set(key: K, value: V, ttlMs = this.ttlMs): void {
-    this.sweep();
-    this.store.set(key, { value, expires: Date.now() + ttlMs });
+  ecrire(cle: K, valeur: V, dureeVieMs = this.dureeVieMs): void {
+    this.nettoyer();
+    this.stockage.set(cle, { value: valeur, expires: Date.now() + dureeVieMs });
   }
 
-  get(key: K): V | undefined {
-    const entry = this.store.get(key);
-    if (!entry) return undefined;
-    if (entry.expires < Date.now()) {
-      this.store.delete(key);
+  lire(cle: K): V | undefined {
+    const entree = this.stockage.get(cle);
+    if (!entree) return undefined;
+    if (entree.expires < Date.now()) {
+      this.stockage.delete(cle);
       return undefined;
     }
-    return entry.value;
+    return entree.value;
   }
 
-  touch(key: K, ttlMs = this.ttlMs): void {
-    const entry = this.store.get(key);
-    if (entry) entry.expires = Date.now() + ttlMs;
+  prolonger(cle: K, dureeVieMs = this.dureeVieMs): void {
+    const entree = this.stockage.get(cle);
+    if (entree) entree.expires = Date.now() + dureeVieMs;
   }
 
-  has(key: K): boolean {
-    return this.get(key) !== undefined;
+  possede(cle: K): boolean {
+    return this.lire(cle) !== undefined;
   }
 
-  delete(key: K): boolean {
-    return this.store.delete(key);
+  supprimer(cle: K): boolean {
+    return this.stockage.delete(cle);
   }
 
   get size(): number {
-    this.sweep(true);
-    return this.store.size;
+    this.nettoyer(true);
+    return this.stockage.size;
   }
 
-  values(): V[] {
-    this.sweep(true);
-    return [...this.store.values()].map((e) => e.value);
+  valeurs(): V[] {
+    this.nettoyer(true);
+    return [...this.stockage.values()].map((e) => e.value);
   }
 
-  private sweep(force = false): void {
-    const now = Date.now();
-    if (!force && now - this.lastSweep < 60_000) return;
-    this.lastSweep = now;
-    for (const [k, e] of this.store) if (e.expires < now) this.store.delete(k);
+  private nettoyer(forcer = false): void {
+    const maintenant = Date.now();
+    if (!forcer && maintenant - this.dernierNettoyage < 60_000) return;
+    this.dernierNettoyage = maintenant;
+    for (const [k, e] of this.stockage) if (e.expires < maintenant) this.stockage.delete(k);
   }
 }
 
-export function shortId(bytes = 6): string {
-  return randomBytes(bytes).toString('base64url');
+export function idCourt(octets = 6): string {
+  return randomBytes(octets).toString('base64url');
 }

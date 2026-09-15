@@ -1,36 +1,36 @@
 import type { Client } from 'discord.js';
-import { createLogger } from '../core/logger';
+import { creerRegistre } from '../core/logger';
 
-const log = createLogger('activite');
+const registre = creerRegistre('activite');
 
-export type ActivityType = 'messages' | 'voice_minutes' | 'giveaways' | 'daily';
+export type TypeActivite = 'messages' | 'voice_minutes' | 'giveaways' | 'daily';
 
-export interface ActivityEvent {
-  guildId: string;
-  userId: string;
-  type: ActivityType;
-  amount: number;
+export interface EvenementActivite {
+  serveurId: string;
+  utilisateurId: string;
+  type: TypeActivite;
+  montant: number;
 }
 
-type Listener = (event: ActivityEvent, client: Client | null) => void;
-const listeners: Listener[] = [];
-let clientRef: Client | null = null;
+type Ecouteur = (evenement: EvenementActivite, client: Client | null) => void;
+const ecouteurs: Ecouteur[] = [];
+let clientLie: Client | null = null;
 
-export function bindActivityClient(client: Client): void {
-  clientRef = client;
+export function lierClientActivite(client: Client): void {
+  clientLie = client;
 }
 
 /** Les modules (quêtes, succès…) s'abonnent à l'activité sans dépendre des modules qui la produisent. */
-export function onActivity(listener: Listener): void {
-  listeners.push(listener);
+export function surActivite(ecouteur: Ecouteur): void {
+  ecouteurs.push(ecouteur);
 }
 
-export function emitActivity(event: ActivityEvent): void {
-  for (const l of listeners) {
+export function emettreActivite(evenement: EvenementActivite): void {
+  for (const l of ecouteurs) {
     try {
-      l(event, clientRef);
-    } catch (err) {
-      log.warn(`Écouteur d’activité en échec : ${(err as Error).message}`);
+      l(evenement, clientLie);
+    } catch (echec) {
+      registre.avertir(`Écouteur d’activité en échec : ${(echec as Error).message}`);
     }
   }
 }

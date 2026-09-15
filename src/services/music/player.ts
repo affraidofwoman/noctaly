@@ -12,322 +12,322 @@ import {
 } from '@discordjs/voice';
 import { randomInt } from 'node:crypto';
 import type { Client, Guild, GuildMember, VoiceBasedChannel } from 'discord.js';
-import { getConfig } from '../../core/guildConfig';
-import { createLogger } from '../../core/logger';
-import { openTrack, type Track } from './sources';
+import { lireConfig } from '../../core/guildConfig';
+import { creerRegistre } from '../../core/logger';
+import { ouvrirPiste, type Piste } from './sources';
 
-const log = createLogger('musique');
+const registre = creerRegistre('musique');
 
-export type LoopMode = 'off' | 'track' | 'queue';
-export const LOOP_LABELS: Record<LoopMode, string> = { off: 'désactivée', track: 'le morceau', queue: 'la file' };
+export type ModeBoucle = 'off' | 'track' | 'queue';
+export const LIBELLES_BOUCLE: Record<ModeBoucle, string> = { off: 'désactivée', track: 'le morceau', queue: 'la file' };
 
 /** File active limitée ; le surplus attend en réserve et remonte tout seul (comme sur Airline). */
-export const QUEUE_ACTIVE_MAX = 1000;
-const HISTORY_MAX = 20;
+export const FILE_ACTIVE_MAX = 1000;
+const HISTORIQUE_MAX = 20;
 
-export interface MusicEvents {
-  onStart(session: GuildMusic, track: Track): void;
-  onError(session: GuildMusic, track: Track | null, error: Error): void;
-  onFinish(session: GuildMusic): void;
+export interface EvenementsLecteur {
+  surDebut(session: LecteurServeur, piste: Piste): void;
+  surErreur(session: LecteurServeur, piste: Piste | null, erreur: Error): void;
+  surFin(session: LecteurServeur): void;
 }
 
-export class GuildMusic {
-  connection: VoiceConnection | null = null;
-  readonly player: AudioPlayer;
-  resource: AudioResource | null = null;
-  queue: Track[] = [];
-  reserve: Track[] = [];
-  history: Track[] = [];
-  current: Track | null = null;
-  loop: LoopMode = 'off';
+export class LecteurServeur {
+  connexion: VoiceConnection | null = null;
+  readonly lecteur: AudioPlayer;
+  ressource: AudioResource | null = null;
+  file: Piste[] = [];
+  reserve: Piste[] = [];
+  historique: Piste[] = [];
+  actuel: Piste | null = null;
+  boucle: ModeBoucle = 'off';
   volume: number;
-  textChannelId: string | null = null;
-  skipVotes = new Set<string>();
-  played = 0;
-  panelMessageId: string | null = null;
-  private idleTimer: NodeJS.Timeout | null = null;
-  private emptyTimer: NodeJS.Timeout | null = null;
-  private destroyed = false;
-  private starting = false;
+  salonTexteId: string | null = null;
+  votesPasser = new Set<string>();
+  joues = 0;
+  messagePanneauId: string | null = null;
+  private minuteurInactivite: NodeJS.Timeout | null = null;
+  private minuteurVide: NodeJS.Timeout | null = null;
+  private detruit = false;
+  private demarrage = false;
 
   constructor(
-    readonly guild: Guild,
-    private readonly events: MusicEvents,
-    private readonly onDestroy: (guildId: string) => void,
+    readonly serveur: Guild,
+    private readonly evenements: EvenementsLecteur,
+    private readonly surDestruction: (serveurId: string) => void,
   ) {
-    this.volume = Math.min(Math.max(getConfig(guild.id).music.defaultVolume, 1), 200) / 100;
-    this.player = createAudioPlayer();
-    this.player.on(AudioPlayerStatus.Idle, () => void this.next());
-    this.player.on('error', (err) => {
-      log.warn(`Erreur de lecture sur ${this.guild.id} : ${err.message}`);
-      this.events.onError(this, this.current, err);
+    this.volume = Math.min(Math.max(lireConfig(serveur.id).musique.volumeParDefaut, 1), 200) / 100;
+    this.lecteur = createAudioPlayer();
+    this.lecteur.on(AudioPlayerStatus.Idle, () => void this.suivant());
+    this.lecteur.on('error', (echec) => {
+      registre.avertir(`Erreur de lecture sur ${this.serveur.id} : ${echec.message}`);
+      this.evenements.surErreur(this, this.actuel, echec);
     });
   }
 
   get channelId(): string | null {
-    return this.connection?.joinConfig.channelId ?? null;
+    return this.connexion?.joinConfig.channelId ?? null;
   }
 
   get paused(): boolean {
-    return this.player.state.status === AudioPlayerStatus.Paused || this.player.state.status === AudioPlayerStatus.AutoPaused;
+    return this.lecteur.state.status === AudioPlayerStatus.Paused || this.lecteur.state.status === AudioPlayerStatus.AutoPaused;
   }
 
   get waiting(): number {
-    return this.queue.length + this.reserve.length;
+    return this.file.length + this.reserve.length;
   }
 
   get elapsed(): number {
-    return Math.floor((this.resource?.playbackDuration ?? 0) / 1000);
+    return Math.floor((this.ressource?.playbackDuration ?? 0) / 1000);
   }
 
-  join(channel: VoiceBasedChannel): VoiceConnection {
-    if (this.connection && this.connection.joinConfig.channelId === channel.id && this.connection.state.status !== VoiceConnectionStatus.Destroyed) return this.connection;
-    this.connection?.destroy();
-    const connection = joinVoiceChannel({
-      channelId: channel.id,
-      guildId: channel.guild.id,
-      adapterCreator: channel.guild.voiceAdapterCreator,
+  rejoindre(salon: VoiceBasedChannel): VoiceConnection {
+    if (this.connexion && this.connexion.joinConfig.channelId === salon.id && this.connexion.state.status !== VoiceConnectionStatus.Destroyed) return this.connexion;
+    this.connexion?.destroy();
+    const connexion = joinVoiceChannel({
+      channelId: salon.id,
+      guildId: salon.guild.id,
+      adapterCreator: salon.guild.voiceAdapterCreator,
       selfDeaf: true,
       selfMute: false,
     });
-    connection.subscribe(this.player);
-    this.connection = connection;
-    connection.on(VoiceConnectionStatus.Disconnected, async () => {
+    connexion.subscribe(this.lecteur);
+    this.connexion = connexion;
+    connexion.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
-        await Promise.race([entersState(connection, VoiceConnectionStatus.Signalling, 5_000), entersState(connection, VoiceConnectionStatus.Connecting, 5_000)]);
+        await Promise.race([entersState(connexion, VoiceConnectionStatus.Signalling, 5_000), entersState(connexion, VoiceConnectionStatus.Connecting, 5_000)]);
       } catch {
         // Déconnexion réelle (kick du vocal, salon supprimé) : on nettoie.
-        if (this.connection === connection) this.destroy();
+        if (this.connexion === connexion) this.detruire();
       }
     });
-    return connection;
+    return connexion;
   }
 
   /** Ajoute des pistes ; lance la lecture si rien ne joue. Retourne la position du premier ajout. */
-  add(tracks: Track[]): { position: number; immediate: boolean; reserved: number } {
-    const playing = !!this.current || this.starting;
-    const position = this.queue.length + this.reserve.length + 1;
-    const room = Math.max(0, QUEUE_ACTIVE_MAX - this.queue.length);
-    this.queue.push(...tracks.slice(0, room));
-    if (tracks.length > room) this.reserve.push(...tracks.slice(room));
-    const maxQueue = getConfig(this.guild.id).music.maxQueue;
-    if (maxQueue > 0 && this.waiting > maxQueue * 25) this.reserve.length = Math.max(0, maxQueue * 25 - this.queue.length);
-    this.clearIdle();
-    if (!playing) void this.next();
-    return { position, immediate: !playing, reserved: this.reserve.length };
+  ajouter(pistes: Piste[]): { position: number; immediat: boolean; reserves: number } {
+    const enLecture = !!this.actuel || this.demarrage;
+    const position = this.file.length + this.reserve.length + 1;
+    const place = Math.max(0, FILE_ACTIVE_MAX - this.file.length);
+    this.file.push(...pistes.slice(0, place));
+    if (pistes.length > place) this.reserve.push(...pistes.slice(place));
+    const fileMax = lireConfig(this.serveur.id).musique.maxQueue;
+    if (fileMax > 0 && this.waiting > fileMax * 25) this.reserve.length = Math.max(0, fileMax * 25 - this.file.length);
+    this.annulerInactivite();
+    if (!enLecture) void this.suivant();
+    return { position, immediat: !enLecture, reserves: this.reserve.length };
   }
 
-  private refill(): void {
+  private recharger(): void {
     if (!this.reserve.length) return;
-    const room = QUEUE_ACTIVE_MAX - this.queue.length;
-    if (room > 0) this.queue.push(...this.reserve.splice(0, room));
+    const place = FILE_ACTIVE_MAX - this.file.length;
+    if (place > 0) this.file.push(...this.reserve.splice(0, place));
   }
 
-  private async play(track: Track): Promise<void> {
-    this.current = track;
-    this.skipVotes.clear();
-    this.starting = true;
+  private async jouer(piste: Piste): Promise<void> {
+    this.actuel = piste;
+    this.votesPasser.clear();
+    this.demarrage = true;
     try {
-      const stream = await openTrack(track);
-      const resource = createAudioResource(stream, { inputType: StreamType.Raw, inlineVolume: true });
-      resource.volume?.setVolumeLogarithmic(this.volume);
-      this.resource = resource;
-      if (this.connection && this.connection.state.status !== VoiceConnectionStatus.Ready) {
-        await entersState(this.connection, VoiceConnectionStatus.Ready, 20_000).catch(() => {
+      const flux = await ouvrirPiste(piste);
+      const ressource = createAudioResource(flux, { inputType: StreamType.Raw, inlineVolume: true });
+      ressource.volume?.setVolumeLogarithmic(this.volume);
+      this.ressource = ressource;
+      if (this.connexion && this.connexion.state.status !== VoiceConnectionStatus.Ready) {
+        await entersState(this.connexion, VoiceConnectionStatus.Ready, 20_000).catch(() => {
           throw new Error('la connexion vocale n’est jamais devenue prête (vérifie mes permissions Parler)');
         });
       }
-      this.player.play(resource);
-      this.played++;
-      this.events.onStart(this, track);
+      this.lecteur.play(ressource);
+      this.joues++;
+      this.evenements.surDebut(this, piste);
     } finally {
-      this.starting = false;
+      this.demarrage = false;
     }
   }
 
   /** Passe au morceau suivant en respectant la boucle. */
-  async next(): Promise<void> {
-    if (this.destroyed || this.starting) return;
-    const finished = this.current;
-    if (finished) {
-      if (this.loop === 'track') {
-        await this.play(finished).catch((err: Error) => this.fail(finished, err));
+  async suivant(): Promise<void> {
+    if (this.detruit || this.demarrage) return;
+    const termine = this.actuel;
+    if (termine) {
+      if (this.boucle === 'track') {
+        await this.jouer(termine).catch((echec: Error) => this.echouer(termine, echec));
         return;
       }
-      this.history.push(finished);
-      if (this.history.length > HISTORY_MAX) this.history.shift();
-      if (this.loop === 'queue') this.queue.push(finished);
+      this.historique.push(termine);
+      if (this.historique.length > HISTORIQUE_MAX) this.historique.shift();
+      if (this.boucle === 'queue') this.file.push(termine);
     }
-    this.refill();
-    const upcoming = this.queue.shift();
-    if (!upcoming) {
-      this.current = null;
-      this.resource = null;
-      this.events.onFinish(this);
-      this.armIdle();
+    this.recharger();
+    const aVenir = this.file.shift();
+    if (!aVenir) {
+      this.actuel = null;
+      this.ressource = null;
+      this.evenements.surFin(this);
+      this.armerInactivite();
       return;
     }
-    await this.play(upcoming).catch((err: Error) => this.fail(upcoming, err));
+    await this.jouer(aVenir).catch((echec: Error) => this.echouer(aVenir, echec));
   }
 
-  private async fail(track: Track, err: Error): Promise<void> {
-    log.warn(`Lecture impossible (${track.title}) : ${err.message}`);
-    this.events.onError(this, track, err);
-    if (this.loop === 'track') this.loop = 'off';
-    this.current = null;
-    await this.next();
+  private async echouer(piste: Piste, echec: Error): Promise<void> {
+    registre.avertir(`Lecture impossible (${piste.titre}) : ${echec.message}`);
+    this.evenements.surErreur(this, piste, echec);
+    if (this.boucle === 'track') this.boucle = 'off';
+    this.actuel = null;
+    await this.suivant();
   }
 
-  skip(): Track | null {
-    const skipped = this.current;
-    const loop = this.loop;
-    if (loop === 'track') this.loop = 'off';
-    this.player.stop(true);
-    if (loop === 'track') setTimeout(() => (this.loop = loop), 1_000).unref();
-    return skipped;
+  passer(): Piste | null {
+    const ignores = this.actuel;
+    const boucle = this.boucle;
+    if (boucle === 'track') this.boucle = 'off';
+    this.lecteur.stop(true);
+    if (boucle === 'track') setTimeout(() => (this.boucle = boucle), 1_000).unref();
+    return ignores;
   }
 
   /** Rejoue le morceau précédent (le morceau en cours revient en tête de file). */
-  previous(): Track | null {
-    const prev = this.history.pop();
-    if (!prev) return null;
-    if (this.current) this.queue.unshift(this.current);
-    this.queue.unshift(prev);
-    this.current = null;
-    this.player.stop(true);
-    if (this.player.state.status === AudioPlayerStatus.Idle && !this.starting) void this.next();
-    return prev;
+  precedent(): Piste | null {
+    const anterieur = this.historique.pop();
+    if (!anterieur) return null;
+    if (this.actuel) this.file.unshift(this.actuel);
+    this.file.unshift(anterieur);
+    this.actuel = null;
+    this.lecteur.stop(true);
+    if (this.lecteur.state.status === AudioPlayerStatus.Idle && !this.demarrage) void this.suivant();
+    return anterieur;
   }
 
-  togglePause(): boolean {
-    if (this.paused) this.player.unpause();
-    else this.player.pause();
+  basculerPause(): boolean {
+    if (this.paused) this.lecteur.unpause();
+    else this.lecteur.pause();
     return this.paused;
   }
 
-  setVolume(percent: number): void {
-    this.volume = Math.min(Math.max(percent, 1), 200) / 100;
-    this.resource?.volume?.setVolumeLogarithmic(this.volume);
+  reglerVolume(pourcentage: number): void {
+    this.volume = Math.min(Math.max(pourcentage, 1), 200) / 100;
+    this.ressource?.volume?.setVolumeLogarithmic(this.volume);
   }
 
-  shuffle(): number {
-    const all = [...this.queue, ...this.reserve];
-    for (let i = all.length - 1; i > 0; i--) {
+  melanger(): number {
+    const lireTout = [...this.file, ...this.reserve];
+    for (let i = lireTout.length - 1; i > 0; i--) {
       const j = randomInt(i + 1);
-      [all[i], all[j]] = [all[j]!, all[i]!];
+      [lireTout[i], lireTout[j]] = [lireTout[j]!, lireTout[i]!];
     }
-    this.queue = all.slice(0, QUEUE_ACTIVE_MAX);
-    this.reserve = all.slice(QUEUE_ACTIVE_MAX);
-    return all.length;
+    this.file = lireTout.slice(0, FILE_ACTIVE_MAX);
+    this.reserve = lireTout.slice(FILE_ACTIVE_MAX);
+    return lireTout.length;
   }
 
-  remove(position: number): Track | null {
-    const index = position - 1;
-    if (index < 0) return null;
-    if (index < this.queue.length) {
-      const [removed] = this.queue.splice(index, 1);
-      this.refill();
-      return removed ?? null;
+  retirer(position: number): Piste | null {
+    const indice = position - 1;
+    if (indice < 0) return null;
+    if (indice < this.file.length) {
+      const [retiree] = this.file.splice(indice, 1);
+      this.recharger();
+      return retiree ?? null;
     }
-    const inReserve = index - this.queue.length;
-    return this.reserve.splice(inReserve, 1)[0] ?? null;
+    const enReserve = indice - this.file.length;
+    return this.reserve.splice(enReserve, 1)[0] ?? null;
   }
 
-  clearPlaylistTracks(): number {
-    const before = this.waiting;
-    this.queue = this.queue.filter((t) => !t.fromPlaylist);
-    this.reserve = this.reserve.filter((t) => !t.fromPlaylist);
-    this.refill();
-    return before - this.waiting;
+  retirerPistesPlaylist(): number {
+    const avant = this.waiting;
+    this.file = this.file.filter((t) => !t.depuisPlaylist);
+    this.reserve = this.reserve.filter((t) => !t.depuisPlaylist);
+    this.recharger();
+    return avant - this.waiting;
   }
 
   /** Temps estimé avant qu'une position de la file ne soit jouée (secondes). */
-  timeUntil(index: number): number {
-    let total = this.current ? Math.max(0, (this.current.duration || 0) - this.elapsed) : 0;
-    const all = this.reserve.length ? [...this.queue, ...this.reserve] : this.queue;
-    for (let i = 0; i < index; i++) total += all[i]?.duration || 0;
+  tempsAvant(indice: number): number {
+    let total = this.actuel ? Math.max(0, (this.actuel.duree || 0) - this.elapsed) : 0;
+    const lireTout = this.reserve.length ? [...this.file, ...this.reserve] : this.file;
+    for (let i = 0; i < indice; i++) total += lireTout[i]?.duree || 0;
     return total;
   }
 
-  isInSameChannel(member: GuildMember): boolean {
-    return !!this.channelId && member.voice.channelId === this.channelId;
+  estDansLeSalon(membre: GuildMember): boolean {
+    return !!this.channelId && membre.voice.channelId === this.channelId;
   }
 
-  humanListeners(): number {
-    const channel = this.channelId ? this.guild.channels.cache.get(this.channelId) : null;
-    return channel && channel.isVoiceBased() ? channel.members.filter((m) => !m.user.bot).size : 0;
+  auditeursHumains(): number {
+    const salon = this.channelId ? this.serveur.channels.cache.get(this.channelId) : null;
+    return salon && salon.isVoiceBased() ? salon.members.filter((m) => !m.user.bot).size : 0;
   }
 
-  votesNeeded(): number {
-    return Math.max(1, Math.ceil(this.humanListeners() / 2));
+  votesRequis(): number {
+    return Math.max(1, Math.ceil(this.auditeursHumains() / 2));
   }
 
-  private armIdle(): void {
-    this.clearIdle();
-    this.idleTimer = setTimeout(() => this.destroy(), 5 * 60_000);
-    this.idleTimer.unref();
+  private armerInactivite(): void {
+    this.annulerInactivite();
+    this.minuteurInactivite = setTimeout(() => this.detruire(), 5 * 60_000);
+    this.minuteurInactivite.unref();
   }
 
-  private clearIdle(): void {
-    if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = null;
+  private annulerInactivite(): void {
+    if (this.minuteurInactivite) clearTimeout(this.minuteurInactivite);
+    this.minuteurInactivite = null;
   }
 
   /** Quitte après X minutes seul dans le salon. */
-  checkEmpty(): void {
-    const minutes = getConfig(this.guild.id).music.leaveOnEmptyMinutes;
+  verifierVide(): void {
+    const minutes = lireConfig(this.serveur.id).musique.quitterSiVideMinutes;
     if (!this.channelId || minutes <= 0) return;
-    if (this.humanListeners() > 0) {
-      if (this.emptyTimer) clearTimeout(this.emptyTimer);
-      this.emptyTimer = null;
+    if (this.auditeursHumains() > 0) {
+      if (this.minuteurVide) clearTimeout(this.minuteurVide);
+      this.minuteurVide = null;
       return;
     }
-    if (this.emptyTimer) return;
-    this.emptyTimer = setTimeout(() => {
-      if (this.humanListeners() === 0) this.destroy();
+    if (this.minuteurVide) return;
+    this.minuteurVide = setTimeout(() => {
+      if (this.auditeursHumains() === 0) this.detruire();
     }, minutes * 60_000);
-    this.emptyTimer.unref();
+    this.minuteurVide.unref();
   }
 
-  destroy(): void {
-    if (this.destroyed) return;
-    this.destroyed = true;
-    this.clearIdle();
-    if (this.emptyTimer) clearTimeout(this.emptyTimer);
-    this.queue = [];
+  detruire(): void {
+    if (this.detruit) return;
+    this.detruit = true;
+    this.annulerInactivite();
+    if (this.minuteurVide) clearTimeout(this.minuteurVide);
+    this.file = [];
     this.reserve = [];
-    this.player.stop(true);
+    this.lecteur.stop(true);
     try {
-      this.connection?.destroy();
+      this.connexion?.destroy();
     } catch {
       /* déjà détruite */
     }
-    this.connection = null;
-    this.onDestroy(this.guild.id);
+    this.connexion = null;
+    this.surDestruction(this.serveur.id);
   }
 }
 
-const sessions = new Map<string, GuildMusic>();
+const sessions = new Map<string, LecteurServeur>();
 
-export function getSession(guildId: string): GuildMusic | undefined {
-  return sessions.get(guildId);
+export function lireSession(serveurId: string): LecteurServeur | undefined {
+  return sessions.get(serveurId);
 }
 
-export function ensureSession(guild: Guild, events: MusicEvents): GuildMusic {
-  let session = sessions.get(guild.id);
+export function obtenirSession(serveur: Guild, evenements: EvenementsLecteur): LecteurServeur {
+  let session = sessions.get(serveur.id);
   if (!session) {
-    session = new GuildMusic(guild, events, (id) => sessions.delete(id));
-    sessions.set(guild.id, session);
+    session = new LecteurServeur(serveur, evenements, (id) => sessions.delete(id));
+    sessions.set(serveur.id, session);
   }
   return session;
 }
 
-export function allSessions(): GuildMusic[] {
+export function toutesSessions(): LecteurServeur[] {
   return [...sessions.values()];
 }
 
-export function destroyAll(): void {
-  for (const s of sessions.values()) s.destroy();
+export function detruireTout(): void {
+  for (const s of sessions.values()) s.detruire();
 }
 
 export type { Client };

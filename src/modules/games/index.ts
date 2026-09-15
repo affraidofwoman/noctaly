@@ -1,149 +1,149 @@
 import { randomInt } from 'node:crypto';
 import { ButtonStyle, EmbedBuilder, MessageFlags, SlashCommandBuilder, type ButtonInteraction, type Guild } from 'discord.js';
-import { colorFor } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { getConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import type { SetupPage } from '../../core/setup';
-import { neutralizeMentions, truncate } from '../../core/text';
-import { button, row } from '../../core/ui';
-import type { BotModule, SlashCommand } from '../../core/types';
+import { couleurPour } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { lireConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import type { PageReglage } from '../../core/setup';
+import { neutraliserMentions, tronquer } from '../../core/text';
+import { bouton, rangee } from '../../core/ui';
+import type { ModuleBot, CommandeSlash } from '../../core/types';
 
-type Game = 'eightBall' | 'coinflip' | 'dice' | 'rps';
+type Jeu = 'bouleMagique' | 'pileOuFace' | 'des' | 'pierreFeuilleCiseaux';
 
-function requireGame(guildId: string, game: Game): void {
-  if (!getConfig(guildId).games[game]) throw new UserError('Ce mini-jeu est désactivé sur ce serveur.');
+function exigerJeu(serveurId: string, jeu: Jeu): void {
+  if (!lireConfig(serveurId).jeux[jeu]) throw new ErreurUtilisateur('Ce mini-jeu est désactivé sur ce serveur.');
 }
 
-const ANSWERS = [
+const REPONSES = [
   'Oui, clairement.', 'C’est certain.', 'Sans aucun doute.', 'Tu peux compter dessus.', 'Très probablement.', 'Les signes disent oui.',
   'Réponse floue, réessaie.', 'Redemande plus tard.', 'Mieux vaut ne pas te le dire maintenant.', 'Concentre-toi et redemande.',
   'N’y compte pas.', 'Ma réponse est non.', 'Mes sources disent non.', 'Très peu probable.', 'Chat a dit non. 🐈',
 ];
 
-const embed = (guild: Guild) => new EmbedBuilder().setColor(colorFor(guild));
+const embed = (serveur: Guild) => new EmbedBuilder().setColor(couleurPour(serveur));
 
-const eightBall: SlashCommand = {
-  category: 'economy',
-  data: new SlashCommandBuilder()
+const bouleMagique: CommandeSlash = {
+  categorie: 'economy',
+  donnees: new SlashCommandBuilder()
     .setName('8ball')
     .setDescription('Pose une question à la boule magique')
     .addStringOption((o) => o.setName('question').setDescription('Ta question').setRequired(true).setMaxLength(200)),
-  async execute(i) {
-    requireGame(i.guildId, 'eightBall');
-    const q = neutralizeMentions(i.options.getString('question', true));
-    await reply(i, { embeds: [embed(i.guild).setTitle('🎱 Boule magique').setDescription(`**${truncate(q, 200)}**\n\n${ANSWERS[randomInt(ANSWERS.length)]}`)] });
+  async executer(i) {
+    exigerJeu(i.guildId, 'bouleMagique');
+    const q = neutraliserMentions(i.options.getString('question', true));
+    await repondre(i, { embeds: [embed(i.guild).setTitle('🎱 Boule magique').setDescription(`**${tronquer(q, 200)}**\n\n${REPONSES[randomInt(REPONSES.length)]}`)] });
   },
 };
 
-const coinflip: SlashCommand = {
-  category: 'economy',
-  data: new SlashCommandBuilder().setName('coinflip').setDescription('Pile ou face'),
-  async execute(i) {
-    requireGame(i.guildId, 'coinflip');
-    const heads = randomInt(2) === 0;
-    await reply(i, { embeds: [embed(i.guild).setTitle('🪙 Pile ou face').setDescription(`La pièce tombe sur… **${heads ? 'Pile' : 'Face'}** !`)] });
+const pileOuFace: CommandeSlash = {
+  categorie: 'economy',
+  donnees: new SlashCommandBuilder().setName('coinflip').setDescription('Pile ou face'),
+  async executer(i) {
+    exigerJeu(i.guildId, 'pileOuFace');
+    const pile = randomInt(2) === 0;
+    await repondre(i, { embeds: [embed(i.guild).setTitle('🪙 Pile ou face').setDescription(`La pièce tombe sur… **${pile ? 'Pile' : 'Face'}** !`)] });
   },
 };
 
-const dice: SlashCommand = {
-  category: 'economy',
-  data: new SlashCommandBuilder()
+const des: CommandeSlash = {
+  categorie: 'economy',
+  donnees: new SlashCommandBuilder()
     .setName('dice')
     .setDescription('Lancer des dés')
     .addIntegerOption((o) => o.setName('faces').setDescription('Nombre de faces (6 par défaut)').setMinValue(2).setMaxValue(1000))
     .addIntegerOption((o) => o.setName('nombre').setDescription('Nombre de dés (1 par défaut)').setMinValue(1).setMaxValue(20)),
-  async execute(i) {
-    requireGame(i.guildId, 'dice');
+  async executer(i) {
+    exigerJeu(i.guildId, 'des');
     const faces = i.options.getInteger('faces') ?? 6;
-    const count = i.options.getInteger('nombre') ?? 1;
-    const rolls = Array.from({ length: count }, () => randomInt(1, faces + 1));
-    await reply(i, {
-      embeds: [embed(i.guild).setTitle('🎲 Lancer de dés').setDescription(`${count} d${faces} : ${rolls.map((r) => `**${r}**`).join(' · ')}${count > 1 ? `\nTotal : **${rolls.reduce((a, b) => a + b, 0)}**` : ''}`)],
+    const nombre = i.options.getInteger('nombre') ?? 1;
+    const lancers = Array.from({ length: nombre }, () => randomInt(1, faces + 1));
+    await repondre(i, {
+      embeds: [embed(i.guild).setTitle('🎲 Lancer de dés').setDescription(`${nombre} d${faces} : ${lancers.map((r) => `**${r}**`).join(' · ')}${nombre > 1 ? `\nTotal : **${lancers.reduce((a, b) => a + b, 0)}**` : ''}`)],
     });
   },
 };
 
-const RPS: Record<string, { label: string; emoji: string; beats: string }> = {
-  pierre: { label: 'Pierre', emoji: '🪨', beats: 'ciseaux' },
-  feuille: { label: 'Feuille', emoji: '📄', beats: 'pierre' },
-  ciseaux: { label: 'Ciseaux', emoji: '✂️', beats: 'feuille' },
+const COUPS: Record<string, { label: string; emoji: string; bat: string }> = {
+  pierre: { label: 'Pierre', emoji: '🪨', bat: 'ciseaux' },
+  feuille: { label: 'Feuille', emoji: '📄', bat: 'pierre' },
+  ciseaux: { label: 'Ciseaux', emoji: '✂️', bat: 'feuille' },
 };
 
-const rps: SlashCommand = {
-  category: 'economy',
-  data: new SlashCommandBuilder()
+const pierreFeuilleCiseaux: CommandeSlash = {
+  categorie: 'economy',
+  donnees: new SlashCommandBuilder()
     .setName('rps')
     .setDescription('Pierre, feuille, ciseaux')
     .addUserOption((o) => o.setName('adversaire').setDescription('Défier un membre (contre le bot par défaut)')),
-  async execute(i) {
-    requireGame(i.guildId, 'rps');
-    const opponent = i.options.getUser('adversaire');
-    if (opponent && (opponent.bot || opponent.id === i.user.id)) throw new UserError('Choisis un autre membre (pas un bot, pas toi).');
-    const opp = opponent?.id ?? 'bot';
-    await reply(i, {
-      embeds: [embed(i.guild).setTitle('✊ Pierre, feuille, ciseaux').setDescription(opponent ? `<@${i.user.id}> défie <@${opponent.id}> ! Chacun choisit en secret.` : 'Choisis ton coup !')],
-      components: [row(...Object.entries(RPS).map(([key, v]) => button(`rps:${i.user.id}:${opp}:${key}`, v.label, ButtonStyle.Secondary, v.emoji)))],
-      allowedMentions: { users: opponent ? [opponent.id] : [] },
+  async executer(i) {
+    exigerJeu(i.guildId, 'pierreFeuilleCiseaux');
+    const adversaire = i.options.getUser('adversaire');
+    if (adversaire && (adversaire.bot || adversaire.id === i.user.id)) throw new ErreurUtilisateur('Choisis un autre membre (pas un bot, pas toi).');
+    const adversaireId = adversaire?.id ?? 'bot';
+    await repondre(i, {
+      embeds: [embed(i.guild).setTitle('✊ Pierre, feuille, ciseaux').setDescription(adversaire ? `<@${i.user.id}> défie <@${adversaire.id}> ! Chacun choisit en secret.` : 'Choisis ton coup !')],
+      components: [rangee(...Object.entries(COUPS).map(([cle, v]) => bouton(`rps:${i.user.id}:${adversaireId}:${cle}`, v.label, ButtonStyle.Secondary, v.emoji)))],
+      allowedMentions: { users: adversaire ? [adversaire.id] : [] },
     });
   },
 };
 
 /** Coups en attente pour les duels (clé : message). */
-const pending = new Map<string, Map<string, string>>();
+const enAttente = new Map<string, Map<string, string>>();
 
-async function onRps(interaction: ButtonInteraction<'cached'>, [challenger, opponent, move]: string[]) {
-  if (!move || !RPS[move]) return;
-  const players = [challenger, opponent];
-  if (opponent === 'bot') {
-    if (interaction.user.id !== challenger) throw new UserError('Lance ta propre partie avec `/rps`.');
-    const botMove = Object.keys(RPS)[randomInt(3)]!;
-    const result = move === botMove ? 'Égalité !' : RPS[move]!.beats === botMove ? 'Tu gagnes ! 🎉' : 'Le bot gagne ! 🤖';
-    await interaction.update({ embeds: [embed(interaction.guild).setTitle('✊ Pierre, feuille, ciseaux').setDescription(`Toi : ${RPS[move]!.emoji} **${RPS[move]!.label}**\nBot : ${RPS[botMove]!.emoji} **${RPS[botMove]!.label}**\n\n**${result}**`)], components: [] });
+async function surPierreFeuille(interaction: ButtonInteraction<'cached'>, [defieur, adversaire, coup]: string[]) {
+  if (!coup || !COUPS[coup]) return;
+  const joueurs = [defieur, adversaire];
+  if (adversaire === 'bot') {
+    if (interaction.user.id !== defieur) throw new ErreurUtilisateur('Lance ta propre partie avec `/rps`.');
+    const coupBot = Object.keys(COUPS)[randomInt(3)]!;
+    const resultat = coup === coupBot ? 'Égalité !' : COUPS[coup]!.bat === coupBot ? 'Tu gagnes ! 🎉' : 'Le bot gagne ! 🤖';
+    await interaction.update({ embeds: [embed(interaction.guild).setTitle('✊ Pierre, feuille, ciseaux').setDescription(`Toi : ${COUPS[coup]!.emoji} **${COUPS[coup]!.label}**\nBot : ${COUPS[coupBot]!.emoji} **${COUPS[coupBot]!.label}**\n\n**${resultat}**`)], components: [] });
     return;
   }
-  if (!players.includes(interaction.user.id)) throw new UserError('Ce duel ne te concerne pas.');
-  const moves = pending.get(interaction.message.id) ?? new Map<string, string>();
-  moves.set(interaction.user.id, move);
-  pending.set(interaction.message.id, moves);
-  if (moves.size < 2) {
-    await interaction.reply({ content: `Coup enregistré : ${RPS[move]!.emoji} — en attente de l’adversaire.`, flags: MessageFlags.Ephemeral });
+  if (!joueurs.includes(interaction.user.id)) throw new ErreurUtilisateur('Ce duel ne te concerne pas.');
+  const coups = enAttente.get(interaction.message.id) ?? new Map<string, string>();
+  coups.set(interaction.user.id, coup);
+  enAttente.set(interaction.message.id, coups);
+  if (coups.size < 2) {
+    await interaction.reply({ content: `Coup enregistré : ${COUPS[coup]!.emoji} — en attente de l’adversaire.`, flags: MessageFlags.Ephemeral });
     return;
   }
-  pending.delete(interaction.message.id);
-  const a = moves.get(challenger!)!;
-  const b = moves.get(opponent!)!;
-  const result = a === b ? 'Égalité !' : RPS[a]!.beats === b ? `<@${challenger}> gagne ! 🎉` : `<@${opponent}> gagne ! 🎉`;
+  enAttente.delete(interaction.message.id);
+  const a = coups.get(defieur!)!;
+  const b = coups.get(adversaire!)!;
+  const resultat = a === b ? 'Égalité !' : COUPS[a]!.bat === b ? `<@${defieur}> gagne ! 🎉` : `<@${adversaire}> gagne ! 🎉`;
   await interaction.update({
-    embeds: [embed(interaction.guild).setTitle('✊ Pierre, feuille, ciseaux').setDescription(`<@${challenger}> : ${RPS[a]!.emoji} **${RPS[a]!.label}**\n<@${opponent}> : ${RPS[b]!.emoji} **${RPS[b]!.label}**\n\n**${result}**`)],
+    embeds: [embed(interaction.guild).setTitle('✊ Pierre, feuille, ciseaux').setDescription(`<@${defieur}> : ${COUPS[a]!.emoji} **${COUPS[a]!.label}**\n<@${adversaire}> : ${COUPS[b]!.emoji} **${COUPS[b]!.label}**\n\n**${resultat}**`)],
     components: [],
   });
 }
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'games',
   section: 'community',
-  title: 'Mini-jeux',
+  titre: 'Mini-jeux',
   emoji: '🎲',
   moduleId: 'games',
-  order: 11,
+  ordre: 11,
   description: 'Chaque mini-jeu peut être activé séparément.',
-  fields: [
-    { kind: 'toggle', key: '8ball', label: '8ball', get: (c) => c.games.eightBall, set: (c, v) => void (c.games.eightBall = v) },
-    { kind: 'toggle', key: 'coinflip', label: 'Pile ou face', get: (c) => c.games.coinflip, set: (c, v) => void (c.games.coinflip = v) },
-    { kind: 'toggle', key: 'dice', label: 'Dés', get: (c) => c.games.dice, set: (c, v) => void (c.games.dice = v) },
-    { kind: 'toggle', key: 'rps', label: 'Pierre-feuille-ciseaux', get: (c) => c.games.rps, set: (c, v) => void (c.games.rps = v) },
+  champs: [
+    { kind: 'toggle', cle: '8ball', libelle: '8ball', get: (c) => c.jeux.bouleMagique, set: (c, v) => void (c.jeux.bouleMagique = v) },
+    { kind: 'toggle', cle: 'coinflip', libelle: 'Pile ou face', get: (c) => c.jeux.pileOuFace, set: (c, v) => void (c.jeux.pileOuFace = v) },
+    { kind: 'toggle', cle: 'dice', libelle: 'Dés', get: (c) => c.jeux.des, set: (c, v) => void (c.jeux.des = v) },
+    { kind: 'toggle', cle: 'rps', libelle: 'Pierre-feuille-ciseaux', get: (c) => c.jeux.pierreFeuilleCiseaux, set: (c, v) => void (c.jeux.pierreFeuilleCiseaux = v) },
   ],
 };
 
-export const gamesModule: BotModule = {
+export const moduleJeux: ModuleBot = {
   id: 'games',
-  name: 'Mini-jeux',
+  nom: 'Mini-jeux',
   emoji: '🎲',
   description: '8ball, pile ou face, dés, pierre-feuille-ciseaux',
-  toggleable: true,
-  defaultEnabled: false,
-  commands: [eightBall, coinflip, dice, rps],
-  setupPages: [setupPage],
-  components: [{ prefix: 'rps', button: (i, args) => onRps(i, args) }],
+  desactivable: true,
+  actifParDefaut: false,
+  commandes: [bouleMagique, pileOuFace, des, pierreFeuilleCiseaux],
+  pagesReglage: [pageReglage],
+  composants: [{ prefixe: 'rps', bouton: (i, parametres) => surPierreFeuille(i, parametres) }],
 };

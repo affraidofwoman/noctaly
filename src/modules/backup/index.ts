@@ -1,22 +1,22 @@
 import { AttachmentBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { askConfirmation } from '../../core/confirm';
+import { demanderConfirmation } from '../../core/confirm';
 import { info, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { reply } from '../../core/interactions';
+import { ErreurUtilisateur } from '../../core/errors';
+import { repondre } from '../../core/interactions';
 import { journal } from '../../core/logService';
-import { createLogger } from '../../core/logger';
-import { isModuleEnabled } from '../../core/moduleManager';
-import { ts } from '../../core/time';
-import { PermLevel, type BotModule, type SlashCommand } from '../../core/types';
-import { forgetBrands } from '../../core/brand';
-import { createBackup, listBackups, pruneAutoBackups, restoreBackup } from '../../services/backup';
+import { creerRegistre } from '../../core/logger';
+import { moduleActif } from '../../core/moduleManager';
+import { marqueTemps } from '../../core/time';
+import { Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
+import { oublierEnseignes } from '../../core/brand';
+import { creerSauvegarde, listerSauvegardes, purgerSauvegardesAuto, restaurerSauvegarde } from '../../services/backup';
 
-const log = createLogger('sauvegarde');
+const registre = creerRegistre('sauvegarde');
 
-const backup: SlashCommand = {
-  category: 'admin',
-  level: PermLevel.STREAMER,
-  data: new SlashCommandBuilder()
+const sauvegarde: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.STREAMER,
+  donnees: new SlashCommandBuilder()
     .setName('backup')
     .setDescription('Sauvegardes de la configuration du bot')
     .addSubcommand((s) => s.setName('create').setDescription('Créer une sauvegarde maintenant'))
@@ -27,69 +27,69 @@ const backup: SlashCommand = {
         .setDescription('Restaurer une sauvegarde')
         .addIntegerOption((o) => o.setName('sauvegarde').setDescription('La sauvegarde').setRequired(true).setAutocomplete(true)),
     ),
-  subLevels: { list: PermLevel.ADMIN, create: PermLevel.ADMIN },
-  async autocomplete(interaction) {
+  niveauxSousCommandes: { list: Niveau.ADMIN, create: Niveau.ADMIN },
+  async autocompletion(interaction) {
     await interaction.respond(
-      listBackups(interaction.guildId).map((b) => ({ name: `#${b.id} · ${b.name} · ${new Date(b.created_at).toLocaleString('fr-FR')} · ${Math.round(b.size / 1024)} Ko`.slice(0, 100), value: b.id })),
+      listerSauvegardes(interaction.guildId).map((b) => ({ name: `#${b.id} · ${b.nom} · ${new Date(b.cree_le).toLocaleString('fr-FR')} · ${Math.round(b.taille / 1024)} Ko`.slice(0, 100), value: b.id })),
     );
   },
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const sub = interaction.options.getSubcommand();
-    if (sub === 'create') {
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const sousCommande = interaction.options.getSubcommand();
+    if (sousCommande === 'create') {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const b = createBackup(guild, interaction.user.id);
-      void journal(guild, 'backup', {
-        title: 'Sauvegarde créée',
-        tone: 'ok',
-        lines: [`**#${b.id}** · ${Math.round(b.size / 1024)} Ko`],
-        files: [new AttachmentBuilder(Buffer.from(JSON.stringify(b.data, null, 2)), { name: `sauvegarde-${guild.id}-${b.id}.json` })],
-        by: interaction.user,
+      const b = creerSauvegarde(serveur, interaction.user.id);
+      void journal(serveur, 'backup', {
+        titre: 'Sauvegarde créée',
+        ton: 'ok',
+        lignes: [`**#${b.id}** · ${Math.round(b.size / 1024)} Ko`],
+        fichiers: [new AttachmentBuilder(Buffer.from(JSON.stringify(b.data, null, 2)), { name: `sauvegarde-${serveur.id}-${b.id}.json` })],
+        par: interaction.user,
       });
-      return interaction.editReply({ embeds: [ok(guild, `Sauvegarde **#${b.id}** créée (${Math.round(b.size / 1024)} Ko).\n-# Réglages, modules, whitelists, Twitch, rôles à choisir, commandes perso, auto-réponses, badges, boutique, formulaires et blacklist.`)] });
+      return interaction.editReply({ embeds: [ok(serveur, `Sauvegarde **#${b.id}** créée (${Math.round(b.size / 1024)} Ko).\n-# Réglages, modules, whitelists, Twitch, rôles à choisir, commandes perso, auto-réponses, badges, boutique, formulaires et blacklist.`)] });
     }
-    if (sub === 'list') {
-      const lines = listBackups(guild.id).map((b) => `**#${b.id}** · ${b.name} · ${ts(b.created_at, 'f')} · ${Math.round(b.size / 1024)} Ko · <@${b.created_by}>`);
-      return reply(interaction, { embeds: [info(guild, lines.join('\n') || 'Aucune sauvegarde.', { titre: 'Sauvegardes', sujet: '💾' })], ephemeral: true });
+    if (sousCommande === 'list') {
+      const lignes = listerSauvegardes(serveur.id).map((b) => `**#${b.id}** · ${b.nom} · ${marqueTemps(b.cree_le, 'f')} · ${Math.round(b.taille / 1024)} Ko · <@${b.cree_par}>`);
+      return repondre(interaction, { embeds: [info(serveur, lignes.join('\n') || 'Aucune sauvegarde.', { titre: 'Sauvegardes', sujet: '💾' })], ephemeral: true });
     }
     const id = interaction.options.getInteger('sauvegarde', true);
-    if (!listBackups(guild.id).some((b) => b.id === id)) throw new UserError('Sauvegarde introuvable.');
-    return askConfirmation(interaction, {
-      title: 'Restaurer la sauvegarde ?',
+    if (!listerSauvegardes(serveur.id).some((b) => b.id === id)) throw new ErreurUtilisateur('Sauvegarde introuvable.');
+    return demanderConfirmation(interaction, {
+      titre: 'Restaurer la sauvegarde ?',
       description: `La configuration actuelle du bot sur ce serveur sera **remplacée** par la sauvegarde **#${id}**.\nUne sauvegarde de l’état actuel est créée juste avant. Les salons et rôles Discord ne sont pas modifiés.`,
-      confirmLabel: 'Restaurer',
-      onConfirm: async (i) => {
-        await i.update({ embeds: [info(guild, 'Restauration en cours…')], components: [] });
-        const safety = createBackup(guild, i.user.id, 'avant restauration');
-        const result = restoreBackup(guild.id, id);
-        forgetBrands();
-        void journal(guild, 'backup', { title: 'Sauvegarde restaurée', tone: 'alerte', lines: [`**#${id}** restaurée (${result.rows} élément(s))`, `Sauvegarde de sécurité : #${safety.id}`], by: i.user });
-        await i.editReply({ embeds: [ok(guild, `Sauvegarde **#${id}** restaurée (${result.rows} élément(s)).\n-# Sauvegarde de sécurité créée avant : **#${safety.id}**.`)] });
+      libelleConfirmation: 'Restaurer',
+      surConfirmation: async (i) => {
+        await i.update({ embeds: [info(serveur, 'Restauration en cours…')], components: [] });
+        const securite = creerSauvegarde(serveur, i.user.id, 'avant restauration');
+        const resultat = restaurerSauvegarde(serveur.id, id);
+        oublierEnseignes();
+        void journal(serveur, 'backup', { titre: 'Sauvegarde restaurée', ton: 'alerte', lignes: [`**#${id}** restaurée (${resultat.rows} élément(s))`, `Sauvegarde de sécurité : #${securite.id}`], par: i.user });
+        await i.editReply({ embeds: [ok(serveur, `Sauvegarde **#${id}** restaurée (${resultat.rows} élément(s)).\n-# Sauvegarde de sécurité créée avant : **#${securite.id}**.`)] });
       },
     });
   },
 };
 
-export const backupModule: BotModule = {
+export const moduleSauvegardes: ModuleBot = {
   id: 'backup',
-  name: 'Sauvegardes',
+  nom: 'Sauvegardes',
   emoji: '💾',
   description: 'Sauvegardes manuelles et quotidiennes de la configuration',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [backup],
-  tasks: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [sauvegarde],
+  taches: [
     {
-      name: 'backup-daily',
-      intervalMs: 24 * 3_600_000,
-      async run(client) {
-        for (const guild of client.guilds.cache.values()) {
-          if (!isModuleEnabled(guild.id, 'backup')) continue;
+      nom: 'backup-daily',
+      intervalleMs: 24 * 3_600_000,
+      async executer(client) {
+        for (const serveur of client.guilds.cache.values()) {
+          if (!moduleActif(serveur.id, 'backup')) continue;
           try {
-            createBackup(guild, client.user.id, 'automatique');
-            pruneAutoBackups(guild.id);
-          } catch (err) {
-            log.warn(`Sauvegarde automatique ${guild.id} en échec : ${(err as Error).message}`);
+            creerSauvegarde(serveur, client.user.id, 'automatique');
+            purgerSauvegardesAuto(serveur.id);
+          } catch (echec) {
+            registre.avertir(`Sauvegarde automatique ${serveur.id} en échec : ${(echec as Error).message}`);
           }
         }
       },

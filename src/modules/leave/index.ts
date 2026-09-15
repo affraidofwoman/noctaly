@@ -1,84 +1,84 @@
 import { EmbedBuilder, type GuildMember, type PartialGuildMember } from 'discord.js';
-import { emojiFor } from '../../core/brand';
-import { colorFor } from '../../core/embeds';
-import { getConfig } from '../../core/guildConfig';
-import { resolveTextChannel } from '../../core/logService';
-import { createLogger } from '../../core/logger';
-import type { SetupPage } from '../../core/setup';
-import { formatNumber, truncate } from '../../core/text';
-import { formatDuration } from '../../core/time';
-import { renderTemplate } from '../../core/variables';
-import { on, type BotModule } from '../../core/types';
-import { userActivity } from '../../services/stats';
+import { emojiPour } from '../../core/brand';
+import { couleurPour } from '../../core/embeds';
+import { lireConfig } from '../../core/guildConfig';
+import { resoudreSalonTexte } from '../../core/logService';
+import { creerRegistre } from '../../core/logger';
+import type { PageReglage } from '../../core/setup';
+import { formaterNombre, tronquer } from '../../core/text';
+import { formaterDuree } from '../../core/time';
+import { remplirModele } from '../../core/variables';
+import { sur, type ModuleBot } from '../../core/types';
+import { activiteMembre } from '../../services/stats';
 
-const log = createLogger('depart');
+const registre = creerRegistre('depart');
 
-export async function sendLeave(member: GuildMember | PartialGuildMember): Promise<string | null> {
-  const guild = member.guild;
-  const cfg = getConfig(guild.id).leave;
-  const channel = resolveTextChannel(guild, cfg.channelId);
-  if (!channel || !member.user) return null;
-  const text = renderTemplate(cfg.message, { user: member.user, guild });
-  if (!cfg.useEmbed) {
-    await channel.send({ content: truncate(text, 2000), allowedMentions: { parse: [] } });
-    return channel.id;
+export async function envoyerDepart(membre: GuildMember | PartialGuildMember): Promise<string | null> {
+  const serveur = membre.guild;
+  const reglages = lireConfig(serveur.id).depart;
+  const salon = resoudreSalonTexte(serveur, reglages.channelId);
+  if (!salon || !membre.user) return null;
+  const texte = remplirModele(reglages.message, { utilisateur: membre.user, serveur });
+  if (!reglages.utiliserEmbed) {
+    await salon.send({ content: tronquer(texte, 2000), allowedMentions: { parse: [] } });
+    return salon.id;
   }
-  const activity = userActivity(guild.id, member.id);
-  const stayed = member.joinedTimestamp ? Date.now() - member.joinedTimestamp : null;
+  const activite = activiteMembre(serveur.id, membre.id);
+  const reste = membre.joinedTimestamp ? Date.now() - membre.joinedTimestamp : null;
   const embed = new EmbedBuilder()
-    .setColor(colorFor(guild, 'error'))
-    .setTitle(`${emojiFor(guild.id, 'depart')} Départ`)
-    .setDescription(truncate(text, 4096))
-    .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
-    .setFooter({ text: `${member.user.tag} · ${guild.memberCount} membres` })
+    .setColor(couleurPour(serveur, 'error'))
+    .setTitle(`${emojiPour(serveur.id, 'depart')} Départ`)
+    .setDescription(tronquer(texte, 4096))
+    .setThumbnail(membre.user.displayAvatarURL({ size: 256 }))
+    .setFooter({ text: `${membre.user.tag} · ${serveur.memberCount} membres` })
     .setTimestamp();
-  const stats = [
-    stayed ? `• Resté — **${formatDuration(stayed)}**` : null,
-    activity ? `• Messages — **${formatNumber(activity.messages)}**` : null,
-    activity?.voice_seconds ? `• Vocal — **${formatDuration(activity.voice_seconds * 1000)}**` : null,
+  const statistiques = [
+    reste ? `• Resté — **${formaterDuree(reste)}**` : null,
+    activite ? `• Messages — **${formaterNombre(activite.messages)}**` : null,
+    activite?.secondes_vocal ? `• Vocal — **${formaterDuree(activite.secondes_vocal * 1000)}**` : null,
   ].filter(Boolean);
-  if (stats.length) embed.addFields({ name: 'Statistiques', value: stats.join('\n') });
-  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
-  return channel.id;
+  if (statistiques.length) embed.addFields({ name: 'Statistiques', value: statistiques.join('\n') });
+  await salon.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  return salon.id;
 }
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'leave',
   section: 'welcome',
-  title: 'Départ',
+  titre: 'Départ',
   emoji: '🚪',
   moduleId: 'leave',
-  order: 2,
+  ordre: 2,
   description: 'Le message posté quand quelqu’un quitte le serveur.\n-# Variables : `{user}` `{username}` `{server}` `{membercount}`',
-  fields: [
-    { kind: 'channel', key: 'channel', label: 'Salon des départs', get: (c) => c.leave.channelId, set: (c, v) => void (c.leave.channelId = v) },
-    { kind: 'toggle', key: 'embed', label: 'Embed + statistiques', get: (c) => c.leave.useEmbed, set: (c, v) => void (c.leave.useEmbed = v) },
-    { kind: 'text', key: 'message', label: 'Message', long: true, maxLength: 2000, required: true, get: (c) => c.leave.message, set: (c, v) => void (c.leave.message = v) },
+  champs: [
+    { kind: 'channel', cle: 'channel', libelle: 'Salon des départs', get: (c) => c.depart.channelId, set: (c, v) => void (c.depart.channelId = v) },
+    { kind: 'toggle', cle: 'embed', libelle: 'Embed + statistiques', get: (c) => c.depart.utiliserEmbed, set: (c, v) => void (c.depart.utiliserEmbed = v) },
+    { kind: 'text', cle: 'message', libelle: 'Message', long: true, maxLength: 2000, required: true, get: (c) => c.depart.message, set: (c, v) => void (c.depart.message = v) },
   ],
 };
 
-export const leaveModule: BotModule = {
+export const moduleDeparts: ModuleBot = {
   id: 'leave',
-  name: 'Départs',
+  nom: 'Départs',
   emoji: '🚪',
   description: 'Message de départ avec statistiques',
-  toggleable: true,
-  defaultEnabled: true,
-  setupPages: [setupPage],
-  events: [
-    on('guildMemberRemove', async (member) => {
-      if (member.user?.bot) return;
-      await sendLeave(member).catch((err: Error) => log.warn(`Départ de ${member.id} non posté : ${err.message}`));
+  desactivable: true,
+  actifParDefaut: true,
+  pagesReglage: [pageReglage],
+  evenements: [
+    sur('guildMemberRemove', async (membre) => {
+      if (membre.user?.bot) return;
+      await envoyerDepart(membre).catch((echec: Error) => registre.avertir(`Départ de ${membre.id} non posté : ${echec.message}`));
     }),
   ],
   tests: [
     {
       id: 'message',
-      label: 'Message de départ',
+      libelle: 'Message de départ',
       emoji: '🚪',
       description: 'Poster un faux départ à ton nom',
-      async run(interaction) {
-        const id = await sendLeave(interaction.member);
+      async executer(interaction) {
+        const id = await envoyerDepart(interaction.member);
         return id ? `✅ Départ posté dans <#${id}>.` : '⚠️ Aucun salon de départ utilisable.';
       },
     },

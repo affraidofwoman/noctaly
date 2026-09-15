@@ -1,64 +1,64 @@
 import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction, type Client, type Guild, type Message } from 'discord.js';
-import { all, get, run } from '../../database/db';
-import { getDispatcher } from '../../core/bot';
-import { brandEmbed, info, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { getConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { createLogger } from '../../core/logger';
-import { isModuleEnabled } from '../../core/moduleManager';
-import type { SetupPage } from '../../core/setup';
-import { truncate } from '../../core/text';
-import { buildModal } from '../../core/ui';
-import { renderTemplate, variablesHelp } from '../../core/variables';
-import { on, PermLevel, type BotModule, type SlashCommand } from '../../core/types';
+import { lireTout, lire, executer } from '../../database/db';
+import { lireAiguilleur } from '../../core/bot';
+import { embedEnseigne, info, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { lireConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { creerRegistre } from '../../core/logger';
+import { moduleActif } from '../../core/moduleManager';
+import type { PageReglage } from '../../core/setup';
+import { tronquer } from '../../core/text';
+import { construireFormulaire } from '../../core/ui';
+import { remplirModele, aideVariables } from '../../core/variables';
+import { sur, Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
 
-const log = createLogger('commandes-perso');
+const registre = creerRegistre('commandes-perso');
 
-interface CustomRow {
-  guild_id: string;
-  name: string;
+interface LigneCommandePerso {
+  serveur_id: string;
+  nom: string;
   description: string;
-  response: string;
-  as_embed: number;
-  discord_command_id: string | null;
-  uses: number;
+  reponse: string;
+  en_embed: number;
+  commande_discord_id: string | null;
+  utilisations: number;
 }
 
-const NAME_PATTERN = /^[a-z0-9_-]{1,32}$/;
+const MOTIF_NOM = /^[a-z0-9_-]{1,32}$/;
 
-function findCommand(guildId: string, name: string): CustomRow | undefined {
-  return get<CustomRow>('SELECT * FROM custom_commands WHERE guild_id = ? AND name = ?', guildId, name.toLowerCase());
+function trouverCommande(serveurId: string, nom: string): LigneCommandePerso | undefined {
+  return lire<LigneCommandePerso>('SELECT * FROM commandes_perso WHERE serveur_id = ? AND nom = ?', serveurId, nom.toLowerCase());
 }
 
-function payload(guild: Guild, row: CustomRow, ctx: Parameters<typeof renderTemplate>[1]) {
-  run('UPDATE custom_commands SET uses = uses + 1 WHERE guild_id = ? AND name = ?', row.guild_id, row.name);
-  const text = renderTemplate(row.response, ctx);
-  if (row.as_embed) return { embeds: [brandEmbed(guild).setDescription(truncate(text, 4096))], allowedMentions: { parse: [] as [] } };
-  return { content: truncate(text, 2000), allowedMentions: { parse: [] as [] } };
+function charge(serveur: Guild, rangee: LigneCommandePerso, contexte: Parameters<typeof remplirModele>[1]) {
+  executer('UPDATE commandes_perso SET utilisations = utilisations + 1 WHERE serveur_id = ? AND nom = ?', rangee.serveur_id, rangee.nom);
+  const texte = remplirModele(rangee.reponse, contexte);
+  if (rangee.en_embed) return { embeds: [embedEnseigne(serveur).setDescription(tronquer(texte, 4096))], allowedMentions: { parse: [] as [] } };
+  return { content: tronquer(texte, 2000), allowedMentions: { parse: [] as [] } };
 }
 
 /** Enregistre la commande comme commande slash du serveur (sans toucher aux commandes globales). */
-async function registerGuildCommand(guild: Guild, row: CustomRow): Promise<string | null> {
-  if (getDispatcher().commands.has(row.name)) return null;
+async function enregistrerCommandeServeur(serveur: Guild, rangee: LigneCommandePerso): Promise<string | null> {
+  if (lireAiguilleur().commandes.has(rangee.nom)) return null;
   try {
-    const created = await guild.commands.create({ name: row.name, description: truncate(row.description || `Commande personnalisée /${row.name}`, 100) });
-    run('UPDATE custom_commands SET discord_command_id = ? WHERE guild_id = ? AND name = ?', created.id, guild.id, row.name);
-    return created.id;
-  } catch (err) {
-    log.warn(`Commande /${row.name} non enregistrée sur ${guild.id} : ${(err as Error).message}`);
+    const cree = await serveur.commands.create({ name: rangee.nom, description: tronquer(rangee.description || `Commande personnalisée /${rangee.nom}`, 100) });
+    executer('UPDATE commandes_perso SET commande_discord_id = ? WHERE serveur_id = ? AND nom = ?', cree.id, serveur.id, rangee.nom);
+    return cree.id;
+  } catch (echec) {
+    registre.avertir(`Commande /${rangee.nom} non enregistrée sur ${serveur.id} : ${(echec as Error).message}`);
     return null;
   }
 }
 
-async function unregisterGuildCommand(guild: Guild, row: CustomRow): Promise<void> {
-  if (row.discord_command_id) await guild.commands.delete(row.discord_command_id).catch(() => undefined);
+async function retirerCommandeServeur(serveur: Guild, rangee: LigneCommandePerso): Promise<void> {
+  if (rangee.commande_discord_id) await serveur.commands.delete(rangee.commande_discord_id).catch(() => undefined);
 }
 
-const customcommand: SlashCommand = {
-  category: 'customization',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder()
+const commandePerso: CommandeSlash = {
+  categorie: 'customization',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder()
     .setName('customcommand')
     .setDescription('Commandes personnalisées')
     .addSubcommand((s) =>
@@ -75,132 +75,132 @@ const customcommand: SlashCommand = {
         .addStringOption((o) => o.setName('nom').setDescription('La commande').setRequired(true).setAutocomplete(true)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('Les commandes personnalisées')),
-  async autocomplete(interaction) {
-    const focused = String(interaction.options.getFocused()).toLowerCase();
-    const rows = all<CustomRow>('SELECT * FROM custom_commands WHERE guild_id = ? ORDER BY name', interaction.guildId);
-    await interaction.respond(rows.filter((r) => r.name.includes(focused)).slice(0, 25).map((r) => ({ name: r.name, value: r.name })));
+  async autocompletion(interaction) {
+    const saisie = String(interaction.options.getFocused()).toLowerCase();
+    const rangees = lireTout<LigneCommandePerso>('SELECT * FROM commandes_perso WHERE serveur_id = ? ORDER BY nom', interaction.guildId);
+    await interaction.respond(rangees.filter((r) => r.nom.includes(saisie)).slice(0, 25).map((r) => ({ name: r.nom, value: r.nom })));
   },
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const sub = interaction.options.getSubcommand();
-    const prefix = getConfig(guild.id).customcommands.prefix;
-    if (sub === 'list') {
-      const rows = all<CustomRow>('SELECT * FROM custom_commands WHERE guild_id = ? ORDER BY name', guild.id);
-      const lines = rows.map((r) => `**${prefix}${r.name}**${r.discord_command_id ? ` · /${r.name}` : ''} — ${truncate(r.description || r.response, 60)} \`${r.uses}×\``);
-      return reply(interaction, { embeds: [info(guild, lines.join('\n') || 'Aucune commande personnalisée.', { titre: 'Commandes personnalisées', sujet: '🧩' })], ephemeral: true });
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const sousCommande = interaction.options.getSubcommand();
+    const prefixe = lireConfig(serveur.id).commandesPerso.prefixe;
+    if (sousCommande === 'list') {
+      const rangees = lireTout<LigneCommandePerso>('SELECT * FROM commandes_perso WHERE serveur_id = ? ORDER BY nom', serveur.id);
+      const lignes = rangees.map((r) => `**${prefixe}${r.nom}**${r.commande_discord_id ? ` · /${r.nom}` : ''} — ${tronquer(r.description || r.reponse, 60)} \`${r.utilisations}×\``);
+      return repondre(interaction, { embeds: [info(serveur, lignes.join('\n') || 'Aucune commande personnalisée.', { titre: 'Commandes personnalisées', sujet: '🧩' })], ephemeral: true });
     }
-    const name = interaction.options.getString('nom', true).toLowerCase();
-    if (sub === 'remove') {
-      const row = findCommand(guild.id, name);
-      if (!row) throw new UserError('Commande introuvable.');
-      await unregisterGuildCommand(guild, row);
-      run('DELETE FROM custom_commands WHERE guild_id = ? AND name = ?', guild.id, name);
-      return reply(interaction, { embeds: [ok(guild, `Commande **${name}** supprimée.`)], ephemeral: true });
+    const nom = interaction.options.getString('nom', true).toLowerCase();
+    if (sousCommande === 'remove') {
+      const rangee = trouverCommande(serveur.id, nom);
+      if (!rangee) throw new ErreurUtilisateur('Commande introuvable.');
+      await retirerCommandeServeur(serveur, rangee);
+      executer('DELETE FROM commandes_perso WHERE serveur_id = ? AND nom = ?', serveur.id, nom);
+      return repondre(interaction, { embeds: [ok(serveur, `Commande **${nom}** supprimée.`)], ephemeral: true });
     }
-    if (!NAME_PATTERN.test(name)) throw new UserError('Nom invalide : 1 à 32 caractères parmi a-z, 0-9, - et _.');
-    const existing = findCommand(guild.id, name);
+    if (!MOTIF_NOM.test(nom)) throw new ErreurUtilisateur('Nom invalide : 1 à 32 caractères parmi a-z, 0-9, - et _.');
+    const existant = trouverCommande(serveur.id, nom);
     await interaction.showModal(
-      buildModal(`cc:save:${name}:${interaction.options.getBoolean('embed') ? 1 : existing?.as_embed ?? 0}`, `Commande ${prefix}${name}`.slice(0, 45), [
-        { id: 'response', label: 'Réponse', long: true, value: existing?.response, maxLength: 2000, placeholder: '🐦 Twitter : https://x.com/…  ({user}, {server}, {membercount})' },
-        { id: 'description', label: 'Description (pour /help et la commande slash)', value: existing?.description, required: false, maxLength: 100 },
+      construireFormulaire(`cc:save:${nom}:${interaction.options.getBoolean('embed') ? 1 : existant?.en_embed ?? 0}`, `Commande ${prefixe}${nom}`.slice(0, 45), [
+        { id: 'response', libelle: 'Réponse', long: true, valeur: existant?.reponse, longueurMax: 2000, indication: '🐦 Twitter : https://x.com/…  ({user}, {server}, {membercount})' },
+        { id: 'description', libelle: 'Description (pour /help et la commande slash)', valeur: existant?.description, obligatoire: false, longueurMax: 100 },
       ]),
     );
   },
 };
 
-async function handleSlash(interaction: ChatInputCommandInteraction<'cached'>): Promise<boolean> {
-  if (!isModuleEnabled(interaction.guildId, 'customcommands')) return false;
-  const row = findCommand(interaction.guildId, interaction.commandName);
-  if (!row) return false;
-  await interaction.reply(payload(interaction.guild, row, { member: interaction.member, guild: interaction.guild, channel: interaction.channel }));
+async function traiterSlash(interaction: ChatInputCommandInteraction<'cached'>): Promise<boolean> {
+  if (!moduleActif(interaction.guildId, 'customcommands')) return false;
+  const rangee = trouverCommande(interaction.guildId, interaction.commandName);
+  if (!rangee) return false;
+  await interaction.reply(charge(interaction.guild, rangee, { membre: interaction.member, serveur: interaction.guild, salon: interaction.channel }));
   return true;
 }
 
-async function handleMessage(message: Message): Promise<void> {
+async function traiterMessage(message: Message): Promise<void> {
   if (!message.inGuild() || message.author.bot || !message.content) return;
-  const prefix = getConfig(message.guildId).customcommands.prefix;
-  if (!prefix || !message.content.startsWith(prefix)) return;
-  const name = message.content.slice(prefix.length).split(/\s+/)[0]?.toLowerCase();
-  if (!name || !NAME_PATTERN.test(name)) return;
-  const row = findCommand(message.guildId, name);
-  if (!row) return;
-  await message.reply({ ...payload(message.guild, row, { member: message.member, guild: message.guild, channel: message.channel }), allowedMentions: { parse: [], repliedUser: false } });
+  const prefixe = lireConfig(message.guildId).commandesPerso.prefixe;
+  if (!prefixe || !message.content.startsWith(prefixe)) return;
+  const nom = message.content.slice(prefixe.length).split(/\s+/)[0]?.toLowerCase();
+  if (!nom || !MOTIF_NOM.test(nom)) return;
+  const rangee = trouverCommande(message.guildId, nom);
+  if (!rangee) return;
+  await message.reply({ ...charge(message.guild, rangee, { membre: message.member, serveur: message.guild, salon: message.channel }), allowedMentions: { parse: [], repliedUser: false } });
 }
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'customcommands',
   section: 'community',
-  title: 'Commandes personnalisées',
+  titre: 'Commandes personnalisées',
   emoji: '🧩',
   moduleId: 'customcommands',
-  order: 8,
+  ordre: 8,
   description: `Des réponses rapides créées avec \`/customcommand add\`, utilisables avec le préfixe choisi et en commande slash du serveur.\n-# Variables : ${['user', 'username', 'server', 'membercount', 'brand', 'twitch'].map((v) => `\`{${v}}\``).join(' ')}`,
-  fields: [
+  champs: [
     {
       kind: 'text',
-      key: 'prefix',
-      label: 'Préfixe des commandes perso',
+      cle: 'prefix',
+      libelle: 'Préfixe des commandes perso',
       maxLength: 5,
       required: true,
-      get: (c) => c.customcommands.prefix,
-      set: (c, v) => void (c.customcommands.prefix = v),
+      get: (c) => c.commandesPerso.prefixe,
+      set: (c, v) => void (c.commandesPerso.prefixe = v),
       validate: (v) => (/^\S{1,5}$/.test(v) ? null : '1 à 5 caractères sans espace.'),
     },
   ],
 };
 
-export const customCommandsModule: BotModule = {
+export const moduleCommandesPerso: ModuleBot = {
   id: 'customcommands',
-  name: 'Commandes personnalisées',
+  nom: 'Commandes personnalisées',
   emoji: '🧩',
   description: 'Réponses personnalisées en préfixe et en slash',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [customcommand],
-  setupPages: [setupPage],
-  components: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [commandePerso],
+  pagesReglage: [pageReglage],
+  composants: [
     {
-      prefix: 'cc',
-      level: PermLevel.ADMIN,
-      async modal(interaction, [, name, asEmbed]) {
-        const guild = interaction.guild;
-        if (!name || !NAME_PATTERN.test(name)) throw new UserError('Nom invalide.');
-        const response = interaction.fields.getTextInputValue('response').trim();
+      prefixe: 'cc',
+      niveau: Niveau.ADMIN,
+      async fenetre(interaction, [, nom, enEmbed]) {
+        const serveur = interaction.guild;
+        if (!nom || !MOTIF_NOM.test(nom)) throw new ErreurUtilisateur('Nom invalide.');
+        const reponse = interaction.fields.getTextInputValue('response').trim();
         const description = interaction.fields.getTextInputValue('description').trim();
-        const count = get<{ n: number }>('SELECT COUNT(*) AS n FROM custom_commands WHERE guild_id = ?', guild.id)?.n ?? 0;
-        const existing = findCommand(guild.id, name);
-        if (!existing && count >= 100) throw new UserError('100 commandes personnalisées maximum.');
-        run(
-          `INSERT INTO custom_commands (guild_id, name, description, response, as_embed, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(guild_id, name) DO UPDATE SET description = excluded.description, response = excluded.response, as_embed = excluded.as_embed`,
-          guild.id,
-          name,
+        const nombre = lire<{ n: number }>('SELECT COUNT(*) AS n FROM commandes_perso WHERE serveur_id = ?', serveur.id)?.n ?? 0;
+        const existant = trouverCommande(serveur.id, nom);
+        if (!existant && nombre >= 100) throw new ErreurUtilisateur('100 commandes personnalisées maximum.');
+        executer(
+          `INSERT INTO commandes_perso (serveur_id, nom, description, reponse, en_embed, cree_par, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(serveur_id, nom) DO UPDATE SET description = excluded.description, reponse = excluded.reponse, en_embed = excluded.en_embed`,
+          serveur.id,
+          nom,
           description,
-          response,
-          asEmbed === '1' ? 1 : 0,
+          reponse,
+          enEmbed === '1' ? 1 : 0,
           interaction.user.id,
           Date.now(),
         );
-        const row = findCommand(guild.id, name)!;
-        const slashId = row.discord_command_id ?? (await registerGuildCommand(guild, row));
-        if (row.discord_command_id && description !== existing?.description) {
-          await guild.commands.edit(row.discord_command_id, { description: truncate(description || `Commande personnalisée /${name}`, 100) }).catch(() => undefined);
+        const rangee = trouverCommande(serveur.id, nom)!;
+        const slashId = rangee.commande_discord_id ?? (await enregistrerCommandeServeur(serveur, rangee));
+        if (rangee.commande_discord_id && description !== existant?.description) {
+          await serveur.commands.edit(rangee.commande_discord_id, { description: tronquer(description || `Commande personnalisée /${nom}`, 100) }).catch(() => undefined);
         }
-        const prefix = getConfig(guild.id).customcommands.prefix;
+        const prefixe = lireConfig(serveur.id).commandesPerso.prefixe;
         await interaction.reply({
-          embeds: [ok(guild, `Commande **${prefix}${name}** ${existing ? 'modifiée' : 'créée'}${slashId ? ` · aussi disponible en **/${name}**` : ''}.\n\n**Variables :**\n${variablesHelp(['user', 'username', 'server', 'membercount'])}`)],
+          embeds: [ok(serveur, `Commande **${prefixe}${nom}** ${existant ? 'modifiée' : 'créée'}${slashId ? ` · aussi disponible en **/${nom}**` : ''}.\n\n**Variables :**\n${aideVariables(['user', 'username', 'server', 'membercount'])}`)],
           flags: MessageFlags.Ephemeral,
         });
       },
     },
   ],
-  events: [on('messageCreate', (m) => handleMessage(m), 160)],
-  async onReady(client: Client<true>) {
-    getDispatcher().onUnknownCommand(handleSlash);
+  evenements: [sur('messageCreate', (m) => traiterMessage(m), 160)],
+  async auDemarrage(client: Client<true>) {
+    lireAiguilleur().surCommandeInconnue(traiterSlash);
     // Les commandes perso d'un serveur où le bot est revenu sont réenregistrées si besoin.
-    for (const guild of client.guilds.cache.values()) {
-      for (const row of all<CustomRow>('SELECT * FROM custom_commands WHERE guild_id = ? AND discord_command_id IS NULL', guild.id).slice(0, 20)) {
-        await registerGuildCommand(guild, row);
+    for (const serveur of client.guilds.cache.values()) {
+      for (const rangee of lireTout<LigneCommandePerso>('SELECT * FROM commandes_perso WHERE serveur_id = ? AND commande_discord_id IS NULL', serveur.id).slice(0, 20)) {
+        await enregistrerCommandeServeur(serveur, rangee);
       }
     }
   },

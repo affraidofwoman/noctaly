@@ -1,54 +1,54 @@
 /** Limiteur à fenêtre glissante, en mémoire. */
-export class SlidingWindowLimiter {
-  private readonly hits = new Map<string, number[]>();
-  private lastSweep = Date.now();
+export class LimiteurFenetre {
+  private readonly passages = new Map<string, number[]>();
+  private dernierNettoyage = Date.now();
 
   constructor(
-    private readonly limit: number,
-    private readonly windowMs: number,
+    private readonly limite: number,
+    private readonly fenetreMs: number,
   ) {}
 
   /** Enregistre un passage ; retourne false si la limite est dépassée. */
-  hit(key: string, now = Date.now()): boolean {
-    this.sweep(now);
-    const list = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
-    if (list.length >= this.limit) {
-      this.hits.set(key, list);
+  compter(cle: string, maintenant = Date.now()): boolean {
+    this.nettoyer(maintenant);
+    const liste = (this.passages.get(cle) ?? []).filter((t) => maintenant - t < this.fenetreMs);
+    if (liste.length >= this.limite) {
+      this.passages.set(cle, liste);
       return false;
     }
-    list.push(now);
-    this.hits.set(key, list);
+    liste.push(maintenant);
+    this.passages.set(cle, liste);
     return true;
   }
 
-  count(key: string, now = Date.now()): number {
-    return (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs).length;
+  nombre(cle: string, maintenant = Date.now()): number {
+    return (this.passages.get(cle) ?? []).filter((t) => maintenant - t < this.fenetreMs).length;
   }
 
-  reset(key: string): void {
-    this.hits.delete(key);
+  reinitialiser(cle: string): void {
+    this.passages.delete(cle);
   }
 
-  private sweep(now: number): void {
-    if (now - this.lastSweep < 60_000) return;
-    this.lastSweep = now;
-    for (const [k, list] of this.hits) {
-      if (list.every((t) => now - t >= this.windowMs)) this.hits.delete(k);
+  private nettoyer(maintenant: number): void {
+    if (maintenant - this.dernierNettoyage < 60_000) return;
+    this.dernierNettoyage = maintenant;
+    for (const [k, liste] of this.passages) {
+      if (liste.every((t) => maintenant - t >= this.fenetreMs)) this.passages.delete(k);
     }
   }
 }
 
 /** Cooldowns par clé (ex : commande + utilisateur). */
-export class Cooldowns {
-  private readonly until = new Map<string, number>();
+export class Delais {
+  private readonly jusqua = new Map<string, number>();
 
   /** Retourne le temps restant en ms (0 = disponible, et le cooldown est alors armé). */
-  take(key: string, durationMs: number, now = Date.now()): number {
-    const end = this.until.get(key) ?? 0;
-    if (end > now) return end - now;
-    this.until.set(key, now + durationMs);
-    if (this.until.size > 5_000) {
-      for (const [k, v] of this.until) if (v <= now) this.until.delete(k);
+  prendre(cle: string, dureeMs: number, maintenant = Date.now()): number {
+    const fin = this.jusqua.get(cle) ?? 0;
+    if (fin > maintenant) return fin - maintenant;
+    this.jusqua.set(cle, maintenant + dureeMs);
+    if (this.jusqua.size > 5_000) {
+      for (const [k, v] of this.jusqua) if (v <= maintenant) this.jusqua.delete(k);
     }
     return 0;
   }

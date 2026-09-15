@@ -1,91 +1,91 @@
-import { all, get, run } from '../database/db';
+import { lireTout, lire, executer } from '../database/db';
 
 /** XP nécessaire pour passer du niveau `level` au suivant (formule façon MEE6). */
-export function xpToNext(level: number): number {
-  return 5 * level * level + 50 * level + 100;
+export function xpPourSuivant(niveau: number): number {
+  return 5 * niveau * niveau + 50 * niveau + 100;
 }
 
 /** XP totale nécessaire pour atteindre un niveau. */
-export function totalXpForLevel(level: number): number {
+export function xpTotalePourNiveau(niveau: number): number {
   let total = 0;
-  for (let l = 0; l < level; l++) total += xpToNext(l);
+  for (let l = 0; l < niveau; l++) total += xpPourSuivant(l);
   return total;
 }
 
-export function levelFromXp(xp: number): { level: number; current: number; needed: number } {
-  let level = 0;
-  let rest = Math.max(0, Math.floor(xp));
-  while (rest >= xpToNext(level) && level < 1000) {
-    rest -= xpToNext(level);
-    level++;
+export function niveauDepuisXp(xp: number): { niveau: number; actuel: number; requis: number } {
+  let niveau = 0;
+  let reste = Math.max(0, Math.floor(xp));
+  while (reste >= xpPourSuivant(niveau) && niveau < 1000) {
+    reste -= xpPourSuivant(niveau);
+    niveau++;
   }
-  return { level, current: rest, needed: xpToNext(level) };
+  return { niveau, actuel: reste, requis: xpPourSuivant(niveau) };
 }
 
-export interface XpRow {
-  user_id: string;
+export interface LigneXp {
+  utilisateur_id: string;
   xp: number;
-  level: number;
-  last_message_at: number;
+  niveau: number;
+  dernier_message_le: number;
 }
 
-export function getXp(guildId: string, userId: string): XpRow {
-  return get<XpRow>('SELECT user_id, xp, level, last_message_at FROM xp WHERE guild_id = ? AND user_id = ?', guildId, userId) ?? { user_id: userId, xp: 0, level: 0, last_message_at: 0 };
+export function lireXp(serveurId: string, utilisateurId: string): LigneXp {
+  return lire<LigneXp>('SELECT utilisateur_id, xp, niveau, dernier_message_le FROM xp WHERE serveur_id = ? AND utilisateur_id = ?', serveurId, utilisateurId) ?? { utilisateur_id: utilisateurId, xp: 0, niveau: 0, dernier_message_le: 0 };
 }
 
-export function levelOf(guildId: string, userId: string): number {
-  return getXp(guildId, userId).level;
+export function niveauDe(serveurId: string, utilisateurId: string): number {
+  return lireXp(serveurId, utilisateurId).niveau;
 }
 
 /** Ajoute (ou retire) de l'XP. Retourne l'ancien et le nouveau niveau. */
-export function addXp(guildId: string, userId: string, amount: number, touchMessage = false): { oldLevel: number; newLevel: number; xp: number } {
-  const before = getXp(guildId, userId);
-  const xp = Math.max(0, before.xp + Math.round(amount));
-  const newLevel = levelFromXp(xp).level;
-  run(
-    `INSERT INTO xp (guild_id, user_id, xp, level, last_message_at) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(guild_id, user_id) DO UPDATE SET xp = excluded.xp, level = excluded.level, last_message_at = CASE WHEN ? THEN excluded.last_message_at ELSE xp.last_message_at END`,
-    guildId,
-    userId,
+export function ajouterXp(serveurId: string, utilisateurId: string, montant: number, noterMessage = false): { ancienNiveau: number; nouveauNiveau: number; xp: number } {
+  const avant = lireXp(serveurId, utilisateurId);
+  const xp = Math.max(0, avant.xp + Math.round(montant));
+  const nouveauNiveau = niveauDepuisXp(xp).niveau;
+  executer(
+    `INSERT INTO xp (serveur_id, utilisateur_id, xp, niveau, dernier_message_le) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET xp = excluded.xp, niveau = excluded.niveau, dernier_message_le = CASE WHEN ? THEN excluded.dernier_message_le ELSE xp.dernier_message_le END`,
+    serveurId,
+    utilisateurId,
     xp,
-    newLevel,
-    touchMessage ? Date.now() : before.last_message_at,
-    touchMessage ? 1 : 0,
+    nouveauNiveau,
+    noterMessage ? Date.now() : avant.dernier_message_le,
+    noterMessage ? 1 : 0,
   );
-  return { oldLevel: before.level, newLevel, xp };
+  return { ancienNiveau: avant.niveau, nouveauNiveau, xp };
 }
 
-export function setXp(guildId: string, userId: string, xp: number): number {
-  const level = levelFromXp(xp).level;
-  run(
-    `INSERT INTO xp (guild_id, user_id, xp, level) VALUES (?, ?, ?, ?)
-     ON CONFLICT(guild_id, user_id) DO UPDATE SET xp = excluded.xp, level = excluded.level`,
-    guildId,
-    userId,
+export function poserXp(serveurId: string, utilisateurId: string, xp: number): number {
+  const niveau = niveauDepuisXp(xp).niveau;
+  executer(
+    `INSERT INTO xp (serveur_id, utilisateur_id, xp, niveau) VALUES (?, ?, ?, ?)
+     ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET xp = excluded.xp, niveau = excluded.niveau`,
+    serveurId,
+    utilisateurId,
     Math.max(0, Math.floor(xp)),
-    level,
+    niveau,
   );
-  return level;
+  return niveau;
 }
 
-export function leaderboard(guildId: string, limit = 100, offset = 0): XpRow[] {
-  return all<XpRow>('SELECT user_id, xp, level, last_message_at FROM xp WHERE guild_id = ? AND xp > 0 ORDER BY xp DESC LIMIT ? OFFSET ?', guildId, limit, offset);
+export function classement(serveurId: string, limite = 100, decalage = 0): LigneXp[] {
+  return lireTout<LigneXp>('SELECT utilisateur_id, xp, niveau, dernier_message_le FROM xp WHERE serveur_id = ? AND xp > 0 ORDER BY xp DESC LIMIT ? OFFSET ?', serveurId, limite, decalage);
 }
 
-export function rankOf(guildId: string, userId: string): number {
-  const me = getXp(guildId, userId);
-  if (!me.xp) return 0;
-  return (get<{ n: number }>('SELECT COUNT(*) AS n FROM xp WHERE guild_id = ? AND xp > ?', guildId, me.xp)?.n ?? 0) + 1;
+export function rangDe(serveurId: string, utilisateurId: string): number {
+  const moi = lireXp(serveurId, utilisateurId);
+  if (!moi.xp) return 0;
+  return (lire<{ n: number }>('SELECT COUNT(*) AS n FROM xp WHERE serveur_id = ? AND xp > ?', serveurId, moi.xp)?.n ?? 0) + 1;
 }
 
-export function levelRoles(guildId: string): { level: number; role_id: string }[] {
-  return all('SELECT level, role_id FROM levels WHERE guild_id = ? ORDER BY level ASC', guildId);
+export function rolesNiveau(serveurId: string): { niveau: number; role_id: string }[] {
+  return lireTout('SELECT niveau, role_id FROM roles_niveaux WHERE serveur_id = ? ORDER BY niveau ASC', serveurId);
 }
 
-export function setLevelRole(guildId: string, level: number, roleId: string): void {
-  run('INSERT OR IGNORE INTO levels (guild_id, level, role_id) VALUES (?, ?, ?)', guildId, level, roleId);
+export function poserRoleNiveau(serveurId: string, niveau: number, roleId: string): void {
+  executer('INSERT OR IGNORE INTO roles_niveaux (serveur_id, niveau, role_id) VALUES (?, ?, ?)', serveurId, niveau, roleId);
 }
 
-export function removeLevelRole(guildId: string, roleId: string): number {
-  return run('DELETE FROM levels WHERE guild_id = ? AND role_id = ?', guildId, roleId).changes;
+export function retirerRoleNiveau(serveurId: string, roleId: string): number {
+  return executer('DELETE FROM roles_niveaux WHERE serveur_id = ? AND role_id = ?', serveurId, roleId).changes;
 }

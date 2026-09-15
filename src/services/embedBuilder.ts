@@ -13,309 +13,309 @@ import {
   type MessageActionRowComponentBuilder,
   type ModalSubmitInteraction,
 } from 'discord.js';
-import { brandFor, parseColor, PALETTES, toHex } from '../core/brand';
-import { colorFor } from '../core/embeds';
-import { UserError } from '../core/errors';
+import { enseigneDe, lireCouleur, PALETTES, enHexa } from '../core/brand';
+import { couleurPour } from '../core/embeds';
+import { ErreurUtilisateur } from '../core/errors';
 import { journal } from '../core/logService';
-import { shortId, TtlMap } from '../core/sessions';
-import { truncate } from '../core/text';
-import { button, buildModal, isHttpUrl, linkButton, row } from '../core/ui';
-import { renderTemplate } from '../core/variables';
+import { idCourt, CarteExpirante } from '../core/sessions';
+import { tronquer } from '../core/text';
+import { bouton, construireFormulaire, estLienHttp, boutonLien, rangee } from '../core/ui';
+import { remplirModele } from '../core/variables';
 
-export interface Draft {
+export interface Brouillon {
   id: string;
-  ownerId: string;
-  guildId: string;
-  kind: 'embed' | 'announce';
-  title: string;
+  proprietaireId: string;
+  serveurId: string;
+  genre: 'embed' | 'announce';
+  titre: string;
   description: string;
-  color: number;
+  couleur: number;
   url: string;
-  authorName: string;
-  authorIcon: string;
-  footer: string;
+  nomAuteur: string;
+  iconeAuteur: string;
+  pied: string;
   image: string;
-  thumbnail: string;
-  timestamp: boolean;
-  fields: { name: string; value: string; inline: boolean }[];
-  buttons: { label: string; url: string }[];
-  content: string;
-  channelId: string | null;
+  miniature: string;
+  horodatage: boolean;
+  champs: { name: string; value: string; inline: boolean }[];
+  boutons: { label: string; url: string }[];
+  contenu: string;
+  salonId: string | null;
   roleId: string | null;
-  mentionEveryone: boolean;
+  mentionTous: boolean;
   /** Message existant à modifier au lieu d'en publier un nouveau. */
-  editMessage: { channelId: string; messageId: string } | null;
+  messageAModifier: { channelId: string; messageId: string } | null;
 }
 
-const drafts = new TtlMap<string, Draft>(45 * 60_000);
+const brouillons = new CarteExpirante<string, Brouillon>(45 * 60_000);
 
 /** Préfixe des composants : « an » pour les annonces, « eb » pour l’embed builder (modules indépendants). */
-export const pfx = (d: Pick<Draft, 'kind'>) => (d.kind === 'announce' ? 'an' : 'eb');
+export const prefixeComposant = (d: Pick<Brouillon, 'genre'>) => (d.genre === 'announce' ? 'an' : 'eb');
 
-export function newDraft(guild: Guild, ownerId: string, kind: Draft['kind']): Draft {
-  const brand = brandFor(guild.id);
-  const draft: Draft = {
-    id: shortId(),
-    ownerId,
-    guildId: guild.id,
-    kind,
-    title: kind === 'announce' ? '📢 NOUVELLE ANNONCE' : 'Titre de l’embed',
-    description: kind === 'announce' ? 'Écris ton annonce ici.' : 'Description de l’embed.',
-    color: colorFor(guild),
+export function nouveauBrouillon(serveur: Guild, proprietaireId: string, genre: Brouillon['genre']): Brouillon {
+  const enseigne = enseigneDe(serveur.id);
+  const brouillon: Brouillon = {
+    id: idCourt(),
+    proprietaireId,
+    serveurId: serveur.id,
+    genre,
+    titre: genre === 'announce' ? '📢 NOUVELLE ANNONCE' : 'Titre de l’embed',
+    description: genre === 'announce' ? 'Écris ton annonce ici.' : 'Description de l’embed.',
+    couleur: couleurPour(serveur),
     url: '',
-    authorName: '',
-    authorIcon: '',
-    footer: brand.footer ?? (brand.key ? brand.name : guild.name),
+    nomAuteur: '',
+    iconeAuteur: '',
+    pied: enseigne.pied ?? (enseigne.cle ? enseigne.nom : serveur.name),
     image: '',
-    thumbnail: '',
-    timestamp: kind === 'announce',
-    fields: [],
-    buttons: kind === 'announce' && brand.twitchLogin ? [{ label: '🔴 Twitch', url: `https://twitch.tv/${brand.twitchLogin}` }] : [],
-    content: '',
-    channelId: null,
+    miniature: '',
+    horodatage: genre === 'announce',
+    champs: [],
+    boutons: genre === 'announce' && enseigne.pseudoTwitch ? [{ label: '🔴 Twitch', url: `https://twitch.tv/${enseigne.pseudoTwitch}` }] : [],
+    contenu: '',
+    salonId: null,
     roleId: null,
-    mentionEveryone: false,
-    editMessage: null,
+    mentionTous: false,
+    messageAModifier: null,
   };
-  drafts.set(draft.id, draft);
-  return draft;
+  brouillons.ecrire(brouillon.id, brouillon);
+  return brouillon;
 }
 
-export function storeDraft(draft: Draft): void {
-  drafts.set(draft.id, draft);
+export function stockerBrouillon(brouillon: Brouillon): void {
+  brouillons.ecrire(brouillon.id, brouillon);
 }
 
-function requireDraft(id: string | undefined, userId: string): Draft {
-  const draft = id ? drafts.get(id) : undefined;
-  if (!draft) throw new UserError('Ce brouillon a expiré (45 min). Relance la commande.');
-  if (draft.ownerId !== userId) throw new UserError('Ce brouillon appartient à quelqu’un d’autre.');
-  drafts.touch(id!);
-  return draft;
+function exigerBrouillon(id: string | undefined, utilisateurId: string): Brouillon {
+  const brouillon = id ? brouillons.lire(id) : undefined;
+  if (!brouillon) throw new ErreurUtilisateur('Ce brouillon a expiré (45 min). Relance la commande.');
+  if (brouillon.proprietaireId !== utilisateurId) throw new ErreurUtilisateur('Ce brouillon appartient à quelqu’un d’autre.');
+  brouillons.prolonger(id!);
+  return brouillon;
 }
 
-export function buildEmbed(guild: Guild, d: Draft): EmbedBuilder {
-  const vars = { guild };
-  const embed = new EmbedBuilder().setColor(d.color);
-  if (d.title) embed.setTitle(truncate(renderTemplate(d.title, vars), 256));
-  if (d.description) embed.setDescription(truncate(renderTemplate(d.description, vars), 4096));
-  if (d.url && isHttpUrl(d.url)) embed.setURL(d.url);
-  if (d.authorName) embed.setAuthor({ name: truncate(d.authorName, 256), iconURL: isHttpUrl(d.authorIcon) ? d.authorIcon : undefined });
-  if (d.footer) embed.setFooter({ text: truncate(renderTemplate(d.footer, vars), 2048) });
-  if (d.image && isHttpUrl(d.image)) embed.setImage(d.image);
-  if (d.thumbnail && isHttpUrl(d.thumbnail)) embed.setThumbnail(d.thumbnail);
-  if (d.timestamp) embed.setTimestamp();
-  for (const f of d.fields.slice(0, 25)) embed.addFields({ name: truncate(f.name, 256), value: truncate(f.value, 1024), inline: f.inline });
-  if (!d.title && !d.description && !d.fields.length && !d.image) embed.setDescription('​');
+export function construireEmbed(serveur: Guild, d: Brouillon): EmbedBuilder {
+  const variables = { serveur };
+  const embed = new EmbedBuilder().setColor(d.couleur);
+  if (d.titre) embed.setTitle(tronquer(remplirModele(d.titre, variables), 256));
+  if (d.description) embed.setDescription(tronquer(remplirModele(d.description, variables), 4096));
+  if (d.url && estLienHttp(d.url)) embed.setURL(d.url);
+  if (d.nomAuteur) embed.setAuthor({ name: tronquer(d.nomAuteur, 256), iconURL: estLienHttp(d.iconeAuteur) ? d.iconeAuteur : undefined });
+  if (d.pied) embed.setFooter({ text: tronquer(remplirModele(d.pied, variables), 2048) });
+  if (d.image && estLienHttp(d.image)) embed.setImage(d.image);
+  if (d.miniature && estLienHttp(d.miniature)) embed.setThumbnail(d.miniature);
+  if (d.horodatage) embed.setTimestamp();
+  for (const f of d.champs.slice(0, 25)) embed.addFields({ name: tronquer(f.name, 256), value: tronquer(f.value, 1024), inline: f.inline });
+  if (!d.titre && !d.description && !d.champs.length && !d.image) embed.setDescription('​');
   return embed;
 }
 
-function linkRows(d: Draft) {
-  if (!d.buttons.length) return [];
-  return [row(...d.buttons.slice(0, 5).map((b) => linkButton(b.url, b.label)))];
+function rangeesLiens(d: Brouillon) {
+  if (!d.boutons.length) return [];
+  return [rangee(...d.boutons.slice(0, 5).map((b) => boutonLien(b.url, b.label)))];
 }
 
-export function editorPayload(guild: Guild, d: Draft, note?: string) {
+export function affichageEditeur(serveur: Guild, d: Brouillon, note?: string) {
   const id = d.id;
-  const components: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [
-    row(
-      button(`${pfx(d)}:text:${id}`, 'Modifier', ButtonStyle.Primary, '📝'),
-      button(`${pfx(d)}:color:${id}`, 'Couleur', ButtonStyle.Secondary, '🎨'),
-      button(`${pfx(d)}:image:${id}`, 'Image', ButtonStyle.Secondary, '🖼️'),
-      button(`${pfx(d)}:field:${id}`, 'Champ', ButtonStyle.Secondary, '➕'),
-      button(`${pfx(d)}:link:${id}`, 'Bouton', ButtonStyle.Secondary, '🔗'),
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [
+    rangee(
+      bouton(`${prefixeComposant(d)}:text:${id}`, 'Modifier', ButtonStyle.Primary, '📝'),
+      bouton(`${prefixeComposant(d)}:color:${id}`, 'Couleur', ButtonStyle.Secondary, '🎨'),
+      bouton(`${prefixeComposant(d)}:image:${id}`, 'Image', ButtonStyle.Secondary, '🖼️'),
+      bouton(`${prefixeComposant(d)}:field:${id}`, 'Champ', ButtonStyle.Secondary, '➕'),
+      bouton(`${prefixeComposant(d)}:link:${id}`, 'Bouton', ButtonStyle.Secondary, '🔗'),
     ),
-    row(
-      button(`${pfx(d)}:meta:${id}`, 'Auteur & pied', ButtonStyle.Secondary, '👤'),
-      button(`${pfx(d)}:ts:${id}`, d.timestamp ? 'Horodatage : oui' : 'Horodatage : non', d.timestamp ? ButtonStyle.Success : ButtonStyle.Secondary, '⏱️'),
-      button(`${pfx(d)}:clear:${id}`, 'Vider champs & boutons', ButtonStyle.Secondary, '🧹').setDisabled(!d.fields.length && !d.buttons.length),
-      button(`${pfx(d)}:publish:${id}`, d.editMessage ? 'Enregistrer' : 'Publier', ButtonStyle.Success, '📤'),
-      button(`${pfx(d)}:cancel:${id}`, '', ButtonStyle.Danger, '✖️'),
+    rangee(
+      bouton(`${prefixeComposant(d)}:meta:${id}`, 'Auteur & pied', ButtonStyle.Secondary, '👤'),
+      bouton(`${prefixeComposant(d)}:ts:${id}`, d.horodatage ? 'Horodatage : oui' : 'Horodatage : non', d.horodatage ? ButtonStyle.Success : ButtonStyle.Secondary, '⏱️'),
+      bouton(`${prefixeComposant(d)}:clear:${id}`, 'Vider champs & boutons', ButtonStyle.Secondary, '🧹').setDisabled(!d.champs.length && !d.boutons.length),
+      bouton(`${prefixeComposant(d)}:publish:${id}`, d.messageAModifier ? 'Enregistrer' : 'Publier', ButtonStyle.Success, '📤'),
+      bouton(`${prefixeComposant(d)}:cancel:${id}`, '', ButtonStyle.Danger, '✖️'),
     ),
   ];
-  if (!d.editMessage) {
-    const channelSelect = new ChannelSelectMenuBuilder()
-      .setCustomId(`${pfx(d)}:chan:${id}`)
+  if (!d.messageAModifier) {
+    const selecteurSalon = new ChannelSelectMenuBuilder()
+      .setCustomId(`${prefixeComposant(d)}:chan:${id}`)
       .setPlaceholder('Salon de publication (ici par défaut)')
       .setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
       .setMinValues(0)
       .setMaxValues(1);
-    if (d.channelId) channelSelect.setDefaultChannels(d.channelId);
-    const roleSelect = new RoleSelectMenuBuilder().setCustomId(`${pfx(d)}:role:${id}`).setPlaceholder('Rôle à mentionner (aucun par défaut)').setMinValues(0).setMaxValues(1);
-    if (d.roleId) roleSelect.setDefaultRoles(d.roleId);
-    components.push(row(channelSelect), row(roleSelect));
+    if (d.salonId) selecteurSalon.setDefaultChannels(d.salonId);
+    const selecteurRole = new RoleSelectMenuBuilder().setCustomId(`${prefixeComposant(d)}:role:${id}`).setPlaceholder('Rôle à mentionner (aucun par défaut)').setMinValues(0).setMaxValues(1);
+    if (d.roleId) selecteurRole.setDefaultRoles(d.roleId);
+    composants.push(rangee(selecteurSalon), rangee(selecteurRole));
   }
-  const header = [
+  const entete = [
     note,
-    `👁️ **Aperçu** — ${d.editMessage ? 'modification d’un message existant' : `publication dans ${d.channelId ? `<#${d.channelId}>` : 'ce salon'}${d.roleId ? ` avec <@&${d.roleId}>` : ''}`}`,
-    `-# ${d.fields.length} champ(s) · ${d.buttons.length} bouton(s) · brouillon valable 45 min`,
+    `👁️ **Aperçu** — ${d.messageAModifier ? 'modification d’un message existant' : `publication dans ${d.salonId ? `<#${d.salonId}>` : 'ce salon'}${d.roleId ? ` avec <@&${d.roleId}>` : ''}`}`,
+    `-# ${d.champs.length} champ(s) · ${d.boutons.length} bouton(s) · brouillon valable 45 min`,
   ]
     .filter(Boolean)
     .join('\n');
   return {
-    content: header,
-    embeds: [buildEmbed(guild, d)],
-    components: [...components, ...(linkRows(d).length && components.length < 5 ? linkRows(d) : [])].slice(0, 5),
+    content: entete,
+    embeds: [construireEmbed(serveur, d)],
+    components: [...composants, ...(rangeesLiens(d).length && composants.length < 5 ? rangeesLiens(d) : [])].slice(0, 5),
     allowedMentions: { parse: [] as [] },
   };
 }
 
-async function respond(interaction: ModalSubmitInteraction<'cached'> | ButtonInteraction<'cached'> | AnySelectMenuInteraction<'cached'>, d: Draft, note?: string) {
-  const payload = editorPayload(interaction.guild, d, note);
-  if (interaction.isModalSubmit() && !interaction.isFromMessage()) await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
-  else await (interaction as ButtonInteraction<'cached'>).update(payload);
+async function repondreEcran(interaction: ModalSubmitInteraction<'cached'> | ButtonInteraction<'cached'> | AnySelectMenuInteraction<'cached'>, d: Brouillon, note?: string) {
+  const charge = affichageEditeur(interaction.guild, d, note);
+  if (interaction.isModalSubmit() && !interaction.isFromMessage()) await interaction.reply({ ...charge, flags: MessageFlags.Ephemeral });
+  else await (interaction as ButtonInteraction<'cached'>).update(charge);
 }
 
-export async function onBuilderButton(interaction: ButtonInteraction<'cached'>, [action, id]: string[]): Promise<void> {
-  const d = requireDraft(id, interaction.user.id);
+export async function surBoutonRedaction(interaction: ButtonInteraction<'cached'>, [action, id]: string[]): Promise<void> {
+  const d = exigerBrouillon(id, interaction.user.id);
   switch (action) {
     case 'text':
       return interaction.showModal(
-        buildModal(`${pfx(d)}:textm:${d.id}`, 'Texte de l’embed', [
-          { id: 'title', label: 'Titre', value: d.title, required: false, maxLength: 256 },
-          { id: 'description', label: 'Description', long: true, value: d.description, required: false, maxLength: 4000 },
-          { id: 'url', label: 'Lien du titre (facultatif)', value: d.url, required: false, maxLength: 500 },
-          { id: 'content', label: 'Texte au-dessus de l’embed (facultatif)', long: true, value: d.content, required: false, maxLength: 1500 },
+        construireFormulaire(`${prefixeComposant(d)}:textm:${d.id}`, 'Texte de l’embed', [
+          { id: 'title', libelle: 'Titre', valeur: d.titre, obligatoire: false, longueurMax: 256 },
+          { id: 'description', libelle: 'Description', long: true, valeur: d.description, obligatoire: false, longueurMax: 4000 },
+          { id: 'url', libelle: 'Lien du titre (facultatif)', valeur: d.url, obligatoire: false, longueurMax: 500 },
+          { id: 'content', libelle: 'Texte au-dessus de l’embed (facultatif)', long: true, valeur: d.contenu, obligatoire: false, longueurMax: 1500 },
         ]),
       );
     case 'color':
       return interaction.showModal(
-        buildModal(`${pfx(d)}:colorm:${d.id}`, 'Couleur', [
-          { id: 'color', label: 'Code hexadécimal ou nom de ton', value: toHex(d.color), maxLength: 30, description: PALETTES.flatMap((p) => p.tones.map((t) => t.name)).slice(0, 12).join(', ') },
+        construireFormulaire(`${prefixeComposant(d)}:colorm:${d.id}`, 'Couleur', [
+          { id: 'color', libelle: 'Code hexadécimal ou nom de ton', valeur: enHexa(d.couleur), longueurMax: 30, description: PALETTES.flatMap((p) => p.tons.map((t) => t.name)).slice(0, 12).join(', ') },
         ]),
       );
     case 'image':
       return interaction.showModal(
-        buildModal(`${pfx(d)}:imagem:${d.id}`, 'Images', [
-          { id: 'image', label: 'Grande image (lien https)', value: d.image, required: false, maxLength: 500 },
-          { id: 'thumbnail', label: 'Miniature (lien https)', value: d.thumbnail, required: false, maxLength: 500 },
+        construireFormulaire(`${prefixeComposant(d)}:imagem:${d.id}`, 'Images', [
+          { id: 'image', libelle: 'Grande image (lien https)', valeur: d.image, obligatoire: false, longueurMax: 500 },
+          { id: 'thumbnail', libelle: 'Miniature (lien https)', valeur: d.miniature, obligatoire: false, longueurMax: 500 },
         ]),
       );
     case 'field':
-      if (d.fields.length >= 25) throw new UserError('25 champs maximum.');
+      if (d.champs.length >= 25) throw new ErreurUtilisateur('25 champs maximum.');
       return interaction.showModal(
-        buildModal(`${pfx(d)}:fieldm:${d.id}`, 'Nouveau champ', [
-          { id: 'name', label: 'Titre du champ', maxLength: 256 },
-          { id: 'value', label: 'Contenu', long: true, maxLength: 1024 },
-          { id: 'inline', label: 'Sur la même ligne ? (oui/non)', value: 'non', required: false, maxLength: 3 },
+        construireFormulaire(`${prefixeComposant(d)}:fieldm:${d.id}`, 'Nouveau champ', [
+          { id: 'name', libelle: 'Titre du champ', longueurMax: 256 },
+          { id: 'value', libelle: 'Contenu', long: true, longueurMax: 1024 },
+          { id: 'inline', libelle: 'Sur la même ligne ? (oui/non)', valeur: 'non', obligatoire: false, longueurMax: 3 },
         ]),
       );
     case 'link':
-      if (d.buttons.length >= 5) throw new UserError('5 boutons maximum.');
+      if (d.boutons.length >= 5) throw new ErreurUtilisateur('5 boutons maximum.');
       return interaction.showModal(
-        buildModal(`${pfx(d)}:linkm:${d.id}`, 'Bouton lien', [
-          { id: 'label', label: 'Texte du bouton', maxLength: 80, placeholder: '🔴 Twitch' },
-          { id: 'url', label: 'Lien', maxLength: 500, placeholder: 'https://twitch.tv/…' },
+        construireFormulaire(`${prefixeComposant(d)}:linkm:${d.id}`, 'Bouton lien', [
+          { id: 'label', libelle: 'Texte du bouton', longueurMax: 80, indication: '🔴 Twitch' },
+          { id: 'url', libelle: 'Lien', longueurMax: 500, indication: 'https://twitch.tv/…' },
         ]),
       );
     case 'meta':
       return interaction.showModal(
-        buildModal(`${pfx(d)}:metam:${d.id}`, 'Auteur & pied de page', [
-          { id: 'authorName', label: 'Auteur', value: d.authorName, required: false, maxLength: 256 },
-          { id: 'authorIcon', label: 'Icône de l’auteur (lien)', value: d.authorIcon, required: false, maxLength: 500 },
-          { id: 'footer', label: 'Pied de page', value: d.footer, required: false, maxLength: 2048 },
+        construireFormulaire(`${prefixeComposant(d)}:metam:${d.id}`, 'Auteur & pied de page', [
+          { id: 'authorName', libelle: 'Auteur', valeur: d.nomAuteur, obligatoire: false, longueurMax: 256 },
+          { id: 'authorIcon', libelle: 'Icône de l’auteur (lien)', valeur: d.iconeAuteur, obligatoire: false, longueurMax: 500 },
+          { id: 'footer', libelle: 'Pied de page', valeur: d.pied, obligatoire: false, longueurMax: 2048 },
         ]),
       );
     case 'ts':
-      d.timestamp = !d.timestamp;
-      return respond(interaction, d);
+      d.horodatage = !d.horodatage;
+      return repondreEcran(interaction, d);
     case 'clear':
-      d.fields = [];
-      d.buttons = [];
-      return respond(interaction, d, '🧹 Champs et boutons vidés.');
+      d.champs = [];
+      d.boutons = [];
+      return repondreEcran(interaction, d, '🧹 Champs et boutons vidés.');
     case 'cancel':
-      drafts.delete(d.id);
+      brouillons.supprimer(d.id);
       await interaction.update({ content: '✖️ Brouillon abandonné.', embeds: [], components: [] });
       return;
     case 'publish':
-      return publish(interaction, d);
+      return publier(interaction, d);
   }
 }
 
-async function publish(interaction: ButtonInteraction<'cached'>, d: Draft): Promise<void> {
-  const guild = interaction.guild;
-  const embed = buildEmbed(guild, d);
-  const components = linkRows(d);
-  if (d.editMessage) {
-    const channel = guild.channels.cache.get(d.editMessage.channelId) as GuildTextBasedChannel | undefined;
-    const message = channel?.isTextBased() ? await channel.messages.fetch(d.editMessage.messageId).catch(() => null) : null;
-    if (!message || message.author.id !== interaction.client.user.id) throw new UserError('Le message à modifier est introuvable (ou n’a pas été envoyé par le bot).');
-    await message.edit({ content: d.content || null, embeds: [embed], components });
-    drafts.delete(d.id);
+async function publier(interaction: ButtonInteraction<'cached'>, d: Brouillon): Promise<void> {
+  const serveur = interaction.guild;
+  const embed = construireEmbed(serveur, d);
+  const composants = rangeesLiens(d);
+  if (d.messageAModifier) {
+    const salon = serveur.channels.cache.get(d.messageAModifier.channelId) as GuildTextBasedChannel | undefined;
+    const message = salon?.isTextBased() ? await salon.messages.fetch(d.messageAModifier.messageId).catch(() => null) : null;
+    if (!message || message.author.id !== interaction.client.user.id) throw new ErreurUtilisateur('Le message à modifier est introuvable (ou n’a pas été envoyé par le bot).');
+    await message.edit({ content: d.contenu || null, embeds: [embed], components: composants });
+    brouillons.supprimer(d.id);
     await interaction.update({ content: `✅ Message modifié : ${message.url}`, embeds: [], components: [] });
     return;
   }
-  const channel = (d.channelId ? guild.channels.cache.get(d.channelId) : interaction.channel) as GuildTextBasedChannel | null | undefined;
-  if (!channel?.isTextBased()) throw new UserError('Salon de publication introuvable.');
-  const me = guild.members.me!;
-  if (!channel.permissionsFor(me)?.has(['SendMessages', 'EmbedLinks'])) throw new UserError(`Je ne peux pas écrire dans <#${channel.id}>.`);
+  const salon = (d.salonId ? serveur.channels.cache.get(d.salonId) : interaction.channel) as GuildTextBasedChannel | null | undefined;
+  if (!salon?.isTextBased()) throw new ErreurUtilisateur('Salon de publication introuvable.');
+  const moi = serveur.members.me!;
+  if (!salon.permissionsFor(moi)?.has(['SendMessages', 'EmbedLinks'])) throw new ErreurUtilisateur(`Je ne peux pas écrire dans <#${salon.id}>.`);
   const mention = d.roleId ? `<@&${d.roleId}>` : '';
-  const content = [mention, d.content ? renderTemplate(d.content, { guild }) : ''].filter(Boolean).join(' ');
-  const sent = await channel.send({ content: content || undefined, embeds: [embed], components, allowedMentions: { roles: d.roleId ? [d.roleId] : [], parse: [] } });
-  if (d.kind === 'announce' && sent.crosspostable) await sent.crosspost().catch(() => undefined);
-  drafts.delete(d.id);
-  void journal(guild, 'community', { title: d.kind === 'announce' ? 'Annonce publiée' : 'Embed publié', tone: 'info', lines: [`**Salon** : <#${channel.id}> · [voir](${sent.url})`, d.title ? `**Titre** : ${truncate(d.title, 200)}` : null], by: interaction.user });
-  await interaction.update({ content: `✅ Publié : ${sent.url}`, embeds: [], components: [] });
+  const contenu = [mention, d.contenu ? remplirModele(d.contenu, { serveur }) : ''].filter(Boolean).join(' ');
+  const envoye = await salon.send({ content: contenu || undefined, embeds: [embed], components: composants, allowedMentions: { roles: d.roleId ? [d.roleId] : [], parse: [] } });
+  if (d.genre === 'announce' && envoye.crosspostable) await envoye.crosspost().catch(() => undefined);
+  brouillons.supprimer(d.id);
+  void journal(serveur, 'community', { titre: d.genre === 'announce' ? 'Annonce publiée' : 'Embed publié', ton: 'info', lignes: [`**Salon** : <#${salon.id}> · [voir](${envoye.url})`, d.titre ? `**Titre** : ${tronquer(d.titre, 200)}` : null], par: interaction.user });
+  await interaction.update({ content: `✅ Publié : ${envoye.url}`, embeds: [], components: [] });
 }
 
-export async function onBuilderSelect(interaction: AnySelectMenuInteraction<'cached'>, [action, id]: string[]): Promise<void> {
-  const d = requireDraft(id, interaction.user.id);
-  if (action === 'chan') d.channelId = interaction.values[0] ?? null;
+export async function surMenuRedaction(interaction: AnySelectMenuInteraction<'cached'>, [action, id]: string[]): Promise<void> {
+  const d = exigerBrouillon(id, interaction.user.id);
+  if (action === 'chan') d.salonId = interaction.values[0] ?? null;
   if (action === 'role') d.roleId = interaction.values[0] ?? null;
-  await respond(interaction, d);
+  await repondreEcran(interaction, d);
 }
 
-function resolveColor(raw: string): number | null {
-  const hex = parseColor(raw);
-  if (hex !== null) return hex;
-  const tone = PALETTES.flatMap((p) => p.tones).find((t) => t.name.toLowerCase() === raw.trim().toLowerCase());
-  return tone?.color ?? null;
+function resoudreCouleur(brut: string): number | null {
+  const hexa = lireCouleur(brut);
+  if (hexa !== null) return hexa;
+  const ton = PALETTES.flatMap((p) => p.tons).find((t) => t.name.toLowerCase() === brut.trim().toLowerCase());
+  return ton?.color ?? null;
 }
 
-export async function onBuilderModal(interaction: ModalSubmitInteraction<'cached'>, [action, id]: string[]): Promise<void> {
-  const d = requireDraft(id, interaction.user.id);
-  const val = (k: string) => interaction.fields.getTextInputValue(k).trim();
-  const badLink = (v: string) => v && !isHttpUrl(v);
+export async function surFenetreRedaction(interaction: ModalSubmitInteraction<'cached'>, [action, id]: string[]): Promise<void> {
+  const d = exigerBrouillon(id, interaction.user.id);
+  const valeurChamp = (k: string) => interaction.fields.getTextInputValue(k).trim();
+  const lienInvalide = (v: string) => v && !estLienHttp(v);
   switch (action) {
     case 'textm':
-      if (badLink(val('url'))) throw new UserError('Le lien du titre doit commencer par http(s)://');
-      Object.assign(d, { title: val('title'), description: val('description'), url: val('url'), content: val('content') });
+      if (lienInvalide(valeurChamp('url'))) throw new ErreurUtilisateur('Le lien du titre doit commencer par http(s)://');
+      Object.assign(d, { title: valeurChamp('title'), description: valeurChamp('description'), url: valeurChamp('url'), content: valeurChamp('content') });
       break;
     case 'colorm': {
-      const color = resolveColor(val('color'));
-      if (color === null) throw new UserError('Couleur inconnue : donne un code comme `#9146FF` ou un nom de ton (Twitch, Lavande, Cyan…).');
-      d.color = color;
+      const couleur = resoudreCouleur(valeurChamp('color'));
+      if (couleur === null) throw new ErreurUtilisateur('Couleur inconnue : donne un code comme `#9146FF` ou un nom de ton (Twitch, Lavande, Cyan…).');
+      d.couleur = couleur;
       break;
     }
     case 'imagem':
-      if (badLink(val('image')) || badLink(val('thumbnail'))) throw new UserError('Les images doivent être des liens http(s).');
-      d.image = val('image');
-      d.thumbnail = val('thumbnail');
+      if (lienInvalide(valeurChamp('image')) || lienInvalide(valeurChamp('thumbnail'))) throw new ErreurUtilisateur('Les images doivent être des liens http(s).');
+      d.image = valeurChamp('image');
+      d.miniature = valeurChamp('thumbnail');
       break;
     case 'fieldm':
-      d.fields.push({ name: val('name'), value: val('value'), inline: /^o(ui)?|y(es)?$/i.test(val('inline')) });
+      d.champs.push({ name: valeurChamp('name'), value: valeurChamp('value'), inline: /^o(ui)?|y(es)?$/i.test(valeurChamp('inline')) });
       break;
     case 'linkm':
-      if (!isHttpUrl(val('url'))) throw new UserError('Le lien du bouton doit commencer par http(s)://');
-      d.buttons.push({ label: val('label'), url: val('url') });
+      if (!estLienHttp(valeurChamp('url'))) throw new ErreurUtilisateur('Le lien du bouton doit commencer par http(s)://');
+      d.boutons.push({ label: valeurChamp('label'), url: valeurChamp('url') });
       break;
     case 'metam':
-      if (badLink(val('authorIcon'))) throw new UserError('L’icône doit être un lien http(s).');
-      Object.assign(d, { authorName: val('authorName'), authorIcon: val('authorIcon'), footer: val('footer') });
+      if (lienInvalide(valeurChamp('authorIcon'))) throw new ErreurUtilisateur('L’icône doit être un lien http(s).');
+      Object.assign(d, { authorName: valeurChamp('authorName'), authorIcon: valeurChamp('authorIcon'), footer: valeurChamp('footer') });
       break;
     case 'announcem': {
-      if (badLink(val('image'))) throw new UserError('L’image doit être un lien http(s).');
-      const color = val('color') ? resolveColor(val('color')) : d.color;
-      if (color === null) throw new UserError('Couleur inconnue (ex : `#9146FF`).');
-      const btn = val('button');
-      if (btn) {
-        const [label, url] = btn.split('|').map((s) => s.trim());
-        if (!label || !url || !isHttpUrl(url)) throw new UserError('Bouton attendu au format `Texte | https://lien`.');
-        d.buttons = [{ label, url }];
+      if (lienInvalide(valeurChamp('image'))) throw new ErreurUtilisateur('L’image doit être un lien http(s).');
+      const couleur = valeurChamp('color') ? resoudreCouleur(valeurChamp('color')) : d.couleur;
+      if (couleur === null) throw new ErreurUtilisateur('Couleur inconnue (ex : `#9146FF`).');
+      const boutonSaisi = valeurChamp('button');
+      if (boutonSaisi) {
+        const [libelle, url] = boutonSaisi.split('|').map((s) => s.trim());
+        if (!libelle || !url || !estLienHttp(url)) throw new ErreurUtilisateur('Bouton attendu au format `Texte | https://lien`.');
+        d.boutons = [{ label: libelle, url }];
       }
-      Object.assign(d, { title: val('title'), description: val('message'), image: val('image'), color });
+      Object.assign(d, { title: valeurChamp('title'), description: valeurChamp('message'), image: valeurChamp('image'), color: couleur });
       break;
     }
   }
-  await respond(interaction, d, action === 'announcem' ? '📢 Vérifie l’aperçu, choisis le salon et la mention, puis publie.' : undefined);
+  await repondreEcran(interaction, d, action === 'announcem' ? '📢 Vérifie l’aperçu, choisis le salon et la mention, puis publie.' : undefined);
 }
 

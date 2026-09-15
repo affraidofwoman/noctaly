@@ -1,21 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { GuildMember } from 'discord.js';
-import { brandFor } from '../core/brand';
-import { createLogger } from '../core/logger';
+import { enseigneDe } from '../core/brand';
+import { creerRegistre } from '../core/logger';
 
-const log = createLogger('carte');
+const registre = creerRegistre('carte');
 
-const WIDTH = 1024;
-const HEIGHT = 362;
-const AVATAR_RADIUS = 95;
-const AVATAR_BORDER = 5;
-const ASSETS = path.resolve(__dirname, '..', '..', '..', 'assets');
-const DEFAULT_BACKGROUND = path.join(ASSETS, 'bienvenue', 'fond.webp');
-const FONTS_DIR = path.join(ASSETS, 'fonts');
+const LARGEUR = 1024;
+const HAUTEUR = 362;
+const RAYON_AVATAR = 95;
+const BORDURE_AVATAR = 5;
+const RESSOURCES = path.resolve(__dirname, '..', '..', '..', 'assets');
+const FOND_DEFAUT = path.join(RESSOURCES, 'bienvenue', 'fond.webp');
+const DOSSIER_POLICES = path.join(RESSOURCES, 'fonts');
 
 /** Polices chargées si présentes : les grosses (emoji, japonais) peuvent être ajoutées depuis le bot Airline. */
-const FONTS: [string, string][] = [
+const POLICES: [string, string][] = [
   ['NotoSans.ttf', 'CarteTexte'],
   ['NotoSans-Bold.ttf', 'CarteTexte'],
   ['NotoSansJP.ttf', 'CarteJP'],
@@ -23,177 +23,177 @@ const FONTS: [string, string][] = [
   ['NotoSansSymbols2.ttf', 'CarteSymboles'],
   ['NotoColorEmoji.ttf', 'CarteEmoji'],
 ];
-const STACK = 'CarteTexte, CarteJP, CarteMath, CarteSymboles, CarteEmoji, sans-serif';
+const PILE_POLICES = 'CarteTexte, CarteJP, CarteMath, CarteSymboles, CarteEmoji, sans-serif';
 
-type CanvasLib = typeof import('@napi-rs/canvas');
-type Image = Awaited<ReturnType<CanvasLib['loadImage']>>;
-type Ctx = ReturnType<ReturnType<CanvasLib['createCanvas']>['getContext']>;
+type BibliothequeToile = typeof import('@napi-rs/canvas');
+type ImageToile = Awaited<ReturnType<BibliothequeToile['loadImage']>>;
+type Contexte = ReturnType<ReturnType<BibliothequeToile['createCanvas']>['getContext']>;
 
-let lib: CanvasLib | null | undefined;
-let fontsLoaded = false;
+let bibliotheque: BibliothequeToile | null | undefined;
+let policesChargees = false;
 
-function canvasLib(): CanvasLib | null {
-  if (lib !== undefined) return lib;
+function bibliothequeToile(): BibliothequeToile | null {
+  if (bibliotheque !== undefined) return bibliotheque;
   try {
-    lib = require('@napi-rs/canvas') as CanvasLib;
+    bibliotheque = require('@napi-rs/canvas') as BibliothequeToile;
   } catch {
-    log.warn('@napi-rs/canvas absent — les accueils partent sans carte (npm install sur l’hébergeur).');
-    lib = null;
+    registre.avertir('@napi-rs/canvas absent — les accueils partent sans carte (npm install sur l’hébergeur).');
+    bibliotheque = null;
   }
-  return lib;
+  return bibliotheque;
 }
 
-function loadFonts(l: CanvasLib): void {
-  if (fontsLoaded) return;
-  fontsLoaded = true;
-  for (const [file, family] of FONTS) {
-    const full = path.join(FONTS_DIR, file);
+function chargerPolices(l: BibliothequeToile): void {
+  if (policesChargees) return;
+  policesChargees = true;
+  for (const [fichier, famille] of POLICES) {
+    const complet = path.join(DOSSIER_POLICES, fichier);
     try {
-      if (fs.existsSync(full)) l.GlobalFonts.registerFromPath(full, family);
-    } catch (err) {
-      log.warn(`Police ${file} non chargée : ${(err as Error).message}`);
+      if (fs.existsSync(complet)) l.GlobalFonts.registerFromPath(complet, famille);
+    } catch (echec) {
+      registre.avertir(`Police ${fichier} non chargée : ${(echec as Error).message}`);
     }
   }
 }
 
-function clean(text: string): string {
-  return text.toWellFormed().replace(/\s{2,}/g, ' ').trim();
+function nettoyer(texte: string): string {
+  return texte.toWellFormed().replace(/\s{2,}/g, ' ').trim();
 }
 
-function roundedRect(ctx: Ctx, w: number, h: number, r: number): void {
-  ctx.beginPath();
-  ctx.moveTo(r, 0);
-  ctx.lineTo(w - r, 0);
-  ctx.quadraticCurveTo(w, 0, w, r);
-  ctx.lineTo(w, h - r);
-  ctx.quadraticCurveTo(w, h, w - r, h);
-  ctx.lineTo(r, h);
-  ctx.quadraticCurveTo(0, h, 0, h - r);
-  ctx.lineTo(0, r);
-  ctx.quadraticCurveTo(0, 0, r, 0);
-  ctx.closePath();
+function rectangleArrondi(contexte: Contexte, w: number, h: number, r: number): void {
+  contexte.beginPath();
+  contexte.moveTo(r, 0);
+  contexte.lineTo(w - r, 0);
+  contexte.quadraticCurveTo(w, 0, w, r);
+  contexte.lineTo(w, h - r);
+  contexte.quadraticCurveTo(w, h, w - r, h);
+  contexte.lineTo(r, h);
+  contexte.quadraticCurveTo(0, h, 0, h - r);
+  contexte.lineTo(0, r);
+  contexte.quadraticCurveTo(0, 0, r, 0);
+  contexte.closePath();
 }
 
-function fitText(ctx: Ctx, text: string, max: number, width: number, weight = '700', min = 16): number {
-  let size = max;
+function ajusterTexte(contexte: Contexte, texte: string, max: number, largeur: number, poids = '700', min = 16): number {
+  let taille = max;
   do {
-    ctx.font = `${weight} ${size}px ${STACK}`;
-    if (ctx.measureText(text).width <= width) return size;
-    size -= 1;
-  } while (size > min);
-  return size;
+    contexte.font = `${poids} ${taille}px ${PILE_POLICES}`;
+    if (contexte.measureText(texte).width <= largeur) return taille;
+    taille -= 1;
+  } while (taille > min);
+  return taille;
 }
 
 // Les fonds d'enseigne sont téléchargés une fois puis gardés.
-const backgrounds = new Map<string, Image>();
+const fonds = new Map<string, ImageToile>();
 
-async function backgroundFor(guildId: string, l: CanvasLib): Promise<Image | null> {
-  const source = brandFor(guildId).background;
-  const fallback = async () => (fs.existsSync(DEFAULT_BACKGROUND) ? l.loadImage(DEFAULT_BACKGROUND).catch(() => null) : null);
-  if (!source) return fallback();
-  const cached = backgrounds.get(source);
-  if (cached) return cached;
+async function fondDe(serveurId: string, l: BibliothequeToile): Promise<ImageToile | null> {
+  const source = enseigneDe(serveurId).fond;
+  const secours = async () => (fs.existsSync(FOND_DEFAUT) ? l.loadImage(FOND_DEFAUT).catch(() => null) : null);
+  if (!source) return secours();
+  const enCache = fonds.get(source);
+  if (enCache) return enCache;
   try {
-    const res = await fetch(source, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const image = await l.loadImage(Buffer.from(await res.arrayBuffer()));
-    backgrounds.set(source, image);
-    if (backgrounds.size > 20) backgrounds.delete(backgrounds.keys().next().value!);
+    const reponse = await fetch(source, { signal: AbortSignal.timeout(8000) });
+    if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
+    const image = await l.loadImage(Buffer.from(await reponse.arrayBuffer()));
+    fonds.set(source, image);
+    if (fonds.size > 20) fonds.delete(fonds.keys().next().value!);
     return image;
-  } catch (err) {
+  } catch (echec) {
     // Un fond injoignable ne doit pas priver la personne de son accueil.
-    log.warn(`Fond de l’enseigne illisible (${(err as Error).message}) — fond par défaut.`);
-    return fallback();
+    registre.avertir(`Fond de l’enseigne illisible (${(echec as Error).message}) — fond par défaut.`);
+    return secours();
   }
 }
 
-export interface CardOptions {
-  title?: string;
-  subtitle?: string;
+export interface OptionsCarte {
+  titre?: string;
+  sousTitre?: string;
 }
 
 /** Carte de bienvenue (PNG) inspirée du bot Airline, aux couleurs de l'enseigne. Retourne null si impossible. */
-export async function buildWelcomeCard(member: GuildMember, options: CardOptions = {}): Promise<Buffer | null> {
-  const l = canvasLib();
+export async function construireCarteBienvenue(membre: GuildMember, options: OptionsCarte = {}): Promise<Buffer | null> {
+  const l = bibliothequeToile();
   if (!l) return null;
   try {
-    loadFonts(l);
-    const brand = brandFor(member.guild.id);
-    const accent = `#${brand.color.toString(16).padStart(6, '0')}`;
-    const canvas = l.createCanvas(WIDTH, HEIGHT);
-    const ctx = canvas.getContext('2d');
+    chargerPolices(l);
+    const enseigne = enseigneDe(membre.guild.id);
+    const accent = `#${enseigne.couleur.toString(16).padStart(6, '0')}`;
+    const toile = l.createCanvas(LARGEUR, HAUTEUR);
+    const contexte = toile.getContext('2d');
 
-    ctx.save();
-    roundedRect(ctx, WIDTH, HEIGHT, 28);
-    ctx.clip();
+    contexte.save();
+    rectangleArrondi(contexte, LARGEUR, HAUTEUR, 28);
+    contexte.clip();
 
-    const bg = await backgroundFor(member.guild.id, l);
-    if (bg) ctx.drawImage(bg, 0, 0, WIDTH, HEIGHT);
+    const fondCarte = await fondDe(membre.guild.id, l);
+    if (fondCarte) contexte.drawImage(fondCarte, 0, 0, LARGEUR, HAUTEUR);
     else {
-      ctx.fillStyle = '#1f1535';
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      contexte.fillStyle = '#1f1535';
+      contexte.fillRect(0, 0, LARGEUR, HAUTEUR);
     }
-    const veil = ctx.createLinearGradient(0, 0, WIDTH, 0);
-    veil.addColorStop(0, 'rgba(10, 6, 24, 0.45)');
-    veil.addColorStop(0.35, 'rgba(10, 6, 24, 0.62)');
-    veil.addColorStop(1, 'rgba(10, 6, 24, 0.82)');
-    ctx.fillStyle = veil;
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    const voile = contexte.createLinearGradient(0, 0, LARGEUR, 0);
+    voile.addColorStop(0, 'rgba(10, 6, 24, 0.45)');
+    voile.addColorStop(0.35, 'rgba(10, 6, 24, 0.62)');
+    voile.addColorStop(1, 'rgba(10, 6, 24, 0.82)');
+    contexte.fillStyle = voile;
+    contexte.fillRect(0, 0, LARGEUR, HAUTEUR);
 
     const ax = 150;
-    const ay = HEIGHT / 2;
-    const avatar = await l.loadImage(member.user.displayAvatarURL({ extension: 'png', size: 256, forceStatic: true }));
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(ax, ay, AVATAR_RADIUS, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-    ctx.drawImage(avatar, ax - AVATAR_RADIUS, ay - AVATAR_RADIUS, AVATAR_RADIUS * 2, AVATAR_RADIUS * 2);
-    ctx.restore();
-    ctx.beginPath();
-    ctx.arc(ax, ay, AVATAR_RADIUS + AVATAR_BORDER / 2, 0, Math.PI * 2);
-    ctx.lineWidth = AVATAR_BORDER;
-    ctx.strokeStyle = accent;
-    ctx.stroke();
+    const ay = HAUTEUR / 2;
+    const avatar = await l.loadImage(membre.user.displayAvatarURL({ extension: 'png', size: 256, forceStatic: true }));
+    contexte.save();
+    contexte.beginPath();
+    contexte.arc(ax, ay, RAYON_AVATAR, 0, Math.PI * 2);
+    contexte.closePath();
+    contexte.clip();
+    contexte.drawImage(avatar, ax - RAYON_AVATAR, ay - RAYON_AVATAR, RAYON_AVATAR * 2, RAYON_AVATAR * 2);
+    contexte.restore();
+    contexte.beginPath();
+    contexte.arc(ax, ay, RAYON_AVATAR + BORDURE_AVATAR / 2, 0, Math.PI * 2);
+    contexte.lineWidth = BORDURE_AVATAR;
+    contexte.strokeStyle = accent;
+    contexte.stroke();
 
-    const lineX = ax + AVATAR_RADIUS + 44;
-    ctx.beginPath();
-    ctx.moveTo(lineX, ay - 78);
-    ctx.lineTo(lineX, ay + 78);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(226, 220, 240, 0.45)';
-    ctx.stroke();
+    const ligneX = ax + RAYON_AVATAR + 44;
+    contexte.beginPath();
+    contexte.moveTo(ligneX, ay - 78);
+    contexte.lineTo(ligneX, ay + 78);
+    contexte.lineWidth = 2;
+    contexte.strokeStyle = 'rgba(226, 220, 240, 0.45)';
+    contexte.stroke();
 
-    const tx = lineX + 34;
-    const width = WIDTH - tx - 44;
-    ctx.textAlign = 'left';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 2;
+    const tx = ligneX + 34;
+    const largeur = LARGEUR - tx - 44;
+    contexte.textAlign = 'left';
+    contexte.shadowColor = 'rgba(0, 0, 0, 0.75)';
+    contexte.shadowBlur = 8;
+    contexte.shadowOffsetY = 2;
 
-    const head = clean(options.title ?? `— Bienvenue sur "${member.guild.name}" —`);
-    const headSize = fitText(ctx, head, 19, width, 'italic 500', 12);
-    ctx.font = `italic 500 ${headSize}px ${STACK}`;
-    ctx.fillStyle = '#e6e1f2';
-    ctx.fillText(head, tx, ay - 46);
+    const entete = nettoyer(options.titre ?? `— Bienvenue sur "${membre.guild.name}" —`);
+    const tailleEntete = ajusterTexte(contexte, entete, 19, largeur, 'italic 500', 12);
+    contexte.font = `italic 500 ${tailleEntete}px ${PILE_POLICES}`;
+    contexte.fillStyle = '#e6e1f2';
+    contexte.fillText(entete, tx, ay - 46);
 
-    const name = clean(member.displayName || member.user.username) || 'nouveau membre';
-    const size = fitText(ctx, name, 54, width);
-    ctx.font = `700 ${size}px ${STACK}`;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(name, tx, ay + 14);
+    const nom = nettoyer(membre.displayName || membre.user.username) || 'nouveau membre';
+    const taille = ajusterTexte(contexte, nom, 54, largeur);
+    contexte.font = `700 ${taille}px ${PILE_POLICES}`;
+    contexte.fillStyle = '#ffffff';
+    contexte.fillText(nom, tx, ay + 14);
 
-    const sub = clean(options.subtitle ?? `Membre #${member.guild.memberCount}`);
-    const subSize = fitText(ctx, sub, 18, width, '500', 12);
-    ctx.font = `500 ${subSize}px ${STACK}`;
-    ctx.fillStyle = '#b8b1cd';
-    ctx.fillText(sub, tx, ay + 58);
+    const sousCommande = nettoyer(options.sousTitre ?? `Membre #${membre.guild.memberCount}`);
+    const tailleSousTitre = ajusterTexte(contexte, sousCommande, 18, largeur, '500', 12);
+    contexte.font = `500 ${tailleSousTitre}px ${PILE_POLICES}`;
+    contexte.fillStyle = '#b8b1cd';
+    contexte.fillText(sousCommande, tx, ay + 58);
 
-    ctx.shadowColor = 'transparent';
-    ctx.restore();
-    return await canvas.encode('png');
-  } catch (err) {
-    log.warn(`Carte impossible, repli sur l’embed : ${(err as Error).message}`);
+    contexte.shadowColor = 'transparent';
+    contexte.restore();
+    return await toile.encode('png');
+  } catch (echec) {
+    registre.avertir(`Carte impossible, repli sur l’embed : ${(echec as Error).message}`);
     return null;
   }
 }

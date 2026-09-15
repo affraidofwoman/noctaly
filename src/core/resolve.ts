@@ -1,43 +1,43 @@
 import type { Client, Guild, GuildBasedChannel, GuildMember, Message, Role, User } from 'discord.js';
 
-export function idFromMention(value: string | undefined): string | null {
-  if (!value) return null;
-  const m = /^<(?:@[!&]?|#)(\d{17,20})>$/.exec(value.trim()) ?? /^(\d{17,20})$/.exec(value.trim());
+export function idDepuisMention(valeur: string | undefined): string | null {
+  if (!valeur) return null;
+  const m = /^<(?:@[!&]?|#)(\d{17,20})>$/.exec(valeur.trim()) ?? /^(\d{17,20})$/.exec(valeur.trim());
   return m ? m[1]! : null;
 }
 
-export async function resolveMember(guild: Guild, value: string | undefined): Promise<GuildMember | null> {
-  const id = idFromMention(value);
+export async function resoudreMembre(serveur: Guild, valeur: string | undefined): Promise<GuildMember | null> {
+  const id = idDepuisMention(valeur);
   if (!id) return null;
-  return guild.members.cache.get(id) ?? (await guild.members.fetch(id).catch(() => null));
+  return serveur.members.cache.get(id) ?? (await serveur.members.fetch(id).catch(() => null));
 }
 
-export async function resolveUser(client: Client, value: string | undefined): Promise<User | null> {
-  const id = idFromMention(value);
+export async function resoudreUtilisateur(client: Client, valeur: string | undefined): Promise<User | null> {
+  const id = idDepuisMention(valeur);
   if (!id) return null;
   return client.users.cache.get(id) ?? (await client.users.fetch(id).catch(() => null));
 }
 
-export function resolveRole(guild: Guild, value: string | undefined): Role | null {
-  const id = idFromMention(value);
-  if (id) return guild.roles.cache.get(id) ?? null;
-  if (!value) return null;
-  const lower = value.toLowerCase();
-  return guild.roles.cache.find((r) => r.name.toLowerCase() === lower) ?? null;
+export function resoudreRole(serveur: Guild, valeur: string | undefined): Role | null {
+  const id = idDepuisMention(valeur);
+  if (id) return serveur.roles.cache.get(id) ?? null;
+  if (!valeur) return null;
+  const minuscule = valeur.toLowerCase();
+  return serveur.roles.cache.find((r) => r.name.toLowerCase() === minuscule) ?? null;
 }
 
-export function resolveChannel(guild: Guild, value: string | undefined): GuildBasedChannel | null {
-  const id = idFromMention(value);
-  return id ? (guild.channels.cache.get(id) ?? null) : null;
+export function resoudreSalon(serveur: Guild, valeur: string | undefined): GuildBasedChannel | null {
+  const id = idDepuisMention(valeur);
+  return id ? (serveur.channels.cache.get(id) ?? null) : null;
 }
 
 /** Cible d'une commande à préfixe : mention/ID en argument, sinon la personne à qui l'on répond. */
-export async function targetMember(message: Message<true>, arg: string | undefined): Promise<GuildMember | null> {
-  const fromArg = await resolveMember(message.guild, arg);
-  if (fromArg) return fromArg;
+export async function membreCible(message: Message<true>, argument: string | undefined): Promise<GuildMember | null> {
+  const depuisArgument = await resoudreMembre(message.guild, argument);
+  if (depuisArgument) return depuisArgument;
   if (message.reference?.messageId) {
-    const ref = await message.fetchReference().catch(() => null);
-    if (ref?.member) return ref.member;
+    const reference = await message.fetchReference().catch(() => null);
+    if (reference?.member) return reference.member;
   }
   return null;
 }

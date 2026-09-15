@@ -1,72 +1,72 @@
 import { MessageFlags, SlashCommandBuilder, type Message } from 'discord.js';
-import { all, run } from '../../database/db';
+import { lireTout, executer } from '../../database/db';
 import { info, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { reply } from '../../core/interactions';
-import { Cooldowns } from '../../core/rateLimit';
-import { neutralizeMentions, truncate } from '../../core/text';
-import { buildModal } from '../../core/ui';
-import { renderTemplate } from '../../core/variables';
-import { on, PermLevel, type BotModule, type SlashCommand } from '../../core/types';
+import { ErreurUtilisateur } from '../../core/errors';
+import { repondre } from '../../core/interactions';
+import { Delais } from '../../core/rateLimit';
+import { neutraliserMentions, tronquer } from '../../core/text';
+import { construireFormulaire } from '../../core/ui';
+import { remplirModele } from '../../core/variables';
+import { sur, Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
 
-type MatchType = 'contains' | 'exact' | 'startswith' | 'word';
+type TypeCorrespondance = 'contains' | 'exact' | 'startswith' | 'word';
 
-interface ResponseRow {
+interface LigneReponseAuto {
   id: number;
-  guild_id: string;
-  trigger: string;
-  match_type: MatchType;
-  response: string;
+  serveur_id: string;
+  declencheur: string;
+  correspondance: TypeCorrespondance;
+  reponse: string;
 }
 
-const MATCH_LABEL: Record<MatchType, string> = { contains: 'contient', exact: 'exactement', startswith: 'commence par', word: 'mot entier' };
+const LIBELLE_CORRESPONDANCE: Record<TypeCorrespondance, string> = { contains: 'contient', exact: 'exactement', startswith: 'commence par', word: 'mot entier' };
 
-const cache = new Map<string, ResponseRow[]>();
-const cooldowns = new Cooldowns();
+const cache = new Map<string, LigneReponseAuto[]>();
+const delais = new Delais();
 
-function list(guildId: string): ResponseRow[] {
-  let rows = cache.get(guildId);
-  if (!rows) {
-    rows = all<ResponseRow>('SELECT id, guild_id, trigger, match_type, response FROM auto_responses WHERE guild_id = ? ORDER BY id', guildId);
-    cache.set(guildId, rows);
+function liste(serveurId: string): LigneReponseAuto[] {
+  let rangees = cache.get(serveurId);
+  if (!rangees) {
+    rangees = lireTout<LigneReponseAuto>('SELECT id, serveur_id, declencheur, correspondance, reponse FROM reponses_auto WHERE serveur_id = ? ORDER BY id', serveurId);
+    cache.set(serveurId, rangees);
   }
-  return rows;
+  return rangees;
 }
 
-function normalize(text: string): string {
-  return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+function normaliser(texte: string): string {
+  return texte.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 }
 
-export function matches(row: Pick<ResponseRow, 'trigger' | 'match_type'>, content: string): boolean {
-  const text = normalize(content);
-  const trigger = normalize(row.trigger);
-  if (!trigger) return false;
-  switch (row.match_type) {
+export function correspond(rangee: Pick<LigneReponseAuto, 'declencheur' | 'correspondance'>, contenu: string): boolean {
+  const texte = normaliser(contenu);
+  const declencheur = normaliser(rangee.declencheur);
+  if (!declencheur) return false;
+  switch (rangee.correspondance) {
     case 'exact':
-      return text === trigger;
+      return texte === declencheur;
     case 'startswith':
-      return text.startsWith(trigger);
+      return texte.startsWith(declencheur);
     case 'word':
-      return ` ${text.replace(/[^\p{L}\p{N}]+/gu, ' ')} `.includes(` ${trigger} `);
+      return ` ${texte.replace(/[^\p{L}\p{N}]+/gu, ' ')} `.includes(` ${declencheur} `);
     default:
-      return text.includes(trigger);
+      return texte.includes(declencheur);
   }
 }
 
-async function onMessage(message: Message): Promise<void> {
+async function surMessage(message: Message): Promise<void> {
   if (!message.inGuild() || message.author.bot || !message.content) return;
-  const row = list(message.guildId).find((r) => matches(r, message.content));
-  if (!row) return;
-  if (cooldowns.take(`${message.channelId}:${row.id}`, 15_000) > 0) return;
+  const rangee = liste(message.guildId).find((r) => correspond(r, message.content));
+  if (!rangee) return;
+  if (delais.prendre(`${message.channelId}:${rangee.id}`, 15_000) > 0) return;
   await message
-    .reply({ content: truncate(renderTemplate(row.response, { member: message.member, guild: message.guild, channel: message.channel }), 2000), allowedMentions: { parse: [], repliedUser: false } })
+    .reply({ content: tronquer(remplirModele(rangee.reponse, { membre: message.member, serveur: message.guild, salon: message.channel }), 2000), allowedMentions: { parse: [], repliedUser: false } })
     .catch(() => undefined);
 }
 
-const autoresponse: SlashCommand = {
-  category: 'customization',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder()
+const reponseAuto: CommandeSlash = {
+  categorie: 'customization',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder()
     .setName('autoresponse')
     .setDescription('Réponses automatiques')
     .addSubcommand((s) =>
@@ -88,62 +88,62 @@ const autoresponse: SlashCommand = {
         .addIntegerOption((o) => o.setName('reponse').setDescription('La réponse').setRequired(true).setAutocomplete(true)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('Les réponses automatiques')),
-  async autocomplete(interaction) {
-    await interaction.respond(list(interaction.guildId).slice(0, 25).map((r) => ({ name: truncate(`#${r.id} « ${r.trigger} » → ${r.response}`, 100), value: r.id })));
+  async autocompletion(interaction) {
+    await interaction.respond(liste(interaction.guildId).slice(0, 25).map((r) => ({ name: tronquer(`#${r.id} « ${r.declencheur} » → ${r.reponse}`, 100), value: r.id })));
   },
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const sub = interaction.options.getSubcommand();
-    if (sub === 'list') {
-      const lines = list(guild.id).map((r) => `**#${r.id}** ${MATCH_LABEL[r.match_type]} « ${truncate(r.trigger, 40)} » → ${truncate(r.response, 60)}`);
-      return reply(interaction, { embeds: [info(guild, lines.join('\n') || 'Aucune réponse automatique.', { titre: 'Réponses automatiques', sujet: '💬' })], ephemeral: true });
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const sousCommande = interaction.options.getSubcommand();
+    if (sousCommande === 'list') {
+      const lignes = liste(serveur.id).map((r) => `**#${r.id}** ${LIBELLE_CORRESPONDANCE[r.correspondance]} « ${tronquer(r.declencheur, 40)} » → ${tronquer(r.reponse, 60)}`);
+      return repondre(interaction, { embeds: [info(serveur, lignes.join('\n') || 'Aucune réponse automatique.', { titre: 'Réponses automatiques', sujet: '💬' })], ephemeral: true });
     }
-    if (sub === 'remove') {
-      const r = run('DELETE FROM auto_responses WHERE id = ? AND guild_id = ?', interaction.options.getInteger('reponse', true), guild.id);
-      cache.delete(guild.id);
-      return reply(interaction, { embeds: [ok(guild, r.changes ? 'Réponse automatique supprimée.' : 'Introuvable.')], ephemeral: true });
+    if (sousCommande === 'remove') {
+      const r = executer('DELETE FROM reponses_auto WHERE id = ? AND serveur_id = ?', interaction.options.getInteger('reponse', true), serveur.id);
+      cache.delete(serveur.id);
+      return repondre(interaction, { embeds: [ok(serveur, r.changes ? 'Réponse automatique supprimée.' : 'Introuvable.')], ephemeral: true });
     }
-    if (list(guild.id).length >= 50) throw new UserError('50 réponses automatiques maximum.');
-    const trigger = interaction.options.getString('declencheur', true);
+    if (liste(serveur.id).length >= 50) throw new ErreurUtilisateur('50 réponses automatiques maximum.');
+    const declencheur = interaction.options.getString('declencheur', true);
     const mode = interaction.options.getString('mode') ?? 'contains';
     await interaction.showModal(
-      buildModal(`ar:save:${mode}`, `Réponse à « ${truncate(trigger, 25)} »`, [
-        { id: 'trigger', label: 'Déclencheur', value: trigger, maxLength: 100 },
-        { id: 'response', label: 'Réponse', long: true, maxLength: 2000, placeholder: '🎥 Tu peux retrouver les vidéos ici !' },
+      construireFormulaire(`ar:save:${mode}`, `Réponse à « ${tronquer(declencheur, 25)} »`, [
+        { id: 'trigger', libelle: 'Déclencheur', valeur: declencheur, longueurMax: 100 },
+        { id: 'response', libelle: 'Réponse', long: true, longueurMax: 2000, indication: '🎥 Tu peux retrouver les vidéos ici !' },
       ]),
     );
   },
 };
 
-export const autoResponsesModule: BotModule = {
+export const moduleReponsesAuto: ModuleBot = {
   id: 'autoresponses',
-  name: 'Réponses automatiques',
+  nom: 'Réponses automatiques',
   emoji: '💬',
   description: 'Le bot répond quand un mot-clé est écrit',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [autoresponse],
-  components: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [reponseAuto],
+  composants: [
     {
-      prefix: 'ar',
-      level: PermLevel.ADMIN,
-      async modal(interaction, [, mode]) {
-        const trigger = interaction.fields.getTextInputValue('trigger').trim();
-        const response = neutralizeMentions(interaction.fields.getTextInputValue('response').trim());
-        if (normalize(trigger).length < 2) throw new UserError('Déclencheur trop court (2 caractères minimum).');
-        run(
-          'INSERT INTO auto_responses (guild_id, trigger, match_type, response, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      prefixe: 'ar',
+      niveau: Niveau.ADMIN,
+      async fenetre(interaction, [, mode]) {
+        const declencheur = interaction.fields.getTextInputValue('trigger').trim();
+        const reponse = neutraliserMentions(interaction.fields.getTextInputValue('response').trim());
+        if (normaliser(declencheur).length < 2) throw new ErreurUtilisateur('Déclencheur trop court (2 caractères minimum).');
+        executer(
+          'INSERT INTO reponses_auto (serveur_id, declencheur, correspondance, reponse, cree_par, cree_le) VALUES (?, ?, ?, ?, ?, ?)',
           interaction.guildId,
-          trigger,
+          declencheur,
           ['contains', 'exact', 'startswith', 'word'].includes(mode ?? '') ? mode : 'contains',
-          response,
+          reponse,
           interaction.user.id,
           Date.now(),
         );
         cache.delete(interaction.guildId);
-        await interaction.reply({ embeds: [ok(interaction.guild, `Quand un message ${MATCH_LABEL[(mode as MatchType) ?? 'contains']} « **${truncate(trigger, 60)}** », je répondrai :\n> ${truncate(response, 300)}`)], flags: MessageFlags.Ephemeral });
+        await interaction.reply({ embeds: [ok(interaction.guild, `Quand un message ${LIBELLE_CORRESPONDANCE[(mode as TypeCorrespondance) ?? 'contains']} « **${tronquer(declencheur, 60)}** », je répondrai :\n> ${tronquer(reponse, 300)}`)], flags: MessageFlags.Ephemeral });
       },
     },
   ],
-  events: [on('messageCreate', (m) => onMessage(m), 170)],
+  evenements: [sur('messageCreate', (m) => surMessage(m), 170)],
 };

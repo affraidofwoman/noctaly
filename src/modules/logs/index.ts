@@ -10,132 +10,132 @@ import {
   type PartialMessage,
   type VoiceState,
 } from 'discord.js';
-import { all, parseJson } from '../../database/db';
-import { brandEmbed, ok } from '../../core/embeds';
-import { getConfig } from '../../core/guildConfig';
-import { ensureLogChannels, journal, LOG_TYPES, logDefinition, type LogType } from '../../core/logService';
-import { linesToPages, paginate } from '../../core/pagination';
-import { formatNumber, truncate } from '../../core/text';
-import { daysSince, formatDuration, ts } from '../../core/time';
-import { on, PermLevel, type BotModule, type PrefixCommand, type SlashCommand } from '../../core/types';
+import { lireTout, lireJson } from '../../database/db';
+import { embedEnseigne, ok } from '../../core/embeds';
+import { lireConfig } from '../../core/guildConfig';
+import { creerSalonsJournal, journal, TYPES_JOURNAUX, definitionJournal, type TypeJournal } from '../../core/logService';
+import { lignesEnPages, paginer } from '../../core/pagination';
+import { formaterNombre, tronquer } from '../../core/text';
+import { joursDepuis, formaterDuree, marqueTemps } from '../../core/time';
+import { sur, Niveau, type ModuleBot, type CommandePrefixe, type CommandeSlash } from '../../core/types';
 
-function ignored(guild: Guild, channelId: string | null | undefined): boolean {
-  return !!channelId && getConfig(guild.id).logs.ignoredChannels.includes(channelId);
+function ignore(serveur: Guild, salonId: string | null | undefined): boolean {
+  return !!salonId && lireConfig(serveur.id).journaux.salonsIgnores.includes(salonId);
 }
 
-function quote(text: string | null | undefined, max = 1000): string {
-  if (!text) return '*vide*';
-  return truncate(text.replace(/```/g, 'ˋˋˋ'), max);
+function citer(texte: string | null | undefined, max = 1000): string {
+  if (!texte) return '*vide*';
+  return tronquer(texte.replace(/```/g, 'ˋˋˋ'), max);
 }
 
 // ─── Membres ───────────────────────────────────────────────────────────────
 
-async function onJoin(member: GuildMember) {
-  const age = daysSince(member.user.createdTimestamp);
-  await journal(member.guild, 'member', {
-    title: member.user.bot ? 'Bot ajouté' : 'Arrivée',
-    tone: 'ok',
-    thumbnail: member.user.displayAvatarURL({ size: 128 }),
-    lines: [
-      `**Membre** : <@${member.id}> \`${member.user.tag}\``,
-      `**Compte créé** : ${ts(member.user.createdTimestamp, 'D')} (${ts(member.user.createdTimestamp, 'R')})${age < 7 ? ' ⚠️ **compte récent**' : ''}`,
-      `**Membres** : ${formatNumber(member.guild.memberCount)}`,
+async function surArrivee(membre: GuildMember) {
+  const age = joursDepuis(membre.user.createdTimestamp);
+  await journal(membre.guild, 'member', {
+    titre: membre.user.bot ? 'Bot ajouté' : 'Arrivée',
+    ton: 'ok',
+    miniature: membre.user.displayAvatarURL({ size: 128 }),
+    lignes: [
+      `**Membre** : <@${membre.id}> \`${membre.user.tag}\``,
+      `**Compte créé** : ${marqueTemps(membre.user.createdTimestamp, 'D')} (${marqueTemps(membre.user.createdTimestamp, 'R')})${age < 7 ? ' ⚠️ **compte récent**' : ''}`,
+      `**Membres** : ${formaterNombre(membre.guild.memberCount)}`,
     ],
   });
 }
 
-async function onLeave(member: GuildMember | PartialGuildMember) {
-  const roles = member.roles?.cache.filter((r) => r.id !== member.guild.id).map((r) => `<@&${r.id}>`) ?? [];
-  await journal(member.guild, 'member', {
-    title: 'Départ',
-    tone: 'alerte',
-    thumbnail: member.user?.displayAvatarURL({ size: 128 }),
-    lines: [
-      `**Membre** : <@${member.id}> \`${member.user?.tag ?? member.id}\``,
-      member.joinedTimestamp ? `**Resté** : ${formatDuration(Date.now() - member.joinedTimestamp)}` : null,
-      roles.length ? `**Rôles** : ${truncate(roles.join(' '), 900)}` : null,
-      `**Membres** : ${formatNumber(member.guild.memberCount)}`,
+async function surDepart(membre: GuildMember | PartialGuildMember) {
+  const roles = membre.roles?.cache.filter((r) => r.id !== membre.guild.id).map((r) => `<@&${r.id}>`) ?? [];
+  await journal(membre.guild, 'member', {
+    titre: 'Départ',
+    ton: 'alerte',
+    miniature: membre.user?.displayAvatarURL({ size: 128 }),
+    lignes: [
+      `**Membre** : <@${membre.id}> \`${membre.user?.tag ?? membre.id}\``,
+      membre.joinedTimestamp ? `**Resté** : ${formaterDuree(Date.now() - membre.joinedTimestamp)}` : null,
+      roles.length ? `**Rôles** : ${tronquer(roles.join(' '), 900)}` : null,
+      `**Membres** : ${formaterNombre(membre.guild.memberCount)}`,
     ],
   });
 }
 
 // ─── Messages ──────────────────────────────────────────────────────────────
 
-async function onMessageDelete(message: Message | PartialMessage) {
-  if (!message.guild || message.author?.bot || ignored(message.guild, message.channelId)) return;
+async function surMessageSupprime(message: Message | PartialMessage) {
+  if (!message.guild || message.author?.bot || ignore(message.guild, message.channelId)) return;
   if (message.partial && !message.content) {
     await journal(message.guild, 'message', {
-      title: 'Message supprimé',
-      tone: 'alerte',
-      lines: [`**Salon** : <#${message.channelId}>`, '*Contenu inconnu (message trop ancien pour être en mémoire).*'],
+      titre: 'Message supprimé',
+      ton: 'alerte',
+      lignes: [`**Salon** : <#${message.channelId}>`, '*Contenu inconnu (message trop ancien pour être en mémoire).*'],
     });
     return;
   }
   const attachments = [...message.attachments.values()].map((a) => `[${a.name}](${a.url})`);
   await journal(message.guild, 'message', {
-    title: 'Message supprimé',
-    tone: 'alerte',
-    lines: [
+    titre: 'Message supprimé',
+    ton: 'alerte',
+    lignes: [
       `**Auteur** : <@${message.author?.id}> \`${message.author?.tag}\``,
       `**Salon** : <#${message.channelId}>`,
-      `**Envoyé** : ${ts(message.createdTimestamp, 'R')}`,
+      `**Envoyé** : ${marqueTemps(message.createdTimestamp, 'R')}`,
       '',
-      quote(message.content, 3000),
+      citer(message.content, 3000),
       attachments.length ? `\n**Pièces jointes** : ${attachments.join(' · ')}` : null,
     ],
   });
 }
 
-async function onMessageUpdate(before: Message | PartialMessage, after: Message | PartialMessage) {
-  if (!after.guild || after.author?.bot || ignored(after.guild, after.channelId)) return;
-  if (before.content === after.content || !after.content) return;
-  await journal(after.guild, 'message', {
-    title: 'Message modifié',
-    tone: 'info',
-    lines: [`**Auteur** : <@${after.author?.id}> \`${after.author?.tag}\``, `**Salon** : <#${after.channelId}> · [aller au message](${after.url})`],
-    fields: [
-      { name: 'Avant', value: before.partial ? '*inconnu*' : quote(before.content), inline: false },
-      { name: 'Après', value: quote(after.content), inline: false },
+async function surMessageModifie(avant: Message | PartialMessage, apres: Message | PartialMessage) {
+  if (!apres.guild || apres.author?.bot || ignore(apres.guild, apres.channelId)) return;
+  if (avant.content === apres.content || !apres.content) return;
+  await journal(apres.guild, 'message', {
+    titre: 'Message modifié',
+    ton: 'info',
+    lignes: [`**Auteur** : <@${apres.author?.id}> \`${apres.author?.tag}\``, `**Salon** : <#${apres.channelId}> · [aller au message](${apres.url})`],
+    champs: [
+      { name: 'Avant', value: avant.partial ? '*inconnu*' : citer(avant.content), inline: false },
+      { name: 'Après', value: citer(apres.content), inline: false },
     ],
   });
 }
 
-async function onBulkDelete(messages: Map<string, Message | PartialMessage>, channelId: string, guild: Guild) {
-  if (ignored(guild, channelId)) return;
-  const list = [...messages.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-  const dump = list
+async function surSuppressionMasse(messages: Map<string, Message | PartialMessage>, salonId: string, serveur: Guild) {
+  if (ignore(serveur, salonId)) return;
+  const liste = [...messages.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+  const extrait = liste
     .map((m) => `[${new Date(m.createdTimestamp).toISOString()}] ${m.author?.tag ?? 'inconnu'} : ${m.content ?? ''}${m.attachments.size ? ` [${m.attachments.size} pièce(s) jointe(s)]` : ''}`)
     .join('\n');
-  await journal(guild, 'clear', {
-    title: 'Suppression en masse',
-    tone: 'alerte',
-    lines: [`**Salon** : <#${channelId}>`, `**Messages** : ${list.length}`],
-    files: dump ? [new AttachmentBuilder(Buffer.from(dump, 'utf8'), { name: `suppression-${channelId}.txt` })] : [],
+  await journal(serveur, 'clear', {
+    titre: 'Suppression en masse',
+    ton: 'alerte',
+    lignes: [`**Salon** : <#${salonId}>`, `**Messages** : ${liste.length}`],
+    fichiers: extrait ? [new AttachmentBuilder(Buffer.from(extrait, 'utf8'), { name: `suppression-${salonId}.txt` })] : [],
   });
 }
 
 // ─── Vocal ─────────────────────────────────────────────────────────────────
 
-async function onVoice(before: VoiceState, after: VoiceState) {
-  const member = after.member ?? before.member;
-  if (!member || member.user.bot) return;
-  const guild = after.guild;
-  if (before.channelId === after.channelId) return;
-  if (!before.channelId && after.channelId) {
-    await journal(guild, 'voice', { title: 'Connexion vocale', tone: 'ok', lines: [`<@${member.id}> a rejoint <#${after.channelId}>`] });
-  } else if (before.channelId && !after.channelId) {
-    await journal(guild, 'voice', { title: 'Déconnexion vocale', tone: 'alerte', lines: [`<@${member.id}> a quitté <#${before.channelId}>`] });
+async function surVocal(avant: VoiceState, apres: VoiceState) {
+  const membre = apres.member ?? avant.member;
+  if (!membre || membre.user.bot) return;
+  const serveur = apres.guild;
+  if (avant.channelId === apres.channelId) return;
+  if (!avant.channelId && apres.channelId) {
+    await journal(serveur, 'voice', { titre: 'Connexion vocale', ton: 'ok', lignes: [`<@${membre.id}> a rejoint <#${apres.channelId}>`] });
+  } else if (avant.channelId && !apres.channelId) {
+    await journal(serveur, 'voice', { titre: 'Déconnexion vocale', ton: 'alerte', lignes: [`<@${membre.id}> a quitté <#${avant.channelId}>`] });
   } else {
-    await journal(guild, 'voice', { title: 'Déplacement vocal', tone: 'info', lines: [`<@${member.id}> : <#${before.channelId}> → <#${after.channelId}>`] });
+    await journal(serveur, 'voice', { titre: 'Déplacement vocal', ton: 'info', lignes: [`<@${membre.id}> : <#${avant.channelId}> → <#${apres.channelId}>`] });
   }
 }
 
 // ─── Journal d'audit (avec l'auteur de l'action) ───────────────────────────
 
-type Change = { key: string; old?: unknown; new?: unknown };
+type Changement = { key: string; old?: unknown; new?: unknown };
 
-function describeChanges(changes: Change[]): string[] {
-  const labels: Record<string, string> = {
+function decrireChangements(changements: Changement[]): string[] {
+  const libelles: Record<string, string> = {
     name: 'Nom',
     topic: 'Sujet',
     nsfw: 'NSFW',
@@ -149,78 +149,78 @@ function describeChanges(changes: Change[]): string[] {
     parent_id: 'Catégorie',
     nick: 'Pseudo',
   };
-  return changes
-    .filter((c) => labels[c.key])
-    .map((c) => `• ${labels[c.key]} — \`${truncate(String(c.old ?? '—'), 80)}\` → \`${truncate(String(c.new ?? '—'), 80)}\``);
+  return changements
+    .filter((c) => libelles[c.key])
+    .map((c) => `• ${libelles[c.key]} — \`${tronquer(String(c.old ?? '—'), 80)}\` → \`${tronquer(String(c.new ?? '—'), 80)}\``);
 }
 
-async function onAudit(entry: GuildAuditLogsEntry, guild: Guild) {
-  const executorId = entry.executorId;
+async function surAudit(entree: GuildAuditLogsEntry, serveur: Guild) {
+  const executantId = entree.executorId;
   // Les actions du bot sont déjà journalisées par les modules concernés, avec plus de détails.
-  if (executorId && executorId === guild.members.me?.id) return;
-  const by = executorId ? `<@${executorId}>` : '*inconnu*';
-  const executor = executorId ? (guild.client.users.cache.get(executorId) ?? null) : null;
-  const target = entry.targetId;
-  const reason = entry.reason ? `**Raison** : ${truncate(entry.reason, 500)}` : null;
-  const changes = (entry.changes ?? []) as Change[];
-  const send = (type: LogType, title: string, tone: 'ok' | 'alerte' | 'info' | 'neutre', lines: (string | null)[]) =>
-    journal(guild, type, { title, tone, lines: [...lines, `**Par** : ${by}`, reason], by: executor });
+  if (executantId && executantId === serveur.members.me?.id) return;
+  const par = executantId ? `<@${executantId}>` : '*inconnu*';
+  const executant = executantId ? (serveur.client.users.cache.get(executantId) ?? null) : null;
+  const cible = entree.targetId;
+  const raison = entree.reason ? `**Raison** : ${tronquer(entree.reason, 500)}` : null;
+  const changements = (entree.changes ?? []) as Changement[];
+  const envoyer = (type: TypeJournal, titre: string, ton: 'ok' | 'alerte' | 'info' | 'neutre', lignes: (string | null)[]) =>
+    journal(serveur, type, { titre, ton, lignes: [...lignes, `**Par** : ${par}`, raison], par: executant });
 
-  switch (entry.action) {
+  switch (entree.action) {
     case AuditLogEvent.ChannelCreate:
-      return send('channel', 'Salon créé', 'ok', [`**Salon** : <#${target}> \`${changes.find((c) => c.key === 'name')?.new ?? ''}\``]);
+      return envoyer('channel', 'Salon créé', 'ok', [`**Salon** : <#${cible}> \`${changements.find((c) => c.key === 'name')?.new ?? ''}\``]);
     case AuditLogEvent.ChannelDelete:
-      return send('channel', 'Salon supprimé', 'alerte', [`**Salon** : \`#${changes.find((c) => c.key === 'name')?.old ?? target}\``]);
+      return envoyer('channel', 'Salon supprimé', 'alerte', [`**Salon** : \`#${changements.find((c) => c.key === 'name')?.old ?? cible}\``]);
     case AuditLogEvent.ChannelUpdate: {
-      const lines = describeChanges(changes);
-      if (!lines.length) return;
-      return send('channel', 'Salon modifié', 'info', [`**Salon** : <#${target}>`, ...lines]);
+      const lignes = decrireChangements(changements);
+      if (!lignes.length) return;
+      return envoyer('channel', 'Salon modifié', 'info', [`**Salon** : <#${cible}>`, ...lignes]);
     }
     case AuditLogEvent.ChannelOverwriteCreate:
     case AuditLogEvent.ChannelOverwriteUpdate:
     case AuditLogEvent.ChannelOverwriteDelete:
-      return send('channel', 'Permissions de salon modifiées', 'info', [`**Salon** : <#${target}>`]);
+      return envoyer('channel', 'Permissions de salon modifiées', 'info', [`**Salon** : <#${cible}>`]);
     case AuditLogEvent.RoleCreate:
-      return send('role', 'Rôle créé', 'ok', [`**Rôle** : <@&${target}> \`${changes.find((c) => c.key === 'name')?.new ?? ''}\``]);
+      return envoyer('role', 'Rôle créé', 'ok', [`**Rôle** : <@&${cible}> \`${changements.find((c) => c.key === 'name')?.new ?? ''}\``]);
     case AuditLogEvent.RoleDelete:
-      return send('role', 'Rôle supprimé', 'alerte', [`**Rôle** : \`@${changes.find((c) => c.key === 'name')?.old ?? target}\``]);
+      return envoyer('role', 'Rôle supprimé', 'alerte', [`**Rôle** : \`@${changements.find((c) => c.key === 'name')?.old ?? cible}\``]);
     case AuditLogEvent.RoleUpdate: {
-      const lines = describeChanges(changes);
-      if (!lines.length) return;
-      return send('role', 'Rôle modifié', 'info', [`**Rôle** : <@&${target}>`, ...lines]);
+      const lignes = decrireChangements(changements);
+      if (!lignes.length) return;
+      return envoyer('role', 'Rôle modifié', 'info', [`**Rôle** : <@&${cible}>`, ...lignes]);
     }
     case AuditLogEvent.MemberRoleUpdate: {
-      const added = (changes.find((c) => c.key === '$add')?.new as { id: string }[] | undefined) ?? [];
-      const removed = (changes.find((c) => c.key === '$remove')?.new as { id: string }[] | undefined) ?? [];
-      return send('role', 'Rôles modifiés', added.length && !removed.length ? 'ok' : 'info', [
-        `**Membre** : <@${target}>`,
-        added.length ? `**Donnés** : ${added.map((r) => `<@&${r.id}>`).join(' ')}` : null,
-        removed.length ? `**Retirés** : ${removed.map((r) => `<@&${r.id}>`).join(' ')}` : null,
+      const ajoute = (changements.find((c) => c.key === '$add')?.new as { id: string }[] | undefined) ?? [];
+      const retiree = (changements.find((c) => c.key === '$remove')?.new as { id: string }[] | undefined) ?? [];
+      return envoyer('role', 'Rôles modifiés', ajoute.length && !retiree.length ? 'ok' : 'info', [
+        `**Membre** : <@${cible}>`,
+        ajoute.length ? `**Donnés** : ${ajoute.map((r) => `<@&${r.id}>`).join(' ')}` : null,
+        retiree.length ? `**Retirés** : ${retiree.map((r) => `<@&${r.id}>`).join(' ')}` : null,
       ]);
     }
     case AuditLogEvent.MemberUpdate: {
-      const timeout = changes.find((c) => c.key === 'communication_disabled_until');
-      if (timeout) {
-        const until = timeout.new ? Date.parse(String(timeout.new)) : null;
-        return send('sanction', until ? 'Timeout (manuel)' : 'Timeout retiré (manuel)', until ? 'alerte' : 'ok', [
-          `**Membre** : <@${target}>`,
-          until ? `**Jusqu’à** : ${ts(until, 'f')}` : null,
+      const exclure = changements.find((c) => c.key === 'communication_disabled_until');
+      if (exclure) {
+        const jusqua = exclure.new ? Date.parse(String(exclure.new)) : null;
+        return envoyer('sanction', jusqua ? 'Timeout (manuel)' : 'Timeout retiré (manuel)', jusqua ? 'alerte' : 'ok', [
+          `**Membre** : <@${cible}>`,
+          jusqua ? `**Jusqu’à** : ${marqueTemps(jusqua, 'f')}` : null,
         ]);
       }
-      const nick = changes.find((c) => c.key === 'nick');
-      if (nick) return send('member', 'Pseudo modifié', 'info', [`**Membre** : <@${target}>`, ...describeChanges([nick])]);
+      const surnom = changements.find((c) => c.key === 'nick');
+      if (surnom) return envoyer('member', 'Pseudo modifié', 'info', [`**Membre** : <@${cible}>`, ...decrireChangements([surnom])]);
       return;
     }
     case AuditLogEvent.MemberBanAdd:
-      return send('sanction', 'Bannissement (manuel)', 'alerte', [`**Membre** : <@${target}> \`${target}\``]);
+      return envoyer('sanction', 'Bannissement (manuel)', 'alerte', [`**Membre** : <@${cible}> \`${cible}\``]);
     case AuditLogEvent.MemberBanRemove:
-      return send('sanction', 'Débannissement (manuel)', 'ok', [`**Membre** : <@${target}> \`${target}\``]);
+      return envoyer('sanction', 'Débannissement (manuel)', 'ok', [`**Membre** : <@${cible}> \`${cible}\``]);
     case AuditLogEvent.MemberKick:
-      return send('sanction', 'Expulsion (manuelle)', 'alerte', [`**Membre** : <@${target}> \`${target}\``]);
+      return envoyer('sanction', 'Expulsion (manuelle)', 'alerte', [`**Membre** : <@${cible}> \`${cible}\``]);
     case AuditLogEvent.GuildUpdate: {
-      const lines = describeChanges(changes);
-      if (!lines.length) return;
-      return send('channel', 'Serveur modifié', 'info', lines);
+      const lignes = decrireChangements(changements);
+      if (!lignes.length) return;
+      return envoyer('channel', 'Serveur modifié', 'info', lignes);
     }
     default:
       return;
@@ -229,46 +229,46 @@ async function onAudit(entry: GuildAuditLogsEntry, guild: Guild) {
 
 // ─── Commandes ─────────────────────────────────────────────────────────────
 
-interface LogRow {
-  category: string;
+interface LigneJournal {
+  categorie: string;
   type: string;
-  user_id: string | null;
-  actor_id: string | null;
-  data: string;
-  created_at: number;
+  utilisateur_id: string | null;
+  acteur_id: string | null;
+  donnees: string;
+  cree_le: number;
 }
 
-function historyPages(guild: Guild, userId: string | null, type: string | null) {
-  const rows = all<LogRow>(
-    `SELECT category, type, user_id, actor_id, data, created_at FROM logs
-     WHERE guild_id = ? AND (? IS NULL OR user_id = ? OR actor_id = ?) AND (? IS NULL OR category = ?)
-     ORDER BY created_at DESC LIMIT 500`,
-    guild.id,
-    userId,
-    userId,
-    userId,
+function pagesHistorique(serveur: Guild, utilisateurId: string | null, type: string | null) {
+  const rangees = lireTout<LigneJournal>(
+    `SELECT categorie, type, utilisateur_id, acteur_id, donnees, cree_le FROM journaux
+     WHERE serveur_id = ? AND (? IS NULL OR utilisateur_id = ? OR acteur_id = ?) AND (? IS NULL OR categorie = ?)
+     ORDER BY cree_le DESC LIMIT 500`,
+    serveur.id,
+    utilisateurId,
+    utilisateurId,
+    utilisateurId,
     type,
     type,
   );
-  const lines = rows.map((r) => {
-    const data = parseJson<Record<string, unknown>>(r.data, {});
-    const detail = typeof data.reason === 'string' ? ` — ${truncate(data.reason, 60)}` : typeof data.list === 'string' ? ` — ${data.list}` : '';
-    return `${ts(r.created_at, 'd')} \`${r.category}·${r.type}\`${r.user_id ? ` <@${r.user_id}>` : ''}${r.actor_id ? ` par <@${r.actor_id}>` : ''}${detail}`;
+  const lignes = rangees.map((r) => {
+    const donnees = lireJson<Record<string, unknown>>(r.donnees, {});
+    const detail = typeof donnees.reason === 'string' ? ` — ${tronquer(donnees.reason, 60)}` : typeof donnees.list === 'string' ? ` — ${donnees.list}` : '';
+    return `${marqueTemps(r.cree_le, 'd')} \`${r.categorie}·${r.type}\`${r.utilisateur_id ? ` <@${r.utilisateur_id}>` : ''}${r.acteur_id ? ` par <@${r.acteur_id}>` : ''}${detail}`;
   });
-  if (!lines.length) lines.push('*Rien d’enregistré.*');
-  return linesToPages(lines, 15, (content, page, total) =>
-    brandEmbed(guild)
-      .setTitle(`🔎 Historique${userId ? '' : ' du serveur'}`)
-      .setDescription(`${userId ? `<@${userId}>\n` : ''}${content}`)
-      .setFooter({ text: `Page ${page}/${total} · ${rows.length} entrée(s)` }),
+  if (!lignes.length) lignes.push('*Rien d’enregistré.*');
+  return lignesEnPages(lignes, 15, (contenu, page, total) =>
+    embedEnseigne(serveur)
+      .setTitle(`🔎 Historique${utilisateurId ? '' : ' du serveur'}`)
+      .setDescription(`${utilisateurId ? `<@${utilisateurId}>\n` : ''}${contenu}`)
+      .setFooter({ text: `Page ${page}/${total} · ${rangees.length} entrée(s)` }),
   );
 }
 
-const logsCommand: SlashCommand = {
-  category: 'admin',
-  level: PermLevel.ADMIN,
+const commandeJournaux: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.ADMIN,
   whitelist: 'logs',
-  data: new SlashCommandBuilder()
+  donnees: new SlashCommandBuilder()
     .setName('logs')
     .setDescription('L’historique du serveur')
     .addSubcommand((s) =>
@@ -280,74 +280,74 @@ const logsCommand: SlashCommand = {
           o
             .setName('type')
             .setDescription('Un type')
-            .addChoices(...LOG_TYPES.slice(0, 25).map((t) => ({ name: `${t.name} — ${truncate(t.description, 60)}`, value: t.type }))),
+            .addChoices(...TYPES_JOURNAUX.slice(0, 25).map((t) => ({ name: `${t.nom} — ${tronquer(t.description, 60)}`, value: t.type }))),
         ),
     )
     .addSubcommand((s) => s.setName('salons').setDescription('Créer les salons de logs manquants')),
-  subLevels: { salons: PermLevel.ADMIN },
-  async execute(interaction) {
+  niveauxSousCommandes: { salons: Niveau.ADMIN },
+  async executer(interaction) {
     if (interaction.options.getSubcommand() === 'salons') {
       await interaction.deferReply({ flags: 64 });
-      const { created, linked } = await ensureLogChannels(interaction.guild);
-      await interaction.editReply({ embeds: [ok(interaction.guild, `**${created}** créé(s), **${linked}** déjà présent(s).`, { titre: 'Salons de logs' })] });
+      const { cree, titreLie } = await creerSalonsJournal(interaction.guild);
+      await interaction.editReply({ embeds: [ok(interaction.guild, `**${cree}** créé(s), **${titreLie}** déjà présent(s).`, { titre: 'Salons de logs' })] });
       return;
     }
-    const user = interaction.options.getUser('membre');
+    const utilisateur = interaction.options.getUser('membre');
     const type = interaction.options.getString('type');
-    await paginate(interaction, historyPages(interaction.guild, user?.id ?? null, type), true);
+    await paginer(interaction, pagesHistorique(interaction.guild, utilisateur?.id ?? null, type), true);
   },
 };
 
-const prefixCommands: PrefixCommand[] = [
+const commandesPrefixe: CommandePrefixe[] = [
   {
-    name: 'logs',
-    domain: 'general',
-    category: 'admin',
+    nom: 'logs',
+    domaine: 'general',
+    categorie: 'admin',
     description: 'L’historique (seul : tout le serveur)',
     usage: '[membre]',
-    level: PermLevel.ADMIN,
+    niveau: Niveau.ADMIN,
     whitelist: 'logs',
-    async execute(message, args) {
-      const id = args[0]?.replace(/\D/g, '') || null;
-      const pages = historyPages(message.guild, id, null);
+    async executer(message, parametres) {
+      const id = parametres[0]?.replace(/\D/g, '') || null;
+      const pages = pagesHistorique(message.guild, id, null);
       await message.reply({ embeds: [pages[0]!], allowedMentions: { repliedUser: false } });
     },
   },
 ];
 
-export const logsModule: BotModule = {
+export const moduleJournaux: ModuleBot = {
   id: 'logs',
-  name: 'Logs',
+  nom: 'Logs',
   emoji: '📜',
   description: 'Un salon par type de log, avec l’auteur de chaque action',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [logsCommand],
-  prefixCommands,
-  events: [
-    on('guildMemberAdd', (m) => onJoin(m), 200),
-    on('guildMemberRemove', (m) => onLeave(m), 200),
-    on('messageDelete', (m) => onMessageDelete(m), 200),
-    on('messageUpdate', (a, b) => onMessageUpdate(a, b), 200),
-    on('messageDeleteBulk', (messages, channel) => {
-      return onBulkDelete(messages as unknown as Map<string, Message | PartialMessage>, channel.id, channel.guild);
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [commandeJournaux],
+  commandesPrefixe,
+  evenements: [
+    sur('guildMemberAdd', (m) => surArrivee(m), 200),
+    sur('guildMemberRemove', (m) => surDepart(m), 200),
+    sur('messageDelete', (m) => surMessageSupprime(m), 200),
+    sur('messageUpdate', (a, b) => surMessageModifie(a, b), 200),
+    sur('messageDeleteBulk', (messages, salon) => {
+      return surSuppressionMasse(messages as unknown as Map<string, Message | PartialMessage>, salon.id, salon.guild);
     }, 200),
-    on('voiceStateUpdate', (a, b) => onVoice(a, b), 200),
-    on('guildAuditLogEntryCreate', (entry, guild) => onAudit(entry, guild), 200),
+    sur('voiceStateUpdate', (a, b) => surVocal(a, b), 200),
+    sur('guildAuditLogEntryCreate', (entree, serveur) => surAudit(entree, serveur), 200),
   ],
   tests: [
     {
       id: 'all',
-      label: 'Écrire dans chaque salon',
+      libelle: 'Écrire dans chaque salon',
       emoji: '📜',
       description: 'Un message de test par type de log',
-      async run(interaction) {
-        const results: string[] = [];
-        for (const t of LOG_TYPES) {
-          const sent = await journal(interaction.guild, t.type, { title: 'Test des logs', tone: 'info', lines: [logDefinition(t.type).description], by: interaction.user });
-          results.push(`${sent ? '✅' : '❌'} \`${t.name}\``);
+      async executer(interaction) {
+        const resultats: string[] = [];
+        for (const t of TYPES_JOURNAUX) {
+          const envoye = await journal(interaction.guild, t.type, { titre: 'Test des logs', ton: 'info', lignes: [definitionJournal(t.type).description], par: interaction.user });
+          resultats.push(`${envoye ? '✅' : '❌'} \`${t.nom}\``);
         }
-        return results.join(' · ');
+        return resultats.join(' · ');
       },
     },
   ],

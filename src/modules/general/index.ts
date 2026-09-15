@@ -6,276 +6,276 @@ import {
   type Guild,
   type User,
 } from 'discord.js';
-import { botState } from '../../core/bot';
-import { brandEmbed, brandName, info } from '../../core/embeds';
-import { reply } from '../../core/interactions';
-import { getLevel, levelLabel } from '../../core/permissions';
-import { resolveUser, targetMember } from '../../core/resolve';
-import { formatNumber, truncate } from '../../core/text';
-import { formatDuration, ts } from '../../core/time';
-import { trashRow } from '../../core/trash';
-import { on, type BotModule, type PrefixCommand, type SlashCommand } from '../../core/types';
-import { flushVoice, handleVoiceState, resyncVoice } from '../../services/voice';
-import { userWhitelists } from '../../core/whitelists';
-import { helpHome, onHelpSelect } from './help';
+import { etatBot } from '../../core/bot';
+import { embedEnseigne, nomEnseigne, info } from '../../core/embeds';
+import { repondre } from '../../core/interactions';
+import { lireNiveau, libelleNiveau } from '../../core/permissions';
+import { resoudreUtilisateur, membreCible } from '../../core/resolve';
+import { formaterNombre, tronquer } from '../../core/text';
+import { formaterDuree, marqueTemps } from '../../core/time';
+import { rangeeCorbeille } from '../../core/trash';
+import { sur, type ModuleBot, type CommandePrefixe, type CommandeSlash } from '../../core/types';
+import { crediterVocal, traiterEtatVocal, resynchroniserVocal } from '../../services/voice';
+import { whitelistsMembre } from '../../core/whitelists';
+import { accueilAide, surMenuAide } from './help';
 
-function userInfoEmbed(guild: Guild, user: User, member: GuildMember | null) {
-  const embed = brandEmbed(guild)
-    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ size: 64 }) })
-    .setTitle(`👤 ${member?.displayName ?? user.displayName}`)
-    .setThumbnail(user.displayAvatarURL({ size: 256 }))
+function embedInfoMembre(serveur: Guild, utilisateur: User, membre: GuildMember | null) {
+  const embed = embedEnseigne(serveur)
+    .setAuthor({ name: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) })
+    .setTitle(`👤 ${membre?.displayName ?? utilisateur.displayName}`)
+    .setThumbnail(utilisateur.displayAvatarURL({ size: 256 }))
     .addFields(
-      { name: 'Utilisateur', value: `${user}\n\`${user.id}\``, inline: true },
-      { name: 'Compte créé', value: `${ts(user.createdTimestamp, 'D')}\n${ts(user.createdTimestamp, 'R')}`, inline: true },
+      { name: 'Utilisateur', value: `${utilisateur}\n\`${utilisateur.id}\``, inline: true },
+      { name: 'Compte créé', value: `${marqueTemps(utilisateur.createdTimestamp, 'D')}\n${marqueTemps(utilisateur.createdTimestamp, 'R')}`, inline: true },
     );
-  if (member) {
-    const roles = member.roles.cache
-      .filter((r) => r.id !== guild.id)
+  if (membre) {
+    const roles = membre.roles.cache
+      .filter((r) => r.id !== serveur.id)
       .sort((a, b) => b.position - a.position)
       .map((r) => r.toString());
-    const wls = userWhitelists(user.id, guild.id);
+    const whitelistsListe = whitelistsMembre(utilisateur.id, serveur.id);
     embed.addFields(
-      { name: 'Arrivée', value: member.joinedTimestamp ? `${ts(member.joinedTimestamp, 'D')}\n${ts(member.joinedTimestamp, 'R')}` : '—', inline: true },
-      { name: 'Accès bot', value: levelLabel(getLevel(member)), inline: true },
-      { name: 'Whitelists', value: wls.length ? wls.map((w) => `${w.emoji} ${w.label}`).join(' · ') : '—', inline: true },
-      { name: 'Booster', value: member.premiumSinceTimestamp ? `depuis ${ts(member.premiumSinceTimestamp, 'R')}` : 'Non', inline: true },
-      { name: `Rôles (${roles.length})`, value: roles.length ? truncate(roles.join(' '), 1024) : '—', inline: false },
+      { name: 'Arrivée', value: membre.joinedTimestamp ? `${marqueTemps(membre.joinedTimestamp, 'D')}\n${marqueTemps(membre.joinedTimestamp, 'R')}` : '—', inline: true },
+      { name: 'Accès bot', value: libelleNiveau(lireNiveau(membre)), inline: true },
+      { name: 'Whitelists', value: whitelistsListe.length ? whitelistsListe.map((w) => `${w.emoji} ${w.libelle}`).join(' · ') : '—', inline: true },
+      { name: 'Booster', value: membre.premiumSinceTimestamp ? `depuis ${marqueTemps(membre.premiumSinceTimestamp, 'R')}` : 'Non', inline: true },
+      { name: `Rôles (${roles.length})`, value: roles.length ? tronquer(roles.join(' '), 1024) : '—', inline: false },
     );
-    if (member.displayColor) embed.setColor(member.displayColor);
+    if (membre.displayColor) embed.setColor(membre.displayColor);
   }
-  if (user.bot) embed.setDescription('🤖 Ce compte est un bot.');
-  const banner = user.bannerURL({ size: 1024 });
-  if (banner) embed.setImage(banner);
+  if (utilisateur.bot) embed.setDescription('🤖 Ce compte est un bot.');
+  const banniere = utilisateur.bannerURL({ size: 1024 });
+  if (banniere) embed.setImage(banniere);
   return embed;
 }
 
-function serverInfoEmbed(guild: Guild) {
-  const channels = guild.channels.cache;
-  const text = channels.filter((c) => c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement).size;
-  const voice = channels.filter((c) => c.type === ChannelType.GuildVoice || c.type === ChannelType.GuildStageVoice).size;
-  return brandEmbed(guild)
-    .setTitle(`🏠 ${guild.name}`)
-    .setThumbnail(guild.iconURL({ size: 256 }))
-    .setImage(guild.bannerURL({ size: 1024 }))
+function embedInfoServeur(serveur: Guild) {
+  const salons = serveur.channels.cache;
+  const texte = salons.filter((c) => c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement).size;
+  const vocal = salons.filter((c) => c.type === ChannelType.GuildVoice || c.type === ChannelType.GuildStageVoice).size;
+  return embedEnseigne(serveur)
+    .setTitle(`🏠 ${serveur.name}`)
+    .setThumbnail(serveur.iconURL({ size: 256 }))
+    .setImage(serveur.bannerURL({ size: 1024 }))
     .addFields(
-      { name: 'Propriétaire', value: `<@${guild.ownerId}>`, inline: true },
-      { name: 'Enseigne', value: brandName(guild), inline: true },
-      { name: 'Création', value: ts(guild.createdTimestamp, 'D'), inline: true },
-      { name: 'Membres', value: formatNumber(guild.memberCount), inline: true },
-      { name: 'Salons', value: `${text} textuels · ${voice} vocaux`, inline: true },
-      { name: 'Rôles', value: String(guild.roles.cache.size - 1), inline: true },
-      { name: 'Boosts', value: `${guild.premiumSubscriptionCount ?? 0} (niveau ${guild.premiumTier})`, inline: true },
-      { name: 'Émojis', value: String(guild.emojis.cache.size), inline: true },
-      { name: 'ID', value: `\`${guild.id}\``, inline: true },
+      { name: 'Propriétaire', value: `<@${serveur.ownerId}>`, inline: true },
+      { name: 'Enseigne', value: nomEnseigne(serveur), inline: true },
+      { name: 'Création', value: marqueTemps(serveur.createdTimestamp, 'D'), inline: true },
+      { name: 'Membres', value: formaterNombre(serveur.memberCount), inline: true },
+      { name: 'Salons', value: `${texte} textuels · ${vocal} vocaux`, inline: true },
+      { name: 'Rôles', value: String(serveur.roles.cache.size - 1), inline: true },
+      { name: 'Boosts', value: `${serveur.premiumSubscriptionCount ?? 0} (niveau ${serveur.premiumTier})`, inline: true },
+      { name: 'Émojis', value: String(serveur.emojis.cache.size), inline: true },
+      { name: 'ID', value: `\`${serveur.id}\``, inline: true },
     );
 }
 
-async function imageEmbed(guild: Guild, user: User, member: GuildMember | null, kind: 'avatar' | 'banner') {
-  if (kind === 'banner') {
-    const full = await user.fetch(true).catch(() => user);
-    const url = full.bannerURL({ size: 2048 });
-    if (!url) return info(guild, `**${user.displayName}** n’a pas de bannière.`);
-    return brandEmbed(guild).setTitle(`Bannière de ${user.displayName}`).setURL(url).setImage(url);
+async function embedImage(serveur: Guild, utilisateur: User, membre: GuildMember | null, genre: 'avatar' | 'banner') {
+  if (genre === 'banner') {
+    const complet = await utilisateur.fetch(true).catch(() => utilisateur);
+    const url = complet.bannerURL({ size: 2048 });
+    if (!url) return info(serveur, `**${utilisateur.displayName}** n’a pas de bannière.`);
+    return embedEnseigne(serveur).setTitle(`Bannière de ${utilisateur.displayName}`).setURL(url).setImage(url);
   }
-  const globalUrl = user.displayAvatarURL({ size: 2048 });
-  const serverUrl = member?.avatarURL({ size: 2048 }) ?? null;
-  return brandEmbed(guild)
-    .setTitle(`Photo de profil de ${user.displayName}`)
-    .setURL(serverUrl ?? globalUrl)
-    .setImage(serverUrl ?? globalUrl)
-    .setDescription([`[Globale](${globalUrl})`, serverUrl ? `[Serveur](${serverUrl})` : null].filter(Boolean).join(' · '));
+  const urlGlobale = utilisateur.displayAvatarURL({ size: 2048 });
+  const urlServeur = membre?.avatarURL({ size: 2048 }) ?? null;
+  return embedEnseigne(serveur)
+    .setTitle(`Photo de profil de ${utilisateur.displayName}`)
+    .setURL(urlServeur ?? urlGlobale)
+    .setImage(urlServeur ?? urlGlobale)
+    .setDescription([`[Globale](${urlGlobale})`, urlServeur ? `[Serveur](${urlServeur})` : null].filter(Boolean).join(' · '));
 }
 
-const help: SlashCommand = {
-  category: 'general',
-  data: new SlashCommandBuilder().setName('help').setDescription('Tes commandes'),
-  async execute(interaction) {
-    await reply(interaction, helpHome(interaction.member));
+const aide: CommandeSlash = {
+  categorie: 'general',
+  donnees: new SlashCommandBuilder().setName('help').setDescription('Tes commandes'),
+  async executer(interaction) {
+    await repondre(interaction, accueilAide(interaction.member));
   },
 };
 
-const ping: SlashCommand = {
-  category: 'general',
-  data: new SlashCommandBuilder().setName('ping').setDescription('La latence du bot'),
-  async execute(interaction) {
+const ping: CommandeSlash = {
+  categorie: 'general',
+  donnees: new SlashCommandBuilder().setName('ping').setDescription('La latence du bot'),
+  async executer(interaction) {
     const ws = interaction.client.ws.ping;
-    const embed = brandEmbed(interaction.guild)
+    const embed = embedEnseigne(interaction.guild)
       .setTitle('🏓 Pong')
       .setDescription(
-        [`• Latence — **${ws >= 0 ? `${ws} ms` : '—'}**`, `• En ligne depuis — **${formatDuration(Date.now() - botState.startedAt)}**`].join('\n'),
+        [`• Latence — **${ws >= 0 ? `${ws} ms` : '—'}**`, `• En ligne depuis — **${formaterDuree(Date.now() - etatBot.debutLe)}**`].join('\n'),
       );
-    await reply(interaction, { embeds: [embed], ephemeral: true });
+    await repondre(interaction, { embeds: [embed], ephemeral: true });
   },
 };
 
-const avatar: SlashCommand = {
-  category: 'general',
-  data: new SlashCommandBuilder()
+const avatar: CommandeSlash = {
+  categorie: 'general',
+  donnees: new SlashCommandBuilder()
     .setName('avatar')
     .setDescription('Photo de profil ou bannière')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)'))
     .addStringOption((o) =>
       o.setName('type').setDescription('Quoi').addChoices({ name: 'Photo de profil', value: 'avatar' }, { name: 'Bannière', value: 'banner' }),
     ),
-  async execute(interaction) {
-    const user = interaction.options.getUser('membre') ?? interaction.user;
-    const member = interaction.options.getMember('membre') ?? (user.id === interaction.user.id ? interaction.member : null);
-    const kind = (interaction.options.getString('type') ?? 'avatar') as 'avatar' | 'banner';
-    const embed = await imageEmbed(interaction.guild, user, member instanceof GuildMember ? member : null, kind);
-    await reply(interaction, { embeds: [embed], components: [trashRow(interaction.guildId, interaction.user.id)] });
+  async executer(interaction) {
+    const utilisateur = interaction.options.getUser('membre') ?? interaction.user;
+    const membre = interaction.options.getMember('membre') ?? (utilisateur.id === interaction.user.id ? interaction.member : null);
+    const genre = (interaction.options.getString('type') ?? 'avatar') as 'avatar' | 'banner';
+    const embed = await embedImage(interaction.guild, utilisateur, membre instanceof GuildMember ? membre : null, genre);
+    await repondre(interaction, { embeds: [embed], components: [rangeeCorbeille(interaction.guildId, interaction.user.id)] });
   },
 };
 
-const userinfo: SlashCommand = {
-  category: 'general',
-  data: new SlashCommandBuilder()
+const infoMembre: CommandeSlash = {
+  categorie: 'general',
+  donnees: new SlashCommandBuilder()
     .setName('userinfo')
     .setDescription('Fiche d’un membre')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)')),
-  async execute(interaction) {
-    const user = await (interaction.options.getUser('membre') ?? interaction.user).fetch();
-    const member = interaction.options.getMember('membre') ?? (user.id === interaction.user.id ? interaction.member : null);
-    await reply(interaction, {
-      embeds: [userInfoEmbed(interaction.guild, user, member instanceof GuildMember ? member : null)],
-      components: [trashRow(interaction.guildId, interaction.user.id)],
+  async executer(interaction) {
+    const utilisateur = await (interaction.options.getUser('membre') ?? interaction.user).fetch();
+    const membre = interaction.options.getMember('membre') ?? (utilisateur.id === interaction.user.id ? interaction.member : null);
+    await repondre(interaction, {
+      embeds: [embedInfoMembre(interaction.guild, utilisateur, membre instanceof GuildMember ? membre : null)],
+      components: [rangeeCorbeille(interaction.guildId, interaction.user.id)],
     });
   },
 };
 
-const serverinfo: SlashCommand = {
-  category: 'general',
-  data: new SlashCommandBuilder().setName('serverinfo').setDescription('Fiche du serveur'),
-  async execute(interaction) {
-    await reply(interaction, { embeds: [serverInfoEmbed(interaction.guild)], components: [trashRow(interaction.guildId, interaction.user.id)] });
+const infoServeur: CommandeSlash = {
+  categorie: 'general',
+  donnees: new SlashCommandBuilder().setName('serverinfo').setDescription('Fiche du serveur'),
+  async executer(interaction) {
+    await repondre(interaction, { embeds: [embedInfoServeur(interaction.guild)], components: [rangeeCorbeille(interaction.guildId, interaction.user.id)] });
   },
 };
 
-const botinfo: SlashCommand = {
-  category: 'general',
-  data: new SlashCommandBuilder().setName('botinfo').setDescription('Le bot en chiffres'),
-  async execute(interaction) {
+const infoBot: CommandeSlash = {
+  categorie: 'general',
+  donnees: new SlashCommandBuilder().setName('botinfo').setDescription('Le bot en chiffres'),
+  async executer(interaction) {
     const client = interaction.client;
-    const mem = process.memoryUsage();
-    const embed = brandEmbed(interaction.guild)
+    const memoire = process.memoryUsage();
+    const embed = embedEnseigne(interaction.guild)
       .setTitle('🤖 Le bot')
       .setThumbnail(client.user.displayAvatarURL())
       .setDescription(
         [
-          `• Serveurs — **${formatNumber(client.guilds.cache.size)}**`,
-          `• En ligne depuis — **${formatDuration(Date.now() - botState.startedAt)}**`,
+          `• Serveurs — **${formaterNombre(client.guilds.cache.size)}**`,
+          `• En ligne depuis — **${formaterDuree(Date.now() - etatBot.debutLe)}**`,
           `• Latence — **${client.ws.ping} ms**`,
-          `• Mémoire — **${Math.round(mem.rss / 1024 / 1024)} Mo**`,
+          `• Mémoire — **${Math.round(memoire.rss / 1024 / 1024)} Mo**`,
           `• Node.js — **${process.version}** · discord.js **v${djsVersion}**`,
         ].join('\n'),
       );
-    await reply(interaction, { embeds: [embed], ephemeral: true });
+    await repondre(interaction, { embeds: [embed], ephemeral: true });
   },
 };
 
-async function prefixUser(message: import('discord.js').Message<true>, arg: string | undefined) {
-  const member = await targetMember(message, arg);
-  if (member) return { user: member.user, member };
-  const user = (await resolveUser(message.client, arg)) ?? message.author;
-  const fallbackMember = user.id === message.author.id ? message.member : null;
-  return { user, member: fallbackMember };
+async function membreDuPrefixe(message: import('discord.js').Message<true>, argument: string | undefined) {
+  const membre = await membreCible(message, argument);
+  if (membre) return { user: membre.user, member: membre };
+  const utilisateur = (await resoudreUtilisateur(message.client, argument)) ?? message.author;
+  const membreSecours = utilisateur.id === message.author.id ? message.member : null;
+  return { user: utilisateur, member: membreSecours };
 }
 
-const prefixCommands: PrefixCommand[] = [
+const commandesPrefixe: CommandePrefixe[] = [
   {
-    name: 'help',
-    domain: 'general',
-    category: 'general',
+    nom: 'help',
+    domaine: 'general',
+    categorie: 'general',
     description: 'Tes commandes',
-    async execute(message) {
+    async executer(message) {
       if (!message.member) return;
-      await message.reply({ ...helpHome(message.member), allowedMentions: { repliedUser: false } });
+      await message.reply({ ...accueilAide(message.member), allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'ui',
-    aliases: ['userinfo'],
-    domain: 'general',
-    category: 'general',
+    nom: 'ui',
+    alias: ['userinfo'],
+    domaine: 'general',
+    categorie: 'general',
     description: 'Fiche d’un membre',
     usage: '[membre]',
-    async execute(message, args) {
-      const { user, member } = await prefixUser(message, args[0]);
-      await message.reply({ embeds: [userInfoEmbed(message.guild, user, member)], components: [trashRow(message.guildId, message.author.id)], allowedMentions: { repliedUser: false } });
+    async executer(message, parametres) {
+      const { user: utilisateur, member: membre } = await membreDuPrefixe(message, parametres[0]);
+      await message.reply({ embeds: [embedInfoMembre(message.guild, utilisateur, membre)], components: [rangeeCorbeille(message.guildId, message.author.id)], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'si',
-    aliases: ['serverinfo'],
-    domain: 'general',
-    category: 'general',
+    nom: 'si',
+    alias: ['serverinfo'],
+    domaine: 'general',
+    categorie: 'general',
     description: 'Fiche du serveur',
-    async execute(message) {
-      await message.reply({ embeds: [serverInfoEmbed(message.guild)], components: [trashRow(message.guildId, message.author.id)], allowedMentions: { repliedUser: false } });
+    async executer(message) {
+      await message.reply({ embeds: [embedInfoServeur(message.guild)], components: [rangeeCorbeille(message.guildId, message.author.id)], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'pic',
-    aliases: ['avatar', 'pp'],
-    domain: 'sanction',
-    category: 'general',
+    nom: 'pic',
+    alias: ['avatar', 'pp'],
+    domaine: 'sanction',
+    categorie: 'general',
     description: 'Photo de profil',
     usage: '[membre]',
-    async execute(message, args) {
-      const { user, member } = await prefixUser(message, args[0]);
-      await message.reply({ embeds: [await imageEmbed(message.guild, user, member, 'avatar')], components: [trashRow(message.guildId, message.author.id)], allowedMentions: { repliedUser: false } });
+    async executer(message, parametres) {
+      const { user: utilisateur, member: membre } = await membreDuPrefixe(message, parametres[0]);
+      await message.reply({ embeds: [await embedImage(message.guild, utilisateur, membre, 'avatar')], components: [rangeeCorbeille(message.guildId, message.author.id)], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'banner',
-    domain: 'sanction',
-    category: 'general',
+    nom: 'banner',
+    domaine: 'sanction',
+    categorie: 'general',
     description: 'Bannière',
     usage: '[membre]',
-    async execute(message, args) {
-      const { user, member } = await prefixUser(message, args[0]);
-      await message.reply({ embeds: [await imageEmbed(message.guild, user, member, 'banner')], components: [trashRow(message.guildId, message.author.id)], allowedMentions: { repliedUser: false } });
+    async executer(message, parametres) {
+      const { user: utilisateur, member: membre } = await membreDuPrefixe(message, parametres[0]);
+      await message.reply({ embeds: [await embedImage(message.guild, utilisateur, membre, 'banner')], components: [rangeeCorbeille(message.guildId, message.author.id)], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'ping',
-    domain: 'general',
-    category: 'general',
+    nom: 'ping',
+    domaine: 'general',
+    categorie: 'general',
     description: 'La latence du bot',
-    async execute(message) {
+    async executer(message) {
       await message.reply({ embeds: [info(message.guild, `Pong — **${message.client.ws.ping} ms**`)], allowedMentions: { repliedUser: false } });
     },
   },
 ];
 
-export const generalModule: BotModule = {
+export const moduleGeneral: ModuleBot = {
   id: 'general',
-  name: 'Général',
+  nom: 'Général',
   emoji: '📌',
   description: 'Aide, fiches et informations',
-  toggleable: false,
-  defaultEnabled: true,
-  commands: [help, ping, avatar, userinfo, serverinfo, botinfo],
-  prefixCommands,
-  components: [
+  desactivable: false,
+  actifParDefaut: true,
+  commandes: [aide, ping, avatar, infoMembre, infoServeur, infoBot],
+  commandesPrefixe,
+  composants: [
     {
-      prefix: 'help',
-      async select(interaction, [, ownerId]) {
-        await onHelpSelect(interaction, ownerId);
+      prefixe: 'help',
+      async menu(interaction, [, proprietaireId]) {
+        await surMenuAide(interaction, proprietaireId);
       },
     },
   ],
   // Suivi vocal commun : XP, statistiques et quêtes s'y abonnent chacun de leur côté.
-  events: [on('voiceStateUpdate', (before, after) => handleVoiceState(before, after), 5)],
-  tasks: [
+  evenements: [sur('voiceStateUpdate', (avant, apres) => traiterEtatVocal(avant, apres), 5)],
+  taches: [
     {
-      name: 'voice-flush',
-      intervalMs: 5 * 60_000,
-      async run(client) {
-        flushVoice(client);
+      nom: 'voice-flush',
+      intervalleMs: 5 * 60_000,
+      async executer(client) {
+        crediterVocal(client);
       },
     },
   ],
-  async onReady(client) {
-    resyncVoice(client);
+  async auDemarrage(client) {
+    resynchroniserVocal(client);
   },
 };

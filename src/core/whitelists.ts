@@ -1,237 +1,237 @@
-import { all, get, run } from '../database/db';
-import { env } from './env';
-import { PermLevel } from './types';
+import { lireTout, lire, executer } from '../database/db';
+import { environnement } from './env';
+import { Niveau } from './types';
 
 export type WhitelistId = 'owner' | 'streamer' | 'admin' | 'sys' | 'staff' | 'support' | 'logs' | 'bypass' | 'giveaway' | 'dj';
 
-export interface WhitelistDefinition {
+export interface DefinitionWhitelist {
   id: WhitelistId;
-  label: string;
+  libelle: string;
   emoji: string;
-  group: string;
+  groupe: string;
   description: string;
   /** Portée : globale (tous les serveurs) ou par serveur. */
-  scope: 'global' | 'guild';
+  portee: 'global' | 'guild';
   /** Niveau donné par la whitelist (null = accès ciblé, sans niveau). */
-  grants: PermLevel | null;
+  accorde: Niveau | null;
   /** Niveau minimum pour donner ou retirer cette whitelist. */
-  managedBy: PermLevel;
+  gerePar: Niveau;
   /** Préfixe de commande rapide (domaine général "=" sauf owner "."). */
-  shortcut: string;
+  raccourci: string;
 }
 
 /** Catalogue des whitelists, dans l'ordre d'affichage. */
-export const WHITELISTS: WhitelistDefinition[] = [
+export const WHITELISTS: DefinitionWhitelist[] = [
   {
     id: 'owner',
-    label: 'Owner bot',
+    libelle: 'Owner bot',
     emoji: '👑',
-    group: 'Bot',
+    groupe: 'Bot',
     description: 'Tout le bot, sur tous les serveurs, et les enseignes /custom',
-    scope: 'global',
-    grants: PermLevel.BOT_OWNER,
-    managedBy: PermLevel.BOT_OWNER,
-    shortcut: 'owner',
+    portee: 'global',
+    accorde: Niveau.PROPRIETAIRE_BOT,
+    gerePar: Niveau.PROPRIETAIRE_BOT,
+    raccourci: 'owner',
   },
   {
     id: 'streamer',
-    label: 'Streamer',
+    libelle: 'Streamer',
     emoji: '🎥',
-    group: 'Serveur',
+    groupe: 'Serveur',
     description: 'Le streamer du serveur : tous les réglages et toutes les whitelists',
-    scope: 'guild',
-    grants: PermLevel.STREAMER,
-    managedBy: PermLevel.STREAMER,
-    shortcut: 'streamer',
+    portee: 'guild',
+    accorde: Niveau.STREAMER,
+    gerePar: Niveau.STREAMER,
+    raccourci: 'streamer',
   },
   {
     id: 'admin',
-    label: 'Admin',
+    libelle: 'Admin',
     emoji: '🛠️',
-    group: 'Serveur',
+    groupe: 'Serveur',
     description: 'Configurer le bot et distribuer les whitelists du staff',
-    scope: 'guild',
-    grants: PermLevel.ADMIN,
-    managedBy: PermLevel.STREAMER,
-    shortcut: 'admin',
+    portee: 'guild',
+    accorde: Niveau.ADMIN,
+    gerePar: Niveau.STREAMER,
+    raccourci: 'admin',
   },
   {
     id: 'sys',
-    label: 'Système',
+    libelle: 'Système',
     emoji: '🛡️',
-    group: 'Modération',
+    groupe: 'Modération',
     description: 'Sanctions, blacklist et commandes de modération sensibles',
-    scope: 'guild',
-    grants: PermLevel.MODERATOR,
-    managedBy: PermLevel.ADMIN,
-    shortcut: 'sys',
+    portee: 'guild',
+    accorde: Niveau.MODERATEUR,
+    gerePar: Niveau.ADMIN,
+    raccourci: 'sys',
   },
   {
     id: 'staff',
-    label: 'Staff',
+    libelle: 'Staff',
     emoji: '⭐',
-    group: 'Modération',
+    groupe: 'Modération',
     description: 'Tickets, suggestions, événements et annonces',
-    scope: 'guild',
-    grants: PermLevel.STAFF,
-    managedBy: PermLevel.ADMIN,
-    shortcut: 'staff',
+    portee: 'guild',
+    accorde: Niveau.STAFF,
+    gerePar: Niveau.ADMIN,
+    raccourci: 'staff',
   },
   {
     id: 'support',
-    label: 'Support',
+    libelle: 'Support',
     emoji: '🎫',
-    group: 'Modération',
+    groupe: 'Modération',
     description: 'Voir et répondre aux tickets',
-    scope: 'guild',
-    grants: PermLevel.SUPPORT,
-    managedBy: PermLevel.MODERATOR,
-    shortcut: 'support',
+    portee: 'guild',
+    accorde: Niveau.SUPPORT,
+    gerePar: Niveau.MODERATEUR,
+    raccourci: 'support',
   },
   {
     id: 'logs',
-    label: 'Logs',
+    libelle: 'Logs',
     emoji: '🔎',
-    group: 'Accès ciblés',
+    groupe: 'Accès ciblés',
     description: 'Voir les salons de logs et l’historique /logs',
-    scope: 'guild',
-    grants: null,
-    managedBy: PermLevel.ADMIN,
-    shortcut: 'wlogs',
+    portee: 'guild',
+    accorde: null,
+    gerePar: Niveau.ADMIN,
+    raccourci: 'wlogs',
   },
   {
     id: 'bypass',
-    label: 'Bypass',
+    libelle: 'Bypass',
     emoji: '🚧',
-    group: 'Accès ciblés',
+    groupe: 'Accès ciblés',
     description: 'Ignoré par l’automod, l’anti-raid et les salons de commandes',
-    scope: 'guild',
-    grants: null,
-    managedBy: PermLevel.ADMIN,
-    shortcut: 'bypass',
+    portee: 'guild',
+    accorde: null,
+    gerePar: Niveau.ADMIN,
+    raccourci: 'bypass',
   },
   {
     id: 'giveaway',
-    label: 'Giveaway',
+    libelle: 'Giveaway',
     emoji: '🎉',
-    group: 'Accès ciblés',
+    groupe: 'Accès ciblés',
     description: 'Lancer, terminer et relancer les giveaways',
-    scope: 'guild',
-    grants: null,
-    managedBy: PermLevel.ADMIN,
-    shortcut: 'wlgiveaway',
+    portee: 'guild',
+    accorde: null,
+    gerePar: Niveau.ADMIN,
+    raccourci: 'wlgiveaway',
   },
   {
     id: 'dj',
-    label: 'DJ',
+    libelle: 'DJ',
     emoji: '🎧',
-    group: 'Accès ciblés',
+    groupe: 'Accès ciblés',
     description: 'Piloter la musique pour tout le monde',
-    scope: 'guild',
-    grants: null,
-    managedBy: PermLevel.STAFF,
-    shortcut: 'dj',
+    portee: 'guild',
+    accorde: null,
+    gerePar: Niveau.STAFF,
+    raccourci: 'dj',
   },
 ];
 
-export function getWhitelist(id: string): WhitelistDefinition | undefined {
+export function lireWhitelist(id: string): DefinitionWhitelist | undefined {
   return WHITELISTS.find((w) => w.id === id);
 }
 
-function scopeFor(def: WhitelistDefinition, guildId: string | null): string {
-  return def.scope === 'global' ? 'global' : (guildId ?? 'global');
+function porteeDe(definition: DefinitionWhitelist, serveurId: string | null): string {
+  return definition.portee === 'global' ? 'global' : (serveurId ?? 'global');
 }
 
 // Cache par portée : les whitelists sont lues à chaque interaction.
 const cache = new Map<string, Map<string, Set<string>>>();
 
-function loadScope(scope: string): Map<string, Set<string>> {
-  let lists = cache.get(scope);
-  if (!lists) {
-    lists = new Map();
-    for (const row of all<{ list: string; user_id: string }>('SELECT list, user_id FROM whitelists WHERE scope = ?', scope)) {
-      let set = lists.get(row.list);
-      if (!set) lists.set(row.list, (set = new Set()));
-      set.add(row.user_id);
+function chargerPortee(portee: string): Map<string, Set<string>> {
+  let listes = cache.get(portee);
+  if (!listes) {
+    listes = new Map();
+    for (const rangee of lireTout<{ liste: string; utilisateur_id: string }>('SELECT liste, utilisateur_id FROM whitelists WHERE portee = ?', portee)) {
+      let ecrire = listes.get(rangee.liste);
+      if (!ecrire) listes.set(rangee.liste, (ecrire = new Set()));
+      ecrire.add(rangee.utilisateur_id);
     }
-    cache.set(scope, lists);
+    cache.set(portee, listes);
   }
-  return lists;
+  return listes;
 }
 
 /** Owners codés dans l'environnement : ils ne peuvent jamais être retirés. */
-export function isEnvOwner(userId: string): boolean {
-  return env.ownerIds.includes(userId);
+export function estProprietaireFixe(utilisateurId: string): boolean {
+  return environnement.proprietairesIds.includes(utilisateurId);
 }
 
-export function isBotOwner(userId: string): boolean {
-  return isEnvOwner(userId) || isWhitelisted('owner', userId, null);
+export function estProprietaireBot(utilisateurId: string): boolean {
+  return estProprietaireFixe(utilisateurId) || estWhitelist('owner', utilisateurId, null);
 }
 
-export function isWhitelisted(listId: WhitelistId, userId: string, guildId: string | null): boolean {
-  const def = getWhitelist(listId);
-  if (!def) return false;
-  if (listId === 'owner' && isEnvOwner(userId)) return true;
-  return loadScope(scopeFor(def, guildId)).get(listId)?.has(userId) ?? false;
+export function estWhitelist(listeId: WhitelistId, utilisateurId: string, serveurId: string | null): boolean {
+  const definition = lireWhitelist(listeId);
+  if (!definition) return false;
+  if (listeId === 'owner' && estProprietaireFixe(utilisateurId)) return true;
+  return chargerPortee(porteeDe(definition, serveurId)).get(listeId)?.has(utilisateurId) ?? false;
 }
 
-export function listMembers(listId: WhitelistId, guildId: string | null): string[] {
-  const def = getWhitelist(listId);
-  if (!def) return [];
-  const ids = [...(loadScope(scopeFor(def, guildId)).get(listId) ?? [])];
-  if (listId === 'owner') for (const id of env.ownerIds) if (!ids.includes(id)) ids.unshift(id);
+export function membresListe(listeId: WhitelistId, serveurId: string | null): string[] {
+  const definition = lireWhitelist(listeId);
+  if (!definition) return [];
+  const ids = [...(chargerPortee(porteeDe(definition, serveurId)).get(listeId) ?? [])];
+  if (listeId === 'owner') for (const id of environnement.proprietairesIds) if (!ids.includes(id)) ids.unshift(id);
   return ids;
 }
 
-export function userWhitelists(userId: string, guildId: string | null): WhitelistDefinition[] {
-  return WHITELISTS.filter((w) => isWhitelisted(w.id, userId, guildId));
+export function whitelistsMembre(utilisateurId: string, serveurId: string | null): DefinitionWhitelist[] {
+  return WHITELISTS.filter((w) => estWhitelist(w.id, utilisateurId, serveurId));
 }
 
 /** Niveau le plus élevé accordé par les whitelists d'un utilisateur. */
-export function whitelistLevel(userId: string, guildId: string | null): PermLevel {
-  let level = PermLevel.MEMBER;
-  for (const w of userWhitelists(userId, guildId)) if (w.grants !== null && w.grants > level) level = w.grants;
-  return level;
+export function niveauWhitelist(utilisateurId: string, serveurId: string | null): Niveau {
+  let niveau = Niveau.MEMBRE;
+  for (const w of whitelistsMembre(utilisateurId, serveurId)) if (w.accorde !== null && w.accorde > niveau) niveau = w.accorde;
+  return niveau;
 }
 
-export function addToWhitelist(listId: WhitelistId, userId: string, guildId: string | null, addedBy: string): boolean {
-  const def = getWhitelist(listId);
-  if (!def) throw new Error(`Whitelist inconnue : ${listId}`);
-  const scope = scopeFor(def, guildId);
-  const r = run(
-    'INSERT OR IGNORE INTO whitelists (scope, list, user_id, added_by, added_at) VALUES (?, ?, ?, ?, ?)',
-    scope,
-    listId,
-    userId,
-    addedBy,
+export function ajouterWhitelist(listeId: WhitelistId, utilisateurId: string, serveurId: string | null, ajoutePar: string): boolean {
+  const definition = lireWhitelist(listeId);
+  if (!definition) throw new Error(`Whitelist inconnue : ${listeId}`);
+  const portee = porteeDe(definition, serveurId);
+  const r = executer(
+    'INSERT OR IGNORE INTO whitelists (portee, liste, utilisateur_id, ajoute_par, ajoute_le) VALUES (?, ?, ?, ?, ?)',
+    portee,
+    listeId,
+    utilisateurId,
+    ajoutePar,
     Date.now(),
   );
-  cache.delete(scope);
+  cache.delete(portee);
   return r.changes > 0;
 }
 
-export function removeFromWhitelist(listId: WhitelistId, userId: string, guildId: string | null): boolean {
-  const def = getWhitelist(listId);
-  if (!def) throw new Error(`Whitelist inconnue : ${listId}`);
-  const scope = scopeFor(def, guildId);
-  const r = run('DELETE FROM whitelists WHERE scope = ? AND list = ? AND user_id = ?', scope, listId, userId);
-  cache.delete(scope);
+export function retirerWhitelist(listeId: WhitelistId, utilisateurId: string, serveurId: string | null): boolean {
+  const definition = lireWhitelist(listeId);
+  if (!definition) throw new Error(`Whitelist inconnue : ${listeId}`);
+  const portee = porteeDe(definition, serveurId);
+  const r = executer('DELETE FROM whitelists WHERE portee = ? AND liste = ? AND utilisateur_id = ?', portee, listeId, utilisateurId);
+  cache.delete(portee);
   return r.changes > 0;
 }
 
-export function whitelistEntry(listId: WhitelistId, userId: string, guildId: string | null): { added_by: string | null; added_at: number } | undefined {
-  const def = getWhitelist(listId);
-  if (!def) return undefined;
-  return get('SELECT added_by, added_at FROM whitelists WHERE scope = ? AND list = ? AND user_id = ?', scopeFor(def, guildId), listId, userId);
+export function entreeWhitelist(listeId: WhitelistId, utilisateurId: string, serveurId: string | null): { ajoute_par: string | null; ajoute_le: number } | undefined {
+  const definition = lireWhitelist(listeId);
+  if (!definition) return undefined;
+  return lire('SELECT ajoute_par, ajoute_le FROM whitelists WHERE portee = ? AND liste = ? AND utilisateur_id = ?', porteeDe(definition, serveurId), listeId, utilisateurId);
 }
 
-export function clearWhitelistCache(): void {
+export function viderCacheWhitelists(): void {
   cache.clear();
 }
 
 /** Peut-on donner/retirer cette whitelist ? (règle : strictement au-dessus, sauf owner/streamer) */
-export function canManageWhitelist(actorLevel: PermLevel, def: WhitelistDefinition, actorIsEnvOwner: boolean, actorIsGuildOwner: boolean): boolean {
-  if (def.id === 'owner') return actorIsEnvOwner;
-  if (def.id === 'streamer') return actorLevel >= PermLevel.BOT_OWNER || actorIsGuildOwner;
-  return actorLevel >= def.managedBy;
+export function peutGererWhitelist(niveauAuteur: Niveau, definition: DefinitionWhitelist, auteurProprietaireFixe: boolean, auteurProprietaireServeur: boolean): boolean {
+  if (definition.id === 'owner') return auteurProprietaireFixe;
+  if (definition.id === 'streamer') return niveauAuteur >= Niveau.PROPRIETAIRE_BOT || auteurProprietaireServeur;
+  return niveauAuteur >= definition.gerePar;
 }

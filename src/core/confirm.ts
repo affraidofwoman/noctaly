@@ -6,62 +6,62 @@ import {
   type ButtonInteraction,
   type RepliableInteraction,
 } from 'discord.js';
-import { warningEmbed } from './embeds';
-import { handleInteractionError, reply } from './interactions';
-import { shortId, TtlMap } from './sessions';
-import type { ComponentHandler } from './types';
+import { embedAvertissement } from './embeds';
+import { traiterErreurInteraction, repondre } from './interactions';
+import { idCourt, CarteExpirante } from './sessions';
+import type { GestionnaireComposant } from './types';
 
-interface ConfirmSession {
-  ownerId: string;
-  onConfirm(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
-  onCancel?(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
+interface SessionConfirmation {
+  proprietaireId: string;
+  surConfirmation(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
+  surAnnulation?(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
 }
 
-const sessions = new TtlMap<string, ConfirmSession>(2 * 60_000);
+const sessions = new CarteExpirante<string, SessionConfirmation>(2 * 60_000);
 
-export interface ConfirmOptions {
-  title?: string;
+export interface OptionsConfirmation {
+  titre?: string;
   description?: string;
-  confirmLabel?: string;
-  onConfirm(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
-  onCancel?(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
+  libelleConfirmation?: string;
+  surConfirmation(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
+  surAnnulation?(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
 }
 
 /** Demande une confirmation avant une action dangereuse. Réponse éphémère. */
-export async function askConfirmation(interaction: RepliableInteraction, options: ConfirmOptions): Promise<void> {
-  const id = shortId();
-  sessions.set(id, { ownerId: interaction.user.id, onConfirm: options.onConfirm, onCancel: options.onCancel });
-  const embed = warningEmbed(
+export async function demanderConfirmation(interaction: RepliableInteraction, options: OptionsConfirmation): Promise<void> {
+  const id = idCourt();
+  sessions.ecrire(id, { proprietaireId: interaction.user.id, surConfirmation: options.surConfirmation, surAnnulation: options.surAnnulation });
+  const embed = embedAvertissement(
     interaction.guild,
     `${options.description ?? 'Cette action est irréversible.'}\n\n-# Cette demande expire dans 2 minutes.`,
-    options.title ?? '⚠️ Êtes-vous sûr ?',
+    options.titre ?? '⚠️ Êtes-vous sûr ?',
   );
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`cf:${id}:yes`).setLabel(options.confirmLabel ?? 'Confirmer').setEmoji('✅').setStyle(ButtonStyle.Danger),
+  const rangee = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`cf:${id}:yes`).setLabel(options.libelleConfirmation ?? 'Confirmer').setEmoji('✅').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`cf:${id}:no`).setLabel('Annuler').setEmoji('❌').setStyle(ButtonStyle.Secondary),
   );
-  await reply(interaction, { embeds: [embed], components: [row], ephemeral: true });
+  await repondre(interaction, { embeds: [embed], components: [rangee], ephemeral: true });
 }
 
-export const confirmComponent: ComponentHandler = {
-  prefix: 'cf',
-  async button(interaction, [id, action]) {
-    const session = id ? sessions.get(id) : undefined;
+export const composantConfirmation: GestionnaireComposant = {
+  prefixe: 'cf',
+  async bouton(interaction, [id, action]) {
+    const session = id ? sessions.lire(id) : undefined;
     if (!session) {
       await interaction.update({ content: '⌛ Cette confirmation a expiré.', embeds: [], components: [] }).catch(() => undefined);
       return;
     }
-    if (interaction.user.id !== session.ownerId) {
+    if (interaction.user.id !== session.proprietaireId) {
       await interaction.reply({ content: '🔒 Cette confirmation ne te concerne pas.', flags: MessageFlags.Ephemeral });
       return;
     }
-    sessions.delete(id!);
+    sessions.supprimer(id!);
     try {
-      if (action === 'yes') await session.onConfirm(interaction);
-      else if (session.onCancel) await session.onCancel(interaction);
+      if (action === 'yes') await session.surConfirmation(interaction);
+      else if (session.surAnnulation) await session.surAnnulation(interaction);
       else await interaction.update({ content: '❌ Action annulée.', embeds: [], components: [] });
-    } catch (err) {
-      await handleInteractionError(interaction, err, 'confirmation');
+    } catch (echec) {
+      await traiterErreurInteraction(interaction, echec, 'confirmation');
     }
   },
 };

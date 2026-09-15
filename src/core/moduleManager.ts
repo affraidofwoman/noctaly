@@ -1,66 +1,66 @@
-import { all, run } from '../database/db';
-import type { BotModule } from './types';
+import { lireTout, executer } from '../database/db';
+import type { ModuleBot } from './types';
 
-const modules = new Map<string, BotModule>();
+const modules = new Map<string, ModuleBot>();
 const cache = new Map<string, Map<string, boolean>>();
 
-export function registerModules(list: BotModule[]): void {
+export function enregistrerModules(liste: ModuleBot[]): void {
   modules.clear();
-  for (const m of list) {
+  for (const m of liste) {
     if (modules.has(m.id)) throw new Error(`Module en double : ${m.id}`);
     modules.set(m.id, m);
   }
 }
 
-export function getModules(): BotModule[] {
+export function lireModules(): ModuleBot[] {
   return [...modules.values()];
 }
 
-export function getModule(id: string): BotModule | undefined {
+export function lireModule(id: string): ModuleBot | undefined {
   return modules.get(id);
 }
 
-function guildStates(guildId: string): Map<string, boolean> {
-  let states = cache.get(guildId);
-  if (!states) {
-    states = new Map();
-    for (const row of all<{ module: string; enabled: number }>('SELECT module, enabled FROM guild_modules WHERE guild_id = ?', guildId)) {
-      states.set(row.module, row.enabled === 1);
+function etatsServeur(serveurId: string): Map<string, boolean> {
+  let etats = cache.get(serveurId);
+  if (!etats) {
+    etats = new Map();
+    for (const rangee of lireTout<{ module: string; actif: number }>('SELECT module, actif FROM modules_serveurs WHERE serveur_id = ?', serveurId)) {
+      etats.set(rangee.module, rangee.actif === 1);
     }
-    cache.set(guildId, states);
+    cache.set(serveurId, etats);
   }
-  return states;
+  return etats;
 }
 
-export function isModuleEnabled(guildId: string | null | undefined, moduleId: string): boolean {
-  const mod = modules.get(moduleId);
+export function moduleActif(serveurId: string | null | undefined, moduleId: string): boolean {
+  const module = modules.get(moduleId);
   // Module retiré du registre : considéré comme inactif, sans jamais planter.
-  if (!mod) return false;
-  if (!mod.toggleable) return true;
-  if (!guildId) return mod.defaultEnabled;
-  const state = guildStates(guildId).get(moduleId);
-  return state ?? mod.defaultEnabled;
+  if (!module) return false;
+  if (!module.desactivable) return true;
+  if (!serveurId) return module.actifParDefaut;
+  const etat = etatsServeur(serveurId).get(moduleId);
+  return etat ?? module.actifParDefaut;
 }
 
-export function setModuleEnabled(guildId: string, moduleId: string, enabled: boolean): void {
-  const mod = modules.get(moduleId);
-  if (!mod) throw new Error(`Module inconnu : ${moduleId}`);
-  if (!mod.toggleable) return;
-  run(
-    `INSERT INTO guild_modules (guild_id, module, enabled) VALUES (?, ?, ?)
-     ON CONFLICT(guild_id, module) DO UPDATE SET enabled = excluded.enabled`,
-    guildId,
+export function activerModule(serveurId: string, moduleId: string, actif: boolean): void {
+  const module = modules.get(moduleId);
+  if (!module) throw new Error(`Module inconnu : ${moduleId}`);
+  if (!module.desactivable) return;
+  executer(
+    `INSERT INTO modules_serveurs (serveur_id, module, actif) VALUES (?, ?, ?)
+     ON CONFLICT(serveur_id, module) DO UPDATE SET actif = excluded.actif`,
+    serveurId,
     moduleId,
-    enabled ? 1 : 0,
+    actif ? 1 : 0,
   );
-  guildStates(guildId).set(moduleId, enabled);
+  etatsServeur(serveurId).set(moduleId, actif);
 }
 
-export function getModuleStates(guildId: string): { module: BotModule; enabled: boolean }[] {
-  return getModules().map((module) => ({ module, enabled: isModuleEnabled(guildId, module.id) }));
+export function lireEtatsModules(serveurId: string): { module: ModuleBot; enabled: boolean }[] {
+  return lireModules().map((module) => ({ module, enabled: moduleActif(serveurId, module.id) }));
 }
 
-export function clearModuleCache(guildId?: string): void {
-  if (guildId) cache.delete(guildId);
+export function viderCacheModules(serveurId?: string): void {
+  if (serveurId) cache.delete(serveurId);
   else cache.clear();
 }

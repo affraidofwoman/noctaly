@@ -5,134 +5,134 @@ import {
   type AnySelectMenuInteraction,
   type GuildMember,
 } from 'discord.js';
-import { getDispatcher } from '../../core/bot';
-import { requiredLevel } from '../../core/dispatcher';
-import { brandEmbed, brandName } from '../../core/embeds';
-import { getConfig } from '../../core/guildConfig';
-import { isModuleEnabled } from '../../core/moduleManager';
-import { getLevel, hasAccess, levelLabel } from '../../core/permissions';
-import { truncate } from '../../core/text';
-import { trashButton } from '../../core/trash';
-import { row } from '../../core/ui';
-import { HELP_CATEGORIES, PermLevel, type HelpCategory } from '../../core/types';
+import { lireAiguilleur } from '../../core/bot';
+import { niveauRequis } from '../../core/dispatcher';
+import { embedEnseigne, nomEnseigne } from '../../core/embeds';
+import { lireConfig } from '../../core/guildConfig';
+import { moduleActif } from '../../core/moduleManager';
+import { lireNiveau, aAcces, libelleNiveau } from '../../core/permissions';
+import { tronquer } from '../../core/text';
+import { boutonCorbeille } from '../../core/trash';
+import { rangee } from '../../core/ui';
+import { CATEGORIES_AIDE, Niveau, type CategorieAide } from '../../core/types';
 
-export interface HelpLine {
-  text: string;
-  sort: string;
+export interface LigneAide {
+  texte: string;
+  tri: string;
 }
 
 /** Lignes d'aide d'une section : uniquement ce que le membre peut lancer, slash et préfixes. */
-export function helpLines(member: GuildMember, category: HelpCategory): HelpLine[] {
-  const dispatcher = getDispatcher();
-  const guildId = member.guild.id;
-  const prefixes = getConfig(guildId).prefixes;
-  const lines: HelpLine[] = [];
+export function lignesAide(membre: GuildMember, categorie: CategorieAide): LigneAide[] {
+  const aiguilleur = lireAiguilleur();
+  const serveurId = membre.guild.id;
+  const prefixes = lireConfig(serveurId).prefixes;
+  const lignes: LigneAide[] = [];
 
-  for (const { command, module } of dispatcher.commands.values()) {
-    if (command.category !== category || !isModuleEnabled(guildId, module.id)) continue;
-    const json = command.data.toJSON();
-    const subs = (json.options ?? []).filter(
+  for (const { commande, module } of aiguilleur.commandes.values()) {
+    if (commande.categorie !== categorie || !moduleActif(serveurId, module.id)) continue;
+    const json = commande.donnees.toJSON();
+    const sousCommandes = (json.options ?? []).filter(
       (o) => o.type === ApplicationCommandOptionType.Subcommand || o.type === ApplicationCommandOptionType.SubcommandGroup,
     );
-    const allowed = (group: string | null, sub: string | null) => hasAccess(member, requiredLevel(command, group, sub), command.whitelist);
-    if (subs.length === 0) {
-      if (allowed(null, null)) lines.push({ text: `**/${json.name}** — ${json.description}`, sort: `/${json.name}` });
+    const autorise = (groupe: string | null, sousCommande: string | null) => aAcces(membre, niveauRequis(commande, groupe, sousCommande), commande.whitelist);
+    if (sousCommandes.length === 0) {
+      if (autorise(null, null)) lignes.push({ texte: `**/${json.name}** — ${json.description}`, tri: `/${json.name}` });
       continue;
     }
-    for (const sub of subs) {
-      if (sub.type === ApplicationCommandOptionType.SubcommandGroup) {
-        for (const inner of (sub.options ?? []) as APIApplicationCommandOption[]) {
-          if (allowed(sub.name, inner.name)) {
-            lines.push({ text: `**/${json.name} ${sub.name} ${inner.name}** — ${inner.description}`, sort: `/${json.name} ${sub.name} ${inner.name}` });
+    for (const sousCommande of sousCommandes) {
+      if (sousCommande.type === ApplicationCommandOptionType.SubcommandGroup) {
+        for (const interne of (sousCommande.options ?? []) as APIApplicationCommandOption[]) {
+          if (autorise(sousCommande.name, interne.name)) {
+            lignes.push({ texte: `**/${json.name} ${sousCommande.name} ${interne.name}** — ${interne.description}`, tri: `/${json.name} ${sousCommande.name} ${interne.name}` });
           }
         }
-      } else if (allowed(null, sub.name)) {
-        lines.push({ text: `**/${json.name} ${sub.name}** — ${sub.description}`, sort: `/${json.name} ${sub.name}` });
+      } else if (autorise(null, sousCommande.name)) {
+        lignes.push({ texte: `**/${json.name} ${sousCommande.name}** — ${sousCommande.description}`, tri: `/${json.name} ${sousCommande.name}` });
       }
     }
   }
 
-  const seen = new Set<string>();
-  for (const { command, module } of dispatcher.prefixCommands.values()) {
-    if (command.category !== category || !isModuleEnabled(guildId, module.id)) continue;
-    const key = `${command.domain}:${command.name}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (!hasAccess(member, command.level ?? PermLevel.MEMBER, command.whitelist)) continue;
-    const trigger = `${prefixes[command.domain]}${command.name}`;
-    const usage = command.usage ? ` \`${command.usage}\`` : '';
-    lines.push({ text: `**${trigger}**${usage} — ${command.description}`, sort: `~${trigger}` });
+  const vu = new Set<string>();
+  for (const { commande, module } of aiguilleur.commandesPrefixe.values()) {
+    if (commande.categorie !== categorie || !moduleActif(serveurId, module.id)) continue;
+    const cle = `${commande.domaine}:${commande.nom}`;
+    if (vu.has(cle)) continue;
+    vu.add(cle);
+    if (!aAcces(membre, commande.niveau ?? Niveau.MEMBRE, commande.whitelist)) continue;
+    const declencheur = `${prefixes[commande.domaine]}${commande.nom}`;
+    const usage = commande.usage ? ` \`${commande.usage}\`` : '';
+    lignes.push({ texte: `**${declencheur}**${usage} — ${commande.description}`, tri: `~${declencheur}` });
   }
 
-  return lines.sort((a, b) => a.sort.localeCompare(b.sort, 'fr'));
+  return lignes.sort((a, b) => a.tri.localeCompare(b.tri, 'fr'));
 }
 
-function sectionsFor(member: GuildMember): { category: HelpCategory; lines: HelpLine[] }[] {
-  return (Object.keys(HELP_CATEGORIES) as HelpCategory[])
-    .map((category) => ({ category, lines: helpLines(member, category) }))
+function sectionsPour(membre: GuildMember): { categorie: CategorieAide; lines: LigneAide[] }[] {
+  return (Object.keys(CATEGORIES_AIDE) as CategorieAide[])
+    .map((categorie) => ({ categorie, lines: lignesAide(membre, categorie) }))
     .filter((s) => s.lines.length > 0);
 }
 
-function menu(member: GuildMember, sections: { category: HelpCategory; lines: HelpLine[] }[], selected?: HelpCategory) {
-  const select = new StringSelectMenuBuilder()
-    .setCustomId(`help:cat:${member.id}`)
+function menu(membre: GuildMember, sections: { categorie: CategorieAide; lines: LigneAide[] }[], selectionne?: CategorieAide) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`help:cat:${membre.id}`)
     .setPlaceholder('Ouvrir une section')
     .addOptions([
-      { label: 'Vue d’ensemble', value: 'home', emoji: '📚', default: !selected },
+      { label: 'Vue d’ensemble', value: 'home', emoji: '📚', default: !selectionne },
       ...sections.slice(0, 24).map((s) => ({
-        label: HELP_CATEGORIES[s.category].label,
-        value: s.category,
-        emoji: HELP_CATEGORIES[s.category].emoji,
+        label: CATEGORIES_AIDE[s.categorie].label,
+        value: s.categorie,
+        emoji: CATEGORIES_AIDE[s.categorie].emoji,
         description: `${s.lines.length} commande${s.lines.length > 1 ? 's' : ''}`,
-        default: s.category === selected,
+        default: s.categorie === selectionne,
       })),
     ]);
-  return [row(select), row(trashButton(member.guild.id, member.id))];
+  return [rangee(menu), rangee(boutonCorbeille(membre.guild.id, membre.id))];
 }
 
 /** Écran d'accueil : le tableau des sections, comme sur Airline. */
-export function helpHome(member: GuildMember) {
-  const sections = sectionsFor(member);
-  const embed = brandEmbed(member.guild)
+export function accueilAide(membre: GuildMember) {
+  const sections = sectionsPour(membre);
+  const embed = embedEnseigne(membre.guild)
     .setTitle('📚 Tes commandes')
-    .setDescription(`Uniquement celles que tu peux lancer — la liste change avec tes accès.\n-# Ton accès : **${levelLabel(getLevel(member))}**`)
-    .setFooter({ text: `${brandName(member.guild)} · choisis une section pour tout voir` });
+    .setDescription(`Uniquement celles que tu peux lancer — la liste change avec tes accès.\n-# Ton accès : **${libelleNiveau(lireNiveau(membre))}**`)
+    .setFooter({ text: `${nomEnseigne(membre.guild)} · choisis une section pour tout voir` });
 
-  let size = 0;
+  let taille = 0;
   for (const s of sections.slice(0, 24)) {
-    const info = HELP_CATEGORIES[s.category];
-    const preview = s.lines.slice(0, 4).map((l) => l.text.split(' — ')[0]).join('\n');
-    const more = s.lines.length > 4 ? `\n-# +${s.lines.length - 4} autre${s.lines.length - 4 > 1 ? 's' : ''}` : '';
-    const value = truncate(`${preview}${more}`, 1024);
-    size += value.length;
-    if (size > 5000) break;
-    embed.addFields({ name: `${info.emoji} ${info.label}`, value, inline: true });
+    const info = CATEGORIES_AIDE[s.categorie];
+    const apercu = s.lines.slice(0, 4).map((l) => l.texte.split(' — ')[0]).join('\n');
+    const plus = s.lines.length > 4 ? `\n-# +${s.lines.length - 4} autre${s.lines.length - 4 > 1 ? 's' : ''}` : '';
+    const valeur = tronquer(`${apercu}${plus}`, 1024);
+    taille += valeur.length;
+    if (taille > 5000) break;
+    embed.addFields({ name: `${info.emoji} ${info.label}`, value: valeur, inline: true });
   }
-  return { embeds: [embed], components: menu(member, sections) };
+  return { embeds: [embed], components: menu(membre, sections) };
 }
 
-export function helpSection(member: GuildMember, category: HelpCategory) {
-  const sections = sectionsFor(member);
-  const current = sections.find((s) => s.category === category);
-  if (!current) return helpHome(member);
-  const info = HELP_CATEGORIES[category];
-  const embed = brandEmbed(member.guild)
+export function sectionAide(membre: GuildMember, categorie: CategorieAide) {
+  const sections = sectionsPour(membre);
+  const actuel = sections.find((s) => s.categorie === categorie);
+  if (!actuel) return accueilAide(membre);
+  const info = CATEGORIES_AIDE[categorie];
+  const embed = embedEnseigne(membre.guild)
     .setTitle(`${info.emoji} ${info.label}`)
-    .setDescription(truncate(current.lines.map((l) => l.text).join('\n'), 4000))
-    .setFooter({ text: `${current.lines.length} commande(s) · ${brandName(member.guild)}` });
-  return { embeds: [embed], components: menu(member, sections, category) };
+    .setDescription(tronquer(actuel.lines.map((l) => l.texte).join('\n'), 4000))
+    .setFooter({ text: `${actuel.lines.length} commande(s) · ${nomEnseigne(membre.guild)}` });
+  return { embeds: [embed], components: menu(membre, sections, categorie) };
 }
 
-export async function onHelpSelect(interaction: AnySelectMenuInteraction<'cached'>, ownerId: string | undefined): Promise<void> {
+export async function surMenuAide(interaction: AnySelectMenuInteraction<'cached'>, proprietaireId: string | undefined): Promise<void> {
   if (!interaction.isStringSelectMenu()) return;
-  if (ownerId && ownerId !== interaction.user.id) {
-    await interaction.reply({ ...helpHome(interaction.member), flags: 64 });
+  if (proprietaireId && proprietaireId !== interaction.user.id) {
+    await interaction.reply({ ...accueilAide(interaction.member), flags: 64 });
     return;
   }
-  const value = interaction.values[0];
-  if (!value || value === 'home') {
-    await interaction.update(helpHome(interaction.member));
+  const valeur = interaction.values[0];
+  if (!valeur || valeur === 'home') {
+    await interaction.update(accueilAide(interaction.member));
     return;
   }
-  await interaction.update(helpSection(interaction.member, value as HelpCategory));
+  await interaction.update(sectionAide(interaction.member, valeur as CategorieAide));
 }

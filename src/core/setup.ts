@@ -12,15 +12,15 @@ import {
   type MessageActionRowComponentBuilder,
   type ModalSubmitInteraction,
 } from 'discord.js';
-import { brandEmbed } from './embeds';
-import { getConfig, updateConfig, type GuildConfig } from './guildConfig';
-import { getModule, isModuleEnabled, setModuleEnabled } from './moduleManager';
-import { canBotManageRole } from './permissions';
-import { truncate } from './text';
-import { button, buildModal, row, type ModalField } from './ui';
-import { UserError } from './errors';
+import { embedEnseigne } from './embeds';
+import { lireConfig, modifierConfig, type ConfigServeur } from './guildConfig';
+import { lireModule, moduleActif, activerModule } from './moduleManager';
+import { botPeutGererRole } from './permissions';
+import { tronquer } from './text';
+import { bouton, construireFormulaire, rangee, type ChampFenetre } from './ui';
+import { ErreurUtilisateur } from './errors';
 
-export type SetupSectionId =
+export type SectionReglage =
   | 'welcome'
   | 'logs'
   | 'tickets'
@@ -33,7 +33,7 @@ export type SetupSectionId =
   | 'security'
   | 'appearance';
 
-export const SETUP_SECTIONS: Record<SetupSectionId, { label: string; emoji: string }> = {
+export const SECTIONS_REGLAGE: Record<SectionReglage, { label: string; emoji: string }> = {
   welcome: { label: 'Bienvenue', emoji: '👋' },
   logs: { label: 'Logs', emoji: '📜' },
   tickets: { label: 'Tickets', emoji: '🎫' },
@@ -47,176 +47,176 @@ export const SETUP_SECTIONS: Record<SetupSectionId, { label: string; emoji: stri
   appearance: { label: 'Apparence', emoji: '🎨' },
 };
 
-interface BaseField {
-  key: string;
-  label: string;
-  help?: string;
+interface ChampBase {
+  cle: string;
+  libelle: string;
+  aide?: string;
 }
 
-export type SetupField =
-  | (BaseField & {
+export type ChampReglage =
+  | (ChampBase & {
       kind: 'channel';
       channelTypes?: ChannelType[];
-      get(c: GuildConfig): string | null;
-      set(c: GuildConfig, v: string | null): void;
+      get(c: ConfigServeur): string | null;
+      set(c: ConfigServeur, v: string | null): void;
     })
-  | (BaseField & {
+  | (ChampBase & {
       kind: 'channels';
       channelTypes?: ChannelType[];
       max?: number;
-      get(c: GuildConfig): string[];
-      set(c: GuildConfig, v: string[]): void;
+      get(c: ConfigServeur): string[];
+      set(c: ConfigServeur, v: string[]): void;
     })
-  | (BaseField & { kind: 'role'; assignable?: boolean; get(c: GuildConfig): string | null; set(c: GuildConfig, v: string | null): void })
-  | (BaseField & {
+  | (ChampBase & { kind: 'role'; attribuable?: boolean; get(c: ConfigServeur): string | null; set(c: ConfigServeur, v: string | null): void })
+  | (ChampBase & {
       kind: 'roles';
-      assignable?: boolean;
+      attribuable?: boolean;
       max?: number;
-      get(c: GuildConfig): string[];
-      set(c: GuildConfig, v: string[]): void;
+      get(c: ConfigServeur): string[];
+      set(c: ConfigServeur, v: string[]): void;
     })
-  | (BaseField & { kind: 'toggle'; get(c: GuildConfig): boolean; set(c: GuildConfig, v: boolean): void })
-  | (BaseField & {
+  | (ChampBase & { kind: 'toggle'; get(c: ConfigServeur): boolean; set(c: ConfigServeur, v: boolean): void })
+  | (ChampBase & {
       kind: 'text';
       long?: boolean;
       maxLength?: number;
       required?: boolean;
-      get(c: GuildConfig): string;
-      set(c: GuildConfig, v: string): void;
+      get(c: ConfigServeur): string;
+      set(c: ConfigServeur, v: string): void;
       validate?(v: string): string | null;
     })
-  | (BaseField & {
+  | (ChampBase & {
       kind: 'number';
       min: number;
       max: number;
       unit?: string;
-      get(c: GuildConfig): number;
-      set(c: GuildConfig, v: number): void;
+      get(c: ConfigServeur): number;
+      set(c: ConfigServeur, v: number): void;
     })
-  | (BaseField & {
+  | (ChampBase & {
       kind: 'choice';
       options: { value: string; label: string; emoji?: string }[];
-      get(c: GuildConfig): string;
-      set(c: GuildConfig, v: string): void;
+      get(c: ConfigServeur): string;
+      set(c: ConfigServeur, v: string): void;
     })
-  | (BaseField & {
+  | (ChampBase & {
       kind: 'multichoice';
       options: { value: string; label: string; emoji?: string }[];
-      get(c: GuildConfig): string[];
-      set(c: GuildConfig, v: string[]): void;
+      get(c: ConfigServeur): string[];
+      set(c: ConfigServeur, v: string[]): void;
     });
 
-export interface SetupAction {
+export interface ActionReglage {
   id: string;
-  label: string;
+  libelle: string;
   emoji: string;
   style?: ButtonStyle;
-  run(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
+  executer(interaction: ButtonInteraction<'cached'>): Promise<unknown>;
 }
 
-export interface SetupPage {
+export interface PageReglage {
   id: string;
-  section: SetupSectionId;
-  title: string;
+  section: SectionReglage;
+  titre: string;
   emoji: string;
   description: string;
   /** Module dont l'activation est proposée sur la page. */
   moduleId?: string;
-  fields: SetupField[];
-  actions?: SetupAction[];
-  order?: number;
+  champs: ChampReglage[];
+  actions?: ActionReglage[];
+  ordre?: number;
 }
 
-const pages = new Map<string, SetupPage>();
+const pages = new Map<string, PageReglage>();
 
-export function registerSetupPages(list: SetupPage[]): void {
-  for (const page of list) {
+export function enregistrerPagesReglage(liste: PageReglage[]): void {
+  for (const page of liste) {
     if (pages.has(page.id)) throw new Error(`Page de configuration en double : ${page.id}`);
-    validatePageLayout(page);
+    verifierMisePage(page);
     pages.set(page.id, page);
   }
 }
 
-export function clearSetupPages(): void {
+export function viderPagesReglage(): void {
   pages.clear();
 }
 
-export function getSetupPage(id: string): SetupPage | undefined {
+export function lirePageReglage(id: string): PageReglage | undefined {
   return pages.get(id);
 }
 
-export function pagesForSection(section: SetupSectionId): SetupPage[] {
-  return [...pages.values()].filter((p) => p.section === section).sort((a, b) => (a.order ?? 50) - (b.order ?? 50));
+export function pagesDeSection(section: SectionReglage): PageReglage[] {
+  return [...pages.values()].filter((p) => p.section === section).sort((a, b) => (a.ordre ?? 50) - (b.ordre ?? 50));
 }
 
-const SELECT_KINDS = new Set(['channel', 'channels', 'role', 'roles', 'choice', 'multichoice']);
+const GENRES_MENUS = new Set(['channel', 'channels', 'role', 'roles', 'choice', 'multichoice']);
 
 /** Vérifie qu'une page tient dans les 5 rangées de composants autorisées par Discord. */
-export function validatePageLayout(page: SetupPage): void {
-  const selects = page.fields.filter((f) => SELECT_KINDS.has(f.kind)).length;
-  const toggles = page.fields.filter((f) => f.kind === 'toggle').length;
-  const texts = page.fields.filter((f) => f.kind === 'text' || f.kind === 'number').length;
-  if (texts > 5) throw new Error(`Page ${page.id} : 5 champs texte maximum`);
-  const controls = (page.moduleId ? 1 : 0) + (texts ? 1 : 0) + (page.actions?.length ?? 0) + 1;
-  const rows = selects + Math.ceil(toggles / 5) + Math.ceil(controls / 5);
-  if (rows > 5) throw new Error(`Page ${page.id} : trop de composants (${rows} rangées)`);
+export function verifierMisePage(page: PageReglage): void {
+  const menus = page.champs.filter((f) => GENRES_MENUS.has(f.kind)).length;
+  const bascules = page.champs.filter((f) => f.kind === 'toggle').length;
+  const textes = page.champs.filter((f) => f.kind === 'text' || f.kind === 'number').length;
+  if (textes > 5) throw new Error(`Page ${page.id} : 5 champs texte maximum`);
+  const controles = (page.moduleId ? 1 : 0) + (textes ? 1 : 0) + (page.actions?.length ?? 0) + 1;
+  const rangees = menus + Math.ceil(bascules / 5) + Math.ceil(controles / 5);
+  if (rangees > 5) throw new Error(`Page ${page.id} : trop de composants (${rangees} rangées)`);
 }
 
-function displayValue(guild: Guild, field: SetupField, cfg: GuildConfig): string {
-  const none = '*non défini*';
-  switch (field.kind) {
+function valeurAffichee(serveur: Guild, champ: ChampReglage, reglages: ConfigServeur): string {
+  const aucun = '*non défini*';
+  switch (champ.kind) {
     case 'channel': {
-      const v = field.get(cfg);
-      return v ? `<#${v}>` : none;
+      const v = champ.get(reglages);
+      return v ? `<#${v}>` : aucun;
     }
     case 'channels': {
-      const v = field.get(cfg);
-      return v.length ? v.map((id) => `<#${id}>`).join(' ') : none;
+      const v = champ.get(reglages);
+      return v.length ? v.map((id) => `<#${id}>`).join(' ') : aucun;
     }
     case 'role': {
-      const v = field.get(cfg);
-      if (!v) return none;
-      const role = guild.roles.cache.get(v);
-      const warn = field.assignable && role && !canBotManageRole(guild, role) ? ' ⚠️ *rôle au-dessus du bot*' : '';
-      return `<@&${v}>${warn}`;
+      const v = champ.get(reglages);
+      if (!v) return aucun;
+      const role = serveur.roles.cache.get(v);
+      const avertir = champ.attribuable && role && !botPeutGererRole(serveur, role) ? ' ⚠️ *rôle au-dessus du bot*' : '';
+      return `<@&${v}>${avertir}`;
     }
     case 'roles': {
-      const v = field.get(cfg);
-      if (!v.length) return none;
-      const blocked = field.assignable
+      const v = champ.get(reglages);
+      if (!v.length) return aucun;
+      const bloques = champ.attribuable
         ? v.filter((id) => {
-            const r = guild.roles.cache.get(id);
-            return r && !canBotManageRole(guild, r);
+            const r = serveur.roles.cache.get(id);
+            return r && !botPeutGererRole(serveur, r);
           })
         : [];
-      return v.map((id) => `<@&${id}>`).join(' ') + (blocked.length ? `\n⚠️ ${blocked.length} rôle(s) au-dessus du bot` : '');
+      return v.map((id) => `<@&${id}>`).join(' ') + (bloques.length ? `\n⚠️ ${bloques.length} rôle(s) au-dessus du bot` : '');
     }
     case 'toggle':
-      return field.get(cfg) ? '🟢 Activé' : '🔴 Désactivé';
+      return champ.get(reglages) ? '🟢 Activé' : '🔴 Désactivé';
     case 'text': {
-      const v = field.get(cfg);
-      return v ? `>>> ${truncate(v, 180)}` : none;
+      const v = champ.get(reglages);
+      return v ? `>>> ${tronquer(v, 180)}` : aucun;
     }
     case 'number':
-      return `\`${field.get(cfg)}\`${field.unit ? ` ${field.unit}` : ''}`;
+      return `\`${champ.get(reglages)}\`${champ.unit ? ` ${champ.unit}` : ''}`;
     case 'choice': {
-      const v = field.get(cfg);
-      const opt = field.options.find((o) => o.value === v);
-      return opt ? `${opt.emoji ?? ''} ${opt.label}`.trim() : none;
+      const v = champ.get(reglages);
+      const option = champ.options.find((o) => o.value === v);
+      return option ? `${option.emoji ?? ''} ${option.label}`.trim() : aucun;
     }
     case 'multichoice': {
-      const v = field.get(cfg);
-      return field.options
+      const v = champ.get(reglages);
+      return champ.options
         .filter((o) => v.includes(o.value))
         .map((o) => `${o.emoji ?? ''} ${o.label}`.trim())
-        .join(', ') || none;
+        .join(', ') || aucun;
     }
   }
 }
 
-export function renderHome(guild: Guild) {
-  const cfg = getConfig(guild.id);
-  const embed = brandEmbed(guild)
+export function afficherAccueil(serveur: Guild) {
+  const reglages = lireConfig(serveur.id);
+  const embed = embedEnseigne(serveur)
     .setTitle('🤖 CONFIGURATION DU SERVEUR')
     .setDescription(
       [
@@ -226,267 +226,267 @@ export function renderHome(guild: Guild) {
         'Chaque section est indépendante : configure uniquement ce dont tu as besoin.',
         '',
         '💡 *Astuce : `/quicksetup` crée automatiquement les salons de base.*',
-        cfg.setup.completedAt ? `\n✅ Dernière configuration terminée <t:${Math.floor(cfg.setup.completedAt / 1000)}:R>.` : '',
+        reglages.assistant.termineLe ? `\n✅ Dernière configuration terminée <t:${Math.floor(reglages.assistant.termineLe / 1000)}:R>.` : '',
       ].join('\n'),
     );
-  const sectionButtons = (Object.keys(SETUP_SECTIONS) as SetupSectionId[])
-    .filter((s) => pagesForSection(s).length > 0)
-    .map((s) => button(`setup:sec:${s}`, SETUP_SECTIONS[s].label, ButtonStyle.Secondary, SETUP_SECTIONS[s].emoji));
-  sectionButtons.push(button('setup:done', 'Terminer', ButtonStyle.Success, '✅'));
-  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-  for (let i = 0; i < sectionButtons.length && rows.length < 5; i += 4) rows.push(row(...sectionButtons.slice(i, i + 4)));
-  return { embeds: [embed], components: rows };
+  const boutonsSections = (Object.keys(SECTIONS_REGLAGE) as SectionReglage[])
+    .filter((s) => pagesDeSection(s).length > 0)
+    .map((s) => bouton(`setup:sec:${s}`, SECTIONS_REGLAGE[s].label, ButtonStyle.Secondary, SECTIONS_REGLAGE[s].emoji));
+  boutonsSections.push(bouton('setup:done', 'Terminer', ButtonStyle.Success, '✅'));
+  const rangees: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let i = 0; i < boutonsSections.length && rangees.length < 5; i += 4) rangees.push(rangee(...boutonsSections.slice(i, i + 4)));
+  return { embeds: [embed], components: rangees };
 }
 
-export function renderSection(guild: Guild, section: SetupSectionId) {
-  const list = pagesForSection(section);
-  if (list.length === 1) return renderPage(guild, list[0]!);
-  const info = SETUP_SECTIONS[section];
-  const embed = brandEmbed(guild)
+export function afficherSection(serveur: Guild, section: SectionReglage) {
+  const liste = pagesDeSection(section);
+  if (liste.length === 1) return afficherPage(serveur, liste[0]!);
+  const info = SECTIONS_REGLAGE[section];
+  const embed = embedEnseigne(serveur)
     .setTitle(`${info.emoji} ${info.label.toUpperCase()}`)
     .setDescription(
-      list
+      liste
         .map((p) => {
-          const status = p.moduleId ? (isModuleEnabled(guild.id, p.moduleId) ? '🟢' : '🔴') : '⚙️';
-          return `${status} ${p.emoji} **${p.title}**\n-# ${p.description}`;
+          const statut = p.moduleId ? (moduleActif(serveur.id, p.moduleId) ? '🟢' : '🔴') : '⚙️';
+          return `${statut} ${p.emoji} **${p.titre}**\n-# ${p.description}`;
         })
         .join('\n'),
     );
-  const buttons = list.map((p) => button(`setup:page:${p.id}`, p.title, ButtonStyle.Primary, p.emoji));
-  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-  for (let i = 0; i < buttons.length && rows.length < 4; i += 5) rows.push(row(...buttons.slice(i, i + 5)));
-  rows.push(row(button('setup:home', 'Retour', ButtonStyle.Secondary, '⬅️')));
-  return { embeds: [embed], components: rows };
+  const boutons = liste.map((p) => bouton(`setup:page:${p.id}`, p.titre, ButtonStyle.Primary, p.emoji));
+  const rangees: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let i = 0; i < boutons.length && rangees.length < 4; i += 5) rangees.push(rangee(...boutons.slice(i, i + 5)));
+  rangees.push(rangee(bouton('setup:home', 'Retour', ButtonStyle.Secondary, '⬅️')));
+  return { embeds: [embed], components: rangees };
 }
 
-export function renderPage(guild: Guild, page: SetupPage, notice?: string) {
-  const cfg = getConfig(guild.id);
-  const embed = brandEmbed(guild).setTitle(`${page.emoji} ${page.title.toUpperCase()}`);
-  const lines = [page.description];
+export function afficherPage(serveur: Guild, page: PageReglage, avertissement?: string) {
+  const reglages = lireConfig(serveur.id);
+  const embed = embedEnseigne(serveur).setTitle(`${page.emoji} ${page.titre.toUpperCase()}`);
+  const lignes = [page.description];
   if (page.moduleId) {
-    const mod = getModule(page.moduleId);
-    lines.push('', `**Module ${mod?.name ?? page.moduleId} :** ${isModuleEnabled(guild.id, page.moduleId) ? '🟢 Activé' : '🔴 Désactivé'}`);
+    const module = lireModule(page.moduleId);
+    lignes.push('', `**Module ${module?.nom ?? page.moduleId} :** ${moduleActif(serveur.id, page.moduleId) ? '🟢 Activé' : '🔴 Désactivé'}`);
   }
-  if (notice) lines.push('', notice);
-  embed.setDescription(lines.join('\n'));
-  for (const field of page.fields.slice(0, 25)) {
+  if (avertissement) lignes.push('', avertissement);
+  embed.setDescription(lignes.join('\n'));
+  for (const champ of page.champs.slice(0, 25)) {
     embed.addFields({
-      name: field.label,
-      value: truncate(`${displayValue(guild, field, cfg)}${field.help ? `\n-# ${field.help}` : ''}`, 1024),
-      inline: field.kind === 'toggle' || field.kind === 'number',
+      name: champ.libelle,
+      value: tronquer(`${valeurAffichee(serveur, champ, reglages)}${champ.aide ? `\n-# ${champ.aide}` : ''}`, 1024),
+      inline: champ.kind === 'toggle' || champ.kind === 'number',
     });
   }
 
-  const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
-  for (const field of page.fields) {
-    const id = `setup:sel:${page.id}:${field.key}`;
-    const placeholder = `${field.label}`.slice(0, 100);
-    if (field.kind === 'channel' || field.kind === 'channels') {
+  const rangees: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+  for (const champ of page.champs) {
+    const id = `setup:sel:${page.id}:${champ.cle}`;
+    const indication = `${champ.libelle}`.slice(0, 100);
+    if (champ.kind === 'channel' || champ.kind === 'channels') {
       const menu = new ChannelSelectMenuBuilder()
         .setCustomId(id)
-        .setPlaceholder(placeholder)
+        .setPlaceholder(indication)
         .setMinValues(0)
-        .setMaxValues(field.kind === 'channel' ? 1 : Math.min(field.max ?? 25, 25))
-        .setChannelTypes(...(field.channelTypes ?? [ChannelType.GuildText, ChannelType.GuildAnnouncement]));
-      const current = field.kind === 'channel' ? [field.get(cfg)].filter((v): v is string => !!v) : field.get(cfg);
-      const valid = current.filter((c) => guild.channels.cache.has(c)).slice(0, 25);
-      if (valid.length) menu.setDefaultChannels(...valid);
-      rows.push(row(menu));
-    } else if (field.kind === 'role' || field.kind === 'roles') {
+        .setMaxValues(champ.kind === 'channel' ? 1 : Math.min(champ.max ?? 25, 25))
+        .setChannelTypes(...(champ.channelTypes ?? [ChannelType.GuildText, ChannelType.GuildAnnouncement]));
+      const actuel = champ.kind === 'channel' ? [champ.get(reglages)].filter((v): v is string => !!v) : champ.get(reglages);
+      const valides = actuel.filter((c) => serveur.channels.cache.has(c)).slice(0, 25);
+      if (valides.length) menu.setDefaultChannels(...valides);
+      rangees.push(rangee(menu));
+    } else if (champ.kind === 'role' || champ.kind === 'roles') {
       const menu = new RoleSelectMenuBuilder()
         .setCustomId(id)
-        .setPlaceholder(placeholder)
+        .setPlaceholder(indication)
         .setMinValues(0)
-        .setMaxValues(field.kind === 'role' ? 1 : Math.min(field.max ?? 25, 25));
-      const current = field.kind === 'role' ? [field.get(cfg)].filter((v): v is string => !!v) : field.get(cfg);
-      const valid = current.filter((r) => guild.roles.cache.has(r)).slice(0, 25);
-      if (valid.length) menu.setDefaultRoles(...valid);
-      rows.push(row(menu));
-    } else if (field.kind === 'choice' || field.kind === 'multichoice') {
-      const current = field.kind === 'choice' ? [field.get(cfg)] : field.get(cfg);
+        .setMaxValues(champ.kind === 'role' ? 1 : Math.min(champ.max ?? 25, 25));
+      const actuel = champ.kind === 'role' ? [champ.get(reglages)].filter((v): v is string => !!v) : champ.get(reglages);
+      const valides = actuel.filter((r) => serveur.roles.cache.has(r)).slice(0, 25);
+      if (valides.length) menu.setDefaultRoles(...valides);
+      rangees.push(rangee(menu));
+    } else if (champ.kind === 'choice' || champ.kind === 'multichoice') {
+      const actuel = champ.kind === 'choice' ? [champ.get(reglages)] : champ.get(reglages);
       const menu = new StringSelectMenuBuilder()
         .setCustomId(id)
-        .setPlaceholder(placeholder)
-        .setMinValues(field.kind === 'choice' ? 1 : 0)
-        .setMaxValues(field.kind === 'choice' ? 1 : field.options.length)
+        .setPlaceholder(indication)
+        .setMinValues(champ.kind === 'choice' ? 1 : 0)
+        .setMaxValues(champ.kind === 'choice' ? 1 : champ.options.length)
         .addOptions(
-          field.options.slice(0, 25).map((o) => ({
+          champ.options.slice(0, 25).map((o) => ({
             label: o.label,
             value: o.value,
             emoji: o.emoji,
-            default: current.includes(o.value),
+            default: actuel.includes(o.value),
           })),
         );
-      rows.push(row(menu));
+      rangees.push(rangee(menu));
     }
   }
 
-  const toggles = page.fields.filter((f) => f.kind === 'toggle');
-  for (let i = 0; i < toggles.length; i += 5) {
-    rows.push(
-      row(
-        ...toggles.slice(i, i + 5).map((f) => {
-          const on = f.kind === 'toggle' && f.get(cfg);
-          return button(`setup:tog:${page.id}:${f.key}`, f.label, on ? ButtonStyle.Success : ButtonStyle.Secondary, on ? '🟢' : '🔴');
+  const bascules = page.champs.filter((f) => f.kind === 'toggle');
+  for (let i = 0; i < bascules.length; i += 5) {
+    rangees.push(
+      rangee(
+        ...bascules.slice(i, i + 5).map((f) => {
+          const sur = f.kind === 'toggle' && f.get(reglages);
+          return bouton(`setup:tog:${page.id}:${f.cle}`, f.libelle, sur ? ButtonStyle.Success : ButtonStyle.Secondary, sur ? '🟢' : '🔴');
         }),
       ),
     );
   }
 
-  const controls: ButtonBuilder[] = [];
+  const controles: ButtonBuilder[] = [];
   if (page.moduleId) {
-    const on = isModuleEnabled(guild.id, page.moduleId);
-    controls.push(button(`setup:mod:${page.id}`, on ? 'Désactiver le module' : 'Activer le module', on ? ButtonStyle.Danger : ButtonStyle.Success, on ? '⏸️' : '▶️'));
+    const sur = moduleActif(serveur.id, page.moduleId);
+    controles.push(bouton(`setup:mod:${page.id}`, sur ? 'Désactiver le module' : 'Activer le module', sur ? ButtonStyle.Danger : ButtonStyle.Success, sur ? '⏸️' : '▶️'));
   }
-  if (page.fields.some((f) => f.kind === 'text' || f.kind === 'number')) {
-    controls.push(button(`setup:txt:${page.id}`, 'Modifier les textes', ButtonStyle.Primary, '📝'));
+  if (page.champs.some((f) => f.kind === 'text' || f.kind === 'number')) {
+    controles.push(bouton(`setup:txt:${page.id}`, 'Modifier les textes', ButtonStyle.Primary, '📝'));
   }
   for (const action of page.actions ?? []) {
-    controls.push(button(`setup:act:${page.id}:${action.id}`, action.label, action.style ?? ButtonStyle.Primary, action.emoji));
+    controles.push(bouton(`setup:act:${page.id}:${action.id}`, action.libelle, action.style ?? ButtonStyle.Primary, action.emoji));
   }
-  const multi = pagesForSection(page.section).length > 1;
-  controls.push(button(multi ? `setup:sec:${page.section}` : 'setup:home', 'Retour', ButtonStyle.Secondary, '⬅️'));
-  for (let i = 0; i < controls.length; i += 5) rows.push(row(...controls.slice(i, i + 5)));
+  const plusieurs = pagesDeSection(page.section).length > 1;
+  controles.push(bouton(plusieurs ? `setup:sec:${page.section}` : 'setup:home', 'Retour', ButtonStyle.Secondary, '⬅️'));
+  for (let i = 0; i < controles.length; i += 5) rangees.push(rangee(...controles.slice(i, i + 5)));
 
-  return { embeds: [embed], components: rows.slice(0, 5) };
+  return { embeds: [embed], components: rangees.slice(0, 5) };
 }
 
-function findField(page: SetupPage, key: string | undefined): SetupField {
-  const field = page.fields.find((f) => f.key === key);
-  if (!field) throw new UserError('Ce paramètre est introuvable. Relance `/setup`.');
-  return field;
+function trouverChamp(page: PageReglage, cle: string | undefined): ChampReglage {
+  const champ = page.champs.find((f) => f.cle === cle);
+  if (!champ) throw new ErreurUtilisateur('Ce paramètre est introuvable. Relance `/setup`.');
+  return champ;
 }
 
-function requirePage(id: string | undefined): SetupPage {
+function exigerPage(id: string | undefined): PageReglage {
   const page = id ? pages.get(id) : undefined;
-  if (!page) throw new UserError("Cette page de configuration n'existe plus. Relance `/setup`.");
+  if (!page) throw new ErreurUtilisateur("Cette page de configuration n'existe plus. Relance `/setup`.");
   return page;
 }
 
-export async function handleSetupButton(interaction: ButtonInteraction<'cached'>, args: string[]): Promise<void> {
-  const [action, pageId, key] = args;
-  const guild = interaction.guild;
+export async function traiterBoutonReglage(interaction: ButtonInteraction<'cached'>, parametres: string[]): Promise<void> {
+  const [action, pageId, cle] = parametres;
+  const serveur = interaction.guild;
   switch (action) {
     case 'home':
-      await interaction.update(renderHome(guild));
+      await interaction.update(afficherAccueil(serveur));
       return;
     case 'sec':
-      await interaction.update(renderSection(guild, pageId as SetupSectionId));
+      await interaction.update(afficherSection(serveur, pageId as SectionReglage));
       return;
     case 'page':
-      await interaction.update(renderPage(guild, requirePage(pageId)));
+      await interaction.update(afficherPage(serveur, exigerPage(pageId)));
       return;
     case 'done': {
-      updateConfig(guild.id, (c) => {
-        c.setup.completedAt = Date.now();
+      modifierConfig(serveur.id, (c) => {
+        c.assistant.termineLe = Date.now();
       });
-      const embed = brandEmbed(guild, 'success')
+      const embed = embedEnseigne(serveur, 'success')
         .setTitle('✅ CONFIGURATION TERMINÉE')
         .setDescription('Votre serveur est prêt ! 🎉\n\nTu peux revenir à tout moment avec `/setup`, voir les modules avec `/modules` ou tester les messages avec `/test`.');
       await interaction.update({ embeds: [embed], components: [] });
       return;
     }
     case 'tog': {
-      const page = requirePage(pageId);
-      const field = findField(page, key);
-      if (field.kind !== 'toggle') return;
-      updateConfig(guild.id, (c) => field.set(c, !field.get(c)));
-      await interaction.update(renderPage(guild, page));
+      const page = exigerPage(pageId);
+      const champ = trouverChamp(page, cle);
+      if (champ.kind !== 'toggle') return;
+      modifierConfig(serveur.id, (c) => champ.set(c, !champ.get(c)));
+      await interaction.update(afficherPage(serveur, page));
       return;
     }
     case 'mod': {
-      const page = requirePage(pageId);
+      const page = exigerPage(pageId);
       if (!page.moduleId) return;
-      setModuleEnabled(guild.id, page.moduleId, !isModuleEnabled(guild.id, page.moduleId));
-      await interaction.update(renderPage(guild, page));
+      activerModule(serveur.id, page.moduleId, !moduleActif(serveur.id, page.moduleId));
+      await interaction.update(afficherPage(serveur, page));
       return;
     }
     case 'txt': {
-      const page = requirePage(pageId);
-      const cfg = getConfig(guild.id);
-      const modalFields: ModalField[] = [];
-      for (const f of page.fields) {
+      const page = exigerPage(pageId);
+      const reglages = lireConfig(serveur.id);
+      const champsFenetre: ChampFenetre[] = [];
+      for (const f of page.champs) {
         if (f.kind === 'text') {
-          modalFields.push({ id: f.key, label: f.label, long: f.long, required: f.required ?? false, value: f.get(cfg), maxLength: f.maxLength ?? (f.long ? 2000 : 200) });
+          champsFenetre.push({ id: f.cle, libelle: f.libelle, long: f.long, obligatoire: f.required ?? false, valeur: f.get(reglages), longueurMax: f.maxLength ?? (f.long ? 2000 : 200) });
         } else if (f.kind === 'number') {
-          modalFields.push({ id: f.key, label: `${f.label} (${f.min}-${f.max})`, value: String(f.get(cfg)), maxLength: 10 });
+          champsFenetre.push({ id: f.cle, libelle: `${f.libelle} (${f.min}-${f.max})`, valeur: String(f.get(reglages)), longueurMax: 10 });
         }
       }
-      const modal = buildModal(`setup:txtm:${page.id}`, `${page.title} — textes`, modalFields);
-      await interaction.showModal(modal);
+      const fenetre = construireFormulaire(`setup:txtm:${page.id}`, `${page.titre} — textes`, champsFenetre);
+      await interaction.showModal(fenetre);
       return;
     }
     case 'act': {
-      const page = requirePage(pageId);
-      const act = page.actions?.find((a) => a.id === key);
-      if (!act) throw new UserError('Action introuvable.');
-      await act.run(interaction);
+      const page = exigerPage(pageId);
+      const actionPage = page.actions?.find((a) => a.id === cle);
+      if (!actionPage) throw new ErreurUtilisateur('Action introuvable.');
+      await actionPage.executer(interaction);
       return;
     }
   }
 }
 
-export async function handleSetupSelect(interaction: AnySelectMenuInteraction<'cached'>, args: string[]): Promise<void> {
-  const [, pageId, key] = args;
-  const page = requirePage(pageId);
-  const field = findField(page, key);
-  const values = interaction.values;
-  updateConfig(interaction.guildId, (c) => {
-    switch (field.kind) {
+export async function traiterMenuReglage(interaction: AnySelectMenuInteraction<'cached'>, parametres: string[]): Promise<void> {
+  const [, pageId, cle] = parametres;
+  const page = exigerPage(pageId);
+  const champ = trouverChamp(page, cle);
+  const valeurs = interaction.values;
+  modifierConfig(interaction.guildId, (c) => {
+    switch (champ.kind) {
       case 'channel':
       case 'role':
-        field.set(c, values[0] ?? null);
+        champ.set(c, valeurs[0] ?? null);
         break;
       case 'channels':
       case 'roles':
       case 'multichoice':
-        field.set(c, [...values]);
+        champ.set(c, [...valeurs]);
         break;
       case 'choice':
-        if (values[0]) field.set(c, values[0]);
+        if (valeurs[0]) champ.set(c, valeurs[0]);
         break;
       default:
         break;
     }
   });
-  let notice: string | undefined;
-  if ((field.kind === 'role' || field.kind === 'roles') && field.assignable) {
-    const blocked = values.filter((id) => {
+  let avertissement: string | undefined;
+  if ((champ.kind === 'role' || champ.kind === 'roles') && champ.attribuable) {
+    const bloques = valeurs.filter((id) => {
       const r = interaction.guild.roles.cache.get(id);
-      return r && !canBotManageRole(interaction.guild, r);
+      return r && !botPeutGererRole(interaction.guild, r);
     });
-    if (blocked.length) {
-      notice = `⚠️ Je ne peux pas attribuer ${blocked.map((id) => `<@&${id}>`).join(', ')} : place mon rôle **au-dessus** dans les paramètres du serveur.`;
+    if (bloques.length) {
+      avertissement = `⚠️ Je ne peux pas attribuer ${bloques.map((id) => `<@&${id}>`).join(', ')} : place mon rôle **au-dessus** dans les paramètres du serveur.`;
     }
   }
-  await interaction.update(renderPage(interaction.guild, page, notice ?? '✅ Enregistré.'));
+  await interaction.update(afficherPage(interaction.guild, page, avertissement ?? '✅ Enregistré.'));
 }
 
-export async function handleSetupModal(interaction: ModalSubmitInteraction<'cached'>, args: string[]): Promise<void> {
-  const [, pageId] = args;
-  const page = requirePage(pageId);
-  const errors: string[] = [];
-  updateConfig(interaction.guildId, (c) => {
-    for (const field of page.fields) {
-      if (field.kind !== 'text' && field.kind !== 'number') continue;
-      let raw: string;
+export async function traiterFenetreReglage(interaction: ModalSubmitInteraction<'cached'>, parametres: string[]): Promise<void> {
+  const [, pageId] = parametres;
+  const page = exigerPage(pageId);
+  const erreurs: string[] = [];
+  modifierConfig(interaction.guildId, (c) => {
+    for (const champ of page.champs) {
+      if (champ.kind !== 'text' && champ.kind !== 'number') continue;
+      let brut: string;
       try {
-        raw = interaction.fields.getTextInputValue(field.key).trim();
+        brut = interaction.fields.getTextInputValue(champ.cle).trim();
       } catch {
         continue;
       }
-      if (field.kind === 'text') {
-        const problem = field.validate?.(raw) ?? null;
-        if (problem) errors.push(`**${field.label}** : ${problem}`);
-        else field.set(c, raw);
+      if (champ.kind === 'text') {
+        const probleme = champ.validate?.(brut) ?? null;
+        if (probleme) erreurs.push(`**${champ.libelle}** : ${probleme}`);
+        else champ.set(c, brut);
       } else {
-        const n = Number(raw.replace(',', '.'));
-        if (!Number.isFinite(n) || n < field.min || n > field.max) errors.push(`**${field.label}** : valeur entre ${field.min} et ${field.max} attendue.`);
-        else field.set(c, Math.round(n));
+        const n = Number(brut.replace(',', '.'));
+        if (!Number.isFinite(n) || n < champ.min || n > champ.max) erreurs.push(`**${champ.libelle}** : valeur entre ${champ.min} et ${champ.max} attendue.`);
+        else champ.set(c, Math.round(n));
       }
     }
   });
-  const notice = errors.length ? `⚠️ Certaines valeurs ont été ignorées :\n${errors.join('\n')}` : '✅ Textes enregistrés.';
-  if (interaction.isFromMessage()) await interaction.update(renderPage(interaction.guild, page, notice));
-  else await interaction.reply({ ...renderPage(interaction.guild, page, notice), flags: 64 });
+  const avertissement = erreurs.length ? `⚠️ Certaines valeurs ont été ignorées :\n${erreurs.join('\n')}` : '✅ Textes enregistrés.';
+  if (interaction.isFromMessage()) await interaction.update(afficherPage(interaction.guild, page, avertissement));
+  else await interaction.reply({ ...afficherPage(interaction.guild, page, avertissement), flags: 64 });
 }

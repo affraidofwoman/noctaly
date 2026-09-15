@@ -1,44 +1,44 @@
-import type { BotModule } from '../core/types';
-import { afkModule } from './afk';
-import { antinukeModule } from './antinuke';
-import { antiraidModule } from './antiraid';
-import { backupModule } from './backup';
-import { formsModule } from './forms';
-import { rulesModule } from './rules';
-import { verificationModule } from './verification';
-import { announcementsModule } from './announcements';
-import { autoResponsesModule } from './autoresponses';
-import { birthdaysModule } from './birthdays';
-import { boostsModule } from './boosts';
-import { contestsModule } from './contests';
-import { economyModule } from './economy';
-import { gamesModule } from './games';
-import { invitesModule } from './invites';
-import { questsModule } from './quests';
-import { customCommandsModule } from './customcommands';
-import { embedsModule } from './embeds';
-import { eventsModule } from './events';
-import { remindersModule } from './reminders';
-import { automodModule } from './automod';
-import { autoroleModule } from './autorole';
-import { configModule } from './config';
-import { generalModule } from './general';
-import { giveawaysModule } from './giveaways';
-import { leaveModule } from './leave';
-import { logsModule } from './logs';
-import { moderationModule } from './moderation';
-import { musicModule } from './music';
-import { pollsModule } from './polls';
-import { profilesModule } from './profiles';
-import { reactionRolesModule } from './reactionroles';
-import { reportsModule } from './reports';
-import { seniorityModule } from './seniority';
-import { statsModule } from './stats';
-import { suggestionsModule } from './suggestions';
-import { ticketsModule } from './tickets';
-import { twitchModule } from './twitch';
-import { welcomeModule } from './welcome';
-import { xpModule } from './xp';
+import type { ModuleBot } from '../core/types';
+import { moduleAfk } from './afk';
+import { moduleAntinuke } from './antinuke';
+import { moduleAntiraid } from './antiraid';
+import { moduleSauvegardes } from './backup';
+import { moduleFormulaires } from './forms';
+import { moduleReglement } from './rules';
+import { moduleVerification } from './verification';
+import { moduleAnnonces } from './announcements';
+import { moduleReponsesAuto } from './autoresponses';
+import { moduleAnniversaires } from './birthdays';
+import { moduleBoosts } from './boosts';
+import { moduleConcours } from './contests';
+import { moduleEconomie } from './economy';
+import { moduleJeux } from './games';
+import { moduleInvitations } from './invites';
+import { moduleQuetes } from './quests';
+import { moduleCommandesPerso } from './customcommands';
+import { moduleRedaction } from './embeds';
+import { moduleEvenements } from './events';
+import { moduleRappels } from './reminders';
+import { moduleAutomod } from './automod';
+import { moduleRolesAuto } from './autorole';
+import { moduleAdministration } from './config';
+import { moduleGeneral } from './general';
+import { moduleTirages } from './giveaways';
+import { moduleDeparts } from './leave';
+import { moduleJournaux } from './logs';
+import { moduleModeration } from './moderation';
+import { moduleMusique } from './music';
+import { moduleSondages } from './polls';
+import { moduleProfils } from './profiles';
+import { moduleRolesAChoisir } from './reactionroles';
+import { moduleSignalements } from './reports';
+import { moduleAnciennete } from './seniority';
+import { moduleStatistiques } from './stats';
+import { moduleSuggestions } from './suggestions';
+import { moduleTickets } from './tickets';
+import { moduleTwitch } from './twitch';
+import { moduleBienvenue } from './welcome';
+import { moduleNiveaux } from './xp';
 
 /**
  * REGISTRE DES MODULES
@@ -46,53 +46,53 @@ import { xpModule } from './xp';
  * Pour ajouter un module : créer src/modules/<nom>/index.ts puis l'ajouter à cette liste.
  * L'ordre influence l'affichage de /modules et de /setup.
  */
-export const modules: BotModule[] = [
+export const modules: ModuleBot[] = [
   // Cœur (toujours actifs)
-  generalModule,
-  configModule,
+  moduleGeneral,
+  moduleAdministration,
   // Accueil
-  welcomeModule,
-  leaveModule,
-  autoroleModule,
+  moduleBienvenue,
+  moduleDeparts,
+  moduleRolesAuto,
   // Journalisation et modération
-  logsModule,
-  moderationModule,
-  automodModule,
+  moduleJournaux,
+  moduleModeration,
+  moduleAutomod,
   // Support et animation
-  ticketsModule,
-  giveawaysModule,
-  twitchModule,
-  musicModule,
+  moduleTickets,
+  moduleTirages,
+  moduleTwitch,
+  moduleMusique,
   // Communauté
-  xpModule,
-  seniorityModule,
-  suggestionsModule,
-  pollsModule,
-  reactionRolesModule,
-  afkModule,
-  reportsModule,
-  statsModule,
-  profilesModule,
+  moduleNiveaux,
+  moduleAnciennete,
+  moduleSuggestions,
+  moduleSondages,
+  moduleRolesAChoisir,
+  moduleAfk,
+  moduleSignalements,
+  moduleStatistiques,
+  moduleProfils,
   // Agenda et publication
-  birthdaysModule,
-  remindersModule,
-  eventsModule,
-  announcementsModule,
-  embedsModule,
-  customCommandsModule,
-  autoResponsesModule,
+  moduleAnniversaires,
+  moduleRappels,
+  moduleEvenements,
+  moduleAnnonces,
+  moduleRedaction,
+  moduleCommandesPerso,
+  moduleReponsesAuto,
   // Engagement
-  invitesModule,
-  boostsModule,
-  economyModule,
-  questsModule,
-  gamesModule,
-  contestsModule,
+  moduleInvitations,
+  moduleBoosts,
+  moduleEconomie,
+  moduleQuetes,
+  moduleJeux,
+  moduleConcours,
   // Sécurité et accès
-  rulesModule,
-  verificationModule,
-  antiraidModule,
-  antinukeModule,
-  formsModule,
-  backupModule,
+  moduleReglement,
+  moduleVerification,
+  moduleAntiraid,
+  moduleAntinuke,
+  moduleFormulaires,
+  moduleSauvegardes,
 ];

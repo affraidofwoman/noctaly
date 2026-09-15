@@ -9,16 +9,16 @@ import {
   type PermissionResolvable,
   type User,
 } from 'discord.js';
-import { run } from '../database/db';
-import { getConfig, updateConfig } from './guildConfig';
-import { createLogger } from './logger';
-import { isModuleEnabled } from './moduleManager';
-import { truncate } from './text';
-import { listMembers, type WhitelistId } from './whitelists';
+import { executer } from '../database/db';
+import { lireConfig, modifierConfig } from './guildConfig';
+import { creerRegistre } from './logger';
+import { moduleActif } from './moduleManager';
+import { tronquer } from './text';
+import { membresListe, type WhitelistId } from './whitelists';
 
-const log = createLogger('journal');
+const registre = creerRegistre('journal');
 
-export type LogType =
+export type TypeJournal =
   | 'sanction'
   | 'blacklist'
   | 'clear'
@@ -41,85 +41,85 @@ export type LogType =
   | 'boost'
   | 'community';
 
-export interface LogChannelDefinition {
-  type: LogType;
-  name: string;
+export interface DefinitionSalonJournal {
+  type: TypeJournal;
+  nom: string;
   description: string;
 }
 
-export interface LogCategoryDefinition {
-  category: string;
+export interface DefinitionCategorieJournal {
+  categorie: string;
   /** Permission Discord qui donne la vue sur la catégorie. */
-  viewPermission: PermissionResolvable;
+  permissionVue: PermissionResolvable;
   /** Whitelists qui donnent la vue sur la catégorie. */
-  viewWhitelists: WhitelistId[];
-  channels: LogChannelDefinition[];
+  whitelistsVue: WhitelistId[];
+  salons: DefinitionSalonJournal[];
 }
 
 /** Structure des salons de logs, à la manière du bot Airline : un salon nommé par type. */
-export const LOG_STRUCTURE: LogCategoryDefinition[] = [
+export const STRUCTURE_JOURNAUX: DefinitionCategorieJournal[] = [
   {
-    category: 'Logs · Sanctions',
-    viewPermission: PermissionFlagsBits.BanMembers,
-    viewWhitelists: ['sys', 'logs'],
-    channels: [
-      { type: 'sanction', name: 'sanction-log', description: 'Warns, timeouts, kicks, bans et unbans' },
-      { type: 'blacklist', name: 'bl-log', description: 'Blacklist : &bl et &unbl' },
-      { type: 'clear', name: 'clear-log', description: 'Suppressions de messages (&clear)' },
-      { type: 'automod', name: 'automod-log', description: 'Filtres : spam, liens, invitations, mots interdits' },
+    categorie: 'Logs · Sanctions',
+    permissionVue: PermissionFlagsBits.BanMembers,
+    whitelistsVue: ['sys', 'logs'],
+    salons: [
+      { type: 'sanction', nom: 'sanction-log', description: 'Warns, timeouts, kicks, bans et unbans' },
+      { type: 'blacklist', nom: 'bl-log', description: 'Blacklist : &bl et &unbl' },
+      { type: 'clear', nom: 'clear-log', description: 'Suppressions de messages (&clear)' },
+      { type: 'automod', nom: 'automod-log', description: 'Filtres : spam, liens, invitations, mots interdits' },
     ],
   },
   {
-    category: 'Logs · Rôles & Accès',
-    viewPermission: PermissionFlagsBits.ManageRoles,
-    viewWhitelists: ['admin', 'logs'],
-    channels: [
-      { type: 'role', name: 'role-log', description: 'Rôles créés, modifiés, supprimés, donnés ou retirés' },
-      { type: 'whitelist', name: 'wl-log', description: 'Whitelists accordées ou retirées (/wl)' },
-      { type: 'autorole', name: 'autorole-log', description: 'Rôles automatiques, rôles à réaction et niveaux' },
+    categorie: 'Logs · Rôles & Accès',
+    permissionVue: PermissionFlagsBits.ManageRoles,
+    whitelistsVue: ['admin', 'logs'],
+    salons: [
+      { type: 'role', nom: 'role-log', description: 'Rôles créés, modifiés, supprimés, donnés ou retirés' },
+      { type: 'whitelist', nom: 'wl-log', description: 'Whitelists accordées ou retirées (/wl)' },
+      { type: 'autorole', nom: 'autorole-log', description: 'Rôles automatiques, rôles à réaction et niveaux' },
     ],
   },
   {
-    category: 'Logs · Serveur',
-    viewPermission: PermissionFlagsBits.ManageGuild,
-    viewWhitelists: ['admin', 'logs'],
-    channels: [
-      { type: 'member', name: 'membre-log', description: 'Arrivées et départs de membres' },
-      { type: 'message', name: 'message-log', description: 'Messages modifiés ou supprimés' },
-      { type: 'channel', name: 'salon-log', description: 'Salons créés, supprimés ou modifiés' },
-      { type: 'voice', name: 'vocal-log', description: 'Connexions, déconnexions et déplacements' },
-      { type: 'command', name: 'commande-log', description: 'Commandes utilisées' },
-      { type: 'security', name: 'securite-log', description: 'Anti-raid, anti-nuke et lockdown' },
-      { type: 'backup', name: 'backup-log', description: 'Sauvegardes de la configuration' },
-      { type: 'health', name: 'sante-log', description: 'État du bot et alertes techniques' },
+    categorie: 'Logs · Serveur',
+    permissionVue: PermissionFlagsBits.ManageGuild,
+    whitelistsVue: ['admin', 'logs'],
+    salons: [
+      { type: 'member', nom: 'membre-log', description: 'Arrivées et départs de membres' },
+      { type: 'message', nom: 'message-log', description: 'Messages modifiés ou supprimés' },
+      { type: 'channel', nom: 'salon-log', description: 'Salons créés, supprimés ou modifiés' },
+      { type: 'voice', nom: 'vocal-log', description: 'Connexions, déconnexions et déplacements' },
+      { type: 'command', nom: 'commande-log', description: 'Commandes utilisées' },
+      { type: 'security', nom: 'securite-log', description: 'Anti-raid, anti-nuke et lockdown' },
+      { type: 'backup', nom: 'backup-log', description: 'Sauvegardes de la configuration' },
+      { type: 'health', nom: 'sante-log', description: 'État du bot et alertes techniques' },
     ],
   },
   {
-    category: 'Logs · Communauté',
-    viewPermission: PermissionFlagsBits.ManageMessages,
-    viewWhitelists: ['staff', 'logs'],
-    channels: [
-      { type: 'ticket', name: 'ticket-logs', description: 'Ouverture, fermeture et transcripts des tickets' },
-      { type: 'giveaway', name: 'giveaway-log', description: 'Giveaways lancés, terminés et relancés' },
-      { type: 'twitch', name: 'twitch-log', description: 'Lives, changements de jeu et de titre' },
-      { type: 'invite', name: 'invite-log', description: 'Invitations utilisées' },
-      { type: 'boost', name: 'boost-log', description: 'Boosts du serveur' },
-      { type: 'community', name: 'communaute-log', description: 'Suggestions, signalements, formulaires, événements' },
+    categorie: 'Logs · Communauté',
+    permissionVue: PermissionFlagsBits.ManageMessages,
+    whitelistsVue: ['staff', 'logs'],
+    salons: [
+      { type: 'ticket', nom: 'ticket-logs', description: 'Ouverture, fermeture et transcripts des tickets' },
+      { type: 'giveaway', nom: 'giveaway-log', description: 'Giveaways lancés, terminés et relancés' },
+      { type: 'twitch', nom: 'twitch-log', description: 'Lives, changements de jeu et de titre' },
+      { type: 'invite', nom: 'invite-log', description: 'Invitations utilisées' },
+      { type: 'boost', nom: 'boost-log', description: 'Boosts du serveur' },
+      { type: 'community', nom: 'communaute-log', description: 'Suggestions, signalements, formulaires, événements' },
     ],
   },
 ];
 
-export const LOG_TYPES: LogChannelDefinition[] = LOG_STRUCTURE.flatMap((c) => c.channels);
+export const TYPES_JOURNAUX: DefinitionSalonJournal[] = STRUCTURE_JOURNAUX.flatMap((c) => c.salons);
 
-export function logDefinition(type: LogType): LogChannelDefinition {
-  return LOG_TYPES.find((t) => t.type === type)!;
+export function definitionJournal(type: TypeJournal): DefinitionSalonJournal {
+  return TYPES_JOURNAUX.find((t) => t.type === type)!;
 }
 
-export function categoryOf(type: LogType): LogCategoryDefinition {
-  return LOG_STRUCTURE.find((c) => c.channels.some((ch) => ch.type === type))!;
+export function motifDe(type: TypeJournal): DefinitionCategorieJournal {
+  return STRUCTURE_JOURNAUX.find((c) => c.salons.some((salonVise) => salonVise.type === type))!;
 }
 
-export const TONES = {
+export const TONS = {
   neutre: 0x7b5cff,
   ok: 0x3fe08f,
   alerte: 0xe0455a,
@@ -127,185 +127,185 @@ export const TONES = {
   or: 0xf0b232,
 } as const;
 
-export type Tone = keyof typeof TONES;
+export type Ton = keyof typeof TONS;
 
-function usableTextChannel(guild: Guild, channelId: string | null | undefined): GuildTextBasedChannel | null {
-  if (!channelId) return null;
-  const channel = guild.channels.cache.get(channelId);
-  if (!channel || !channel.isTextBased() || channel.type === ChannelType.GuildStageVoice) return null;
-  const me = guild.members.me;
-  if (me) {
-    const perms = channel.permissionsFor(me);
-    if (!perms?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) return null;
+function salonTexteUtilisable(serveur: Guild, salonId: string | null | undefined): GuildTextBasedChannel | null {
+  if (!salonId) return null;
+  const salon = serveur.channels.cache.get(salonId);
+  if (!salon || !salon.isTextBased() || salon.type === ChannelType.GuildStageVoice) return null;
+  const moi = serveur.members.me;
+  if (moi) {
+    const permissions = salon.permissionsFor(moi);
+    if (!permissions?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) return null;
   }
-  return channel as GuildTextBasedChannel;
+  return salon as GuildTextBasedChannel;
 }
 
-export function resolveTextChannel(guild: Guild, channelId: string | null | undefined): GuildTextBasedChannel | null {
-  return usableTextChannel(guild, channelId);
+export function resoudreSalonTexte(serveur: Guild, salonId: string | null | undefined): GuildTextBasedChannel | null {
+  return salonTexteUtilisable(serveur, salonId);
 }
 
 /** Salon d'un type de log : celui choisi dans la configuration, sinon celui qui porte le nom attendu. */
-export function logChannelFor(guild: Guild, type: LogType): GuildTextBasedChannel | null {
-  const cfg = getConfig(guild.id).logs;
-  if (cfg.disabled.includes(type)) return null;
-  const configured = usableTextChannel(guild, cfg.channels[type] ?? cfg.fallbackChannelId);
-  if (configured) return configured;
-  const name = logDefinition(type).name;
-  const byName = guild.channels.cache.find((c) => c.name === name && c.type === ChannelType.GuildText);
-  return byName ? usableTextChannel(guild, byName.id) : null;
+export function salonJournalPour(serveur: Guild, type: TypeJournal): GuildTextBasedChannel | null {
+  const reglages = lireConfig(serveur.id).journaux;
+  if (reglages.disabled.includes(type)) return null;
+  const configure = salonTexteUtilisable(serveur, reglages.channels[type] ?? reglages.salonSecoursId);
+  if (configure) return configure;
+  const nom = definitionJournal(type).nom;
+  const parNom = serveur.channels.cache.find((c) => c.name === nom && c.type === ChannelType.GuildText);
+  return parNom ? salonTexteUtilisable(serveur, parNom.id) : null;
 }
 
-export interface JournalOptions {
-  title: string;
-  lines?: (string | null | undefined | false)[];
-  tone?: Tone;
-  by?: User | null;
-  fields?: { name: string; value: string; inline?: boolean }[];
-  files?: AttachmentBuilder[];
-  thumbnail?: string | null;
+export interface OptionsJournal {
+  titre: string;
+  lignes?: (string | null | undefined | false)[];
+  ton?: Ton;
+  par?: User | null;
+  champs?: { name: string; value: string; inline?: boolean }[];
+  fichiers?: AttachmentBuilder[];
+  miniature?: string | null;
 }
 
-export function buildJournalEmbed(options: JournalOptions): EmbedBuilder {
+export function construireEmbedJournal(options: OptionsJournal): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setColor(TONES[options.tone ?? 'neutre'])
-    .setAuthor({ name: truncate(options.title, 256) })
+    .setColor(TONS[options.ton ?? 'neutre'])
+    .setAuthor({ name: tronquer(options.titre, 256) })
     .setTimestamp();
-  const description = (options.lines ?? []).filter(Boolean).join('\n');
-  if (description) embed.setDescription(truncate(description, 4096));
-  for (const f of (options.fields ?? []).slice(0, 25)) {
-    embed.addFields({ name: truncate(f.name, 256), value: truncate(f.value || '—', 1024), inline: f.inline ?? true });
+  const description = (options.lignes ?? []).filter(Boolean).join('\n');
+  if (description) embed.setDescription(tronquer(description, 4096));
+  for (const f of (options.champs ?? []).slice(0, 25)) {
+    embed.addFields({ name: tronquer(f.name, 256), value: tronquer(f.value || '—', 1024), inline: f.inline ?? true });
   }
-  if (options.thumbnail) embed.setThumbnail(options.thumbnail);
-  if (options.by) embed.setFooter({ text: truncate(`par ${options.by.tag}`, 2048), iconURL: options.by.displayAvatarURL({ size: 64 }) });
+  if (options.miniature) embed.setThumbnail(options.miniature);
+  if (options.par) embed.setFooter({ text: tronquer(`par ${options.par.tag}`, 2048), iconURL: options.par.displayAvatarURL({ size: 64 }) });
   return embed;
 }
 
 /** Écrit dans le salon de logs du type (si le module Logs est actif). */
-export async function journal(guild: Guild, type: LogType, options: JournalOptions): Promise<boolean> {
-  if (!isModuleEnabled(guild.id, 'logs')) return false;
-  const channel = logChannelFor(guild, type);
-  if (!channel) return false;
+export async function journal(serveur: Guild, type: TypeJournal, options: OptionsJournal): Promise<boolean> {
+  if (!moduleActif(serveur.id, 'logs')) return false;
+  const salon = salonJournalPour(serveur, type);
+  if (!salon) return false;
   try {
-    await channel.send({ embeds: [buildJournalEmbed(options)], files: options.files ?? [], allowedMentions: { parse: [] } });
+    await salon.send({ embeds: [construireEmbedJournal(options)], files: options.fichiers ?? [], allowedMentions: { parse: [] } });
     return true;
-  } catch (err) {
-    log.warn(`Envoi du log ${type} impossible sur ${guild.id} : ${(err as Error).message}`);
+  } catch (echec) {
+    registre.avertir(`Envoi du log ${type} impossible sur ${serveur.id} : ${(echec as Error).message}`);
     return false;
   }
 }
 
 /** Historise un événement en base (utilisé par /logs et le dashboard). */
-export function recordLog(
-  guildId: string,
-  type: LogType,
+export function historiser(
+  serveurId: string,
+  type: TypeJournal,
   action: string,
-  userId: string | null,
-  actorId: string | null,
-  data: Record<string, unknown> = {},
+  utilisateurId: string | null,
+  auteurId: string | null,
+  donnees: Record<string, unknown> = {},
 ): void {
   try {
-    run(
-      'INSERT INTO logs (guild_id, category, type, user_id, actor_id, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      guildId,
+    executer(
+      'INSERT INTO journaux (serveur_id, categorie, type, utilisateur_id, acteur_id, donnees, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      serveurId,
       type,
       action,
-      userId,
-      actorId,
-      JSON.stringify(data),
+      utilisateurId,
+      auteurId,
+      JSON.stringify(donnees),
       Date.now(),
     );
-  } catch (err) {
-    log.warn('Historisation impossible', err);
+  } catch (echec) {
+    registre.avertir('Historisation impossible', echec);
   }
 }
 
 /** Permissions d'une catégorie de logs : cachée, visible par la permission et les whitelists. */
-export function logOverwrites(guild: Guild, def: LogCategoryDefinition): OverwriteResolvable[] {
-  const overwrites: OverwriteResolvable[] = [{ id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }];
-  const me = guild.members.me;
-  if (me) {
-    overwrites.push({
-      id: me.id,
+export function permissionsJournaux(serveur: Guild, definition: DefinitionCategorieJournal): OverwriteResolvable[] {
+  const permissionsSalon: OverwriteResolvable[] = [{ id: serveur.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }];
+  const moi = serveur.members.me;
+  if (moi) {
+    permissionsSalon.push({
+      id: moi.id,
       allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.AttachFiles],
     });
   }
-  for (const role of guild.roles.cache.values()) {
-    if (role.id === guild.id || role.managed) continue;
-    if (role.permissions.has(def.viewPermission)) overwrites.push({ id: role.id, allow: [PermissionFlagsBits.ViewChannel] });
+  for (const role of serveur.roles.cache.values()) {
+    if (role.id === serveur.id || role.managed) continue;
+    if (role.permissions.has(definition.permissionVue)) permissionsSalon.push({ id: role.id, allow: [PermissionFlagsBits.ViewChannel] });
   }
-  const users = new Set<string>();
-  for (const list of def.viewWhitelists) for (const id of listMembers(list, guild.id)) users.add(id);
-  for (const id of listMembers('streamer', guild.id)) users.add(id);
-  for (const id of users) {
-    if (guild.members.cache.has(id)) overwrites.push({ id, allow: [PermissionFlagsBits.ViewChannel] });
+  const utilisateurs = new Set<string>();
+  for (const liste of definition.whitelistsVue) for (const id of membresListe(liste, serveur.id)) utilisateurs.add(id);
+  for (const id of membresListe('streamer', serveur.id)) utilisateurs.add(id);
+  for (const id of utilisateurs) {
+    if (serveur.members.cache.has(id)) permissionsSalon.push({ id, allow: [PermissionFlagsBits.ViewChannel] });
   }
-  return overwrites.slice(0, 100);
+  return permissionsSalon.slice(0, 100);
 }
 
 /** Réapplique les accès des salons de logs existants (après un changement de whitelist). */
-export async function syncLogPermissions(guild: Guild): Promise<number> {
-  let updated = 0;
-  for (const def of LOG_STRUCTURE) {
-    const overwrites = logOverwrites(guild, def);
-    const category = guild.channels.cache.find((c) => c.type === ChannelType.GuildCategory && c.name === def.category);
-    const targets = [
-      category,
-      ...def.channels.map((ch) => logChannelFor(guild, ch.type)).filter((c) => c && 'parentId' in c && c.parentId === category?.id),
+export async function synchroniserAccesJournaux(serveur: Guild): Promise<number> {
+  let modifie = 0;
+  for (const definition of STRUCTURE_JOURNAUX) {
+    const permissionsSalon = permissionsJournaux(serveur, definition);
+    const categorie = serveur.channels.cache.find((c) => c.type === ChannelType.GuildCategory && c.name === definition.categorie);
+    const cibles = [
+      categorie,
+      ...definition.salons.map((salonVise) => salonJournalPour(serveur, salonVise.type)).filter((c) => c && 'parentId' in c && c.parentId === categorie?.id),
     ];
-    for (const target of targets) {
-      if (!target || !('permissionOverwrites' in target)) continue;
+    for (const cible of cibles) {
+      if (!cible || !('permissionOverwrites' in cible)) continue;
       try {
-        await target.permissionOverwrites.set(overwrites, 'Mise à jour des accès aux logs');
-        updated++;
-      } catch (err) {
-        log.warn(`Accès du salon ${target.id} non mis à jour : ${(err as Error).message}`);
+        await cible.permissionOverwrites.set(permissionsSalon, 'Mise à jour des accès aux logs');
+        modifie++;
+      } catch (echec) {
+        registre.avertir(`Accès du salon ${cible.id} non mis à jour : ${(echec as Error).message}`);
       }
     }
   }
-  return updated;
+  return modifie;
 }
 
 /**
  * Crée (sans jamais écraser) les catégories et salons de logs manquants, puis les enregistre dans la configuration.
  * Retourne le nombre de salons créés.
  */
-export async function ensureLogChannels(guild: Guild): Promise<{ created: number; linked: number }> {
-  let created = 0;
-  let linked = 0;
-  const channels: Partial<Record<LogType, string>> = {};
-  for (const def of LOG_STRUCTURE) {
-    let category = guild.channels.cache.find((c) => c.type === ChannelType.GuildCategory && c.name === def.category);
-    if (!category) {
-      category = await guild.channels.create({
-        name: def.category,
+export async function creerSalonsJournal(serveur: Guild): Promise<{ cree: number; titreLie: number }> {
+  let cree = 0;
+  let titreLie = 0;
+  const salons: Partial<Record<TypeJournal, string>> = {};
+  for (const definition of STRUCTURE_JOURNAUX) {
+    let categorie = serveur.channels.cache.find((c) => c.type === ChannelType.GuildCategory && c.name === definition.categorie);
+    if (!categorie) {
+      categorie = await serveur.channels.create({
+        name: definition.categorie,
         type: ChannelType.GuildCategory,
-        permissionOverwrites: logOverwrites(guild, def),
+        permissionOverwrites: permissionsJournaux(serveur, definition),
         reason: 'Création des salons de logs',
       });
-      created++;
+      cree++;
     }
-    for (const ch of def.channels) {
-      const existing = guild.channels.cache.find((c) => c.name === ch.name && c.type === ChannelType.GuildText);
-      if (existing) {
-        channels[ch.type] = existing.id;
-        linked++;
+    for (const salonVise of definition.salons) {
+      const existant = serveur.channels.cache.find((c) => c.name === salonVise.nom && c.type === ChannelType.GuildText);
+      if (existant) {
+        salons[salonVise.type] = existant.id;
+        titreLie++;
         continue;
       }
-      const channel = await guild.channels.create({
-        name: ch.name,
+      const salon = await serveur.channels.create({
+        name: salonVise.nom,
         type: ChannelType.GuildText,
-        parent: category.id,
-        topic: ch.description,
-        permissionOverwrites: logOverwrites(guild, def),
+        parent: categorie.id,
+        topic: salonVise.description,
+        permissionOverwrites: permissionsJournaux(serveur, definition),
         reason: 'Création des salons de logs',
       });
-      channels[ch.type] = channel.id;
-      created++;
+      salons[salonVise.type] = salon.id;
+      cree++;
     }
   }
-  updateConfig(guild.id, (c) => {
-    c.logs.channels = { ...c.logs.channels, ...channels };
+  modifierConfig(serveur.id, (c) => {
+    c.journaux.channels = { ...c.journaux.channels, ...salons };
   });
-  return { created, linked };
+  return { cree, titreLie };
 }

@@ -1,403 +1,403 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { PermissionFlagsBits, type Client, type Guild } from 'discord.js';
-import { all, parseJson } from '../database/db';
-import { brandFor, toHex } from '../core/brand';
-import { env } from '../core/env';
-import { getConfig, updateConfig } from '../core/guildConfig';
-import { createLogger } from '../core/logger';
-import { getModuleStates, getModule, setModuleEnabled } from '../core/moduleManager';
-import { getLevel, levelLabel } from '../core/permissions';
-import { SlidingWindowLimiter } from '../core/rateLimit';
-import { TtlMap } from '../core/sessions';
+import { lireTout, lireJson } from '../database/db';
+import { enseigneDe, enHexa } from '../core/brand';
+import { environnement } from '../core/env';
+import { lireConfig, modifierConfig } from '../core/guildConfig';
+import { creerRegistre } from '../core/logger';
+import { lireEtatsModules, lireModule, activerModule } from '../core/moduleManager';
+import { lireNiveau, libelleNiveau } from '../core/permissions';
+import { LimiteurFenetre } from '../core/rateLimit';
+import { CarteExpirante } from '../core/sessions';
 import { THEMES } from '../core/themes';
-import { isValidTimezone } from '../core/time';
-import { PermLevel } from '../core/types';
-import { isBotOwner } from '../core/whitelists';
-import { csrfField, date, h, navFor, page, table } from './views';
+import { fuseauValide } from '../core/time';
+import { Niveau } from '../core/types';
+import { estProprietaireBot } from '../core/whitelists';
+import { champCsrf, date, h, navigationPour, page, table } from './views';
 
-const log = createLogger('dashboard');
+const registre = creerRegistre('dashboard');
 
 interface Session {
   id: string;
   csrf: string;
-  user: { id: string; username: string; avatar: string | null };
-  state?: string;
+  utilisateur: { id: string; username: string; avatar: string | null };
+  etat?: string;
 }
 
-const SESSION_MS = 7 * 86_400_000;
-const sessions = new TtlMap<string, Session>(SESSION_MS);
-const pendingStates = new TtlMap<string, true>(10 * 60_000);
-const limiter = new SlidingWindowLimiter(120, 60_000);
-const COOKIE = 'tcb_session';
+const DUREE_SESSION_MS = 7 * 86_400_000;
+const sessions = new CarteExpirante<string, Session>(DUREE_SESSION_MS);
+const etatsEnAttente = new CarteExpirante<string, true>(10 * 60_000);
+const limiteur = new LimiteurFenetre(120, 60_000);
+const COOKIE_SESSION = 'tcb_session';
 
-function sign(value: string): string {
-  return `${value}.${createHmac('sha256', env.dashboardSecret).update(value).digest('base64url')}`;
+function signer(valeur: string): string {
+  return `${valeur}.${createHmac('sha256', environnement.siteSecret).update(valeur).digest('base64url')}`;
 }
 
-function unsign(signed: string): string | null {
-  const i = signed.lastIndexOf('.');
+function verifierSignature(signe: string): string | null {
+  const i = signe.lastIndexOf('.');
   if (i < 0) return null;
-  const value = signed.slice(0, i);
-  const expected = Buffer.from(sign(value));
-  const given = Buffer.from(signed);
-  return expected.length === given.length && timingSafeEqual(expected, given) ? value : null;
+  const valeur = signe.slice(0, i);
+  const attendu = Buffer.from(signer(valeur));
+  const donnes = Buffer.from(signe);
+  return attendu.length === donnes.length && timingSafeEqual(attendu, donnes) ? valeur : null;
 }
 
-function cookies(req: IncomingMessage): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const part of (req.headers.cookie ?? '').split(';')) {
-    const [k, ...v] = part.trim().split('=');
-    if (k) out[k] = decodeURIComponent(v.join('='));
+function lireCookies(conditions: IncomingMessage): Record<string, string> {
+  const sortie: Record<string, string> = {};
+  for (const partie of (conditions.headers.cookie ?? '').split(';')) {
+    const [k, ...v] = partie.trim().split('=');
+    if (k) sortie[k] = decodeURIComponent(v.join('='));
   }
-  return out;
+  return sortie;
 }
 
-function getSession(req: IncomingMessage): Session | null {
-  const raw = cookies(req)[COOKIE];
-  const id = raw ? unsign(raw) : null;
-  return id ? (sessions.get(id) ?? null) : null;
+function lireSession(conditions: IncomingMessage): Session | null {
+  const brut = lireCookies(conditions)[COOKIE_SESSION];
+  const id = brut ? verifierSignature(brut) : null;
+  return id ? (sessions.lire(id) ?? null) : null;
 }
 
-const secure = () => env.dashboardUrl.startsWith('https://');
+const securise = () => environnement.siteUrl.startsWith('https://');
 
-function send(res: ServerResponse, status: number, body: string, headers: Record<string, string> = {}): void {
-  res.writeHead(status, {
+function envoyer(reponse: ServerResponse, statut: number, corps: string, entetes: Record<string, string> = {}): void {
+  reponse.writeHead(statut, {
     'Content-Type': 'text/html; charset=utf-8',
     'Content-Security-Policy': "default-src 'none'; img-src https://cdn.discordapp.com data:; style-src 'unsafe-inline'; form-action 'self' https://discord.com; frame-ancestors 'none'; base-uri 'none'",
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'same-origin',
     'X-Frame-Options': 'DENY',
-    ...headers,
+    ...entetes,
   });
-  res.end(body);
+  reponse.end(corps);
 }
 
-function redirect(res: ServerResponse, location: string, headers: Record<string, string> = {}): void {
-  res.writeHead(302, { Location: location, ...headers });
-  res.end();
+function rediriger(reponse: ServerResponse, emplacement: string, entetes: Record<string, string> = {}): void {
+  reponse.writeHead(302, { Location: emplacement, ...entetes });
+  reponse.end();
 }
 
-async function readForm(req: IncomingMessage): Promise<URLSearchParams> {
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks: Buffer[] = [];
-    req.on('data', (c: Buffer) => {
-      size += c.length;
-      if (size > 32_000) {
-        reject(new Error('corps trop volumineux'));
-        req.destroy();
-      } else chunks.push(c);
+async function lireFormulaireWeb(conditions: IncomingMessage): Promise<URLSearchParams> {
+  return new Promise((resoudre, rejeter) => {
+    let taille = 0;
+    const morceaux: Buffer[] = [];
+    conditions.on('data', (c: Buffer) => {
+      taille += c.length;
+      if (taille > 32_000) {
+        rejeter(new Error('corps trop volumineux'));
+        conditions.destroy();
+      } else morceaux.push(c);
     });
-    req.on('end', () => resolve(new URLSearchParams(Buffer.concat(chunks).toString('utf8'))));
-    req.on('error', reject);
+    conditions.on('end', () => resoudre(new URLSearchParams(Buffer.concat(morceaux).toString('utf8'))));
+    conditions.on('error', rejeter);
   });
 }
 
 // ─── OAuth2 Discord ────────────────────────────────────────────────────────
 
-const redirectUri = () => `${env.dashboardUrl}/callback`;
+const uriRedirection = () => `${environnement.siteUrl}/callback`;
 
-async function exchangeCode(code: string): Promise<{ id: string; username: string; avatar: string | null } | null> {
-  const token = await fetch('https://discord.com/api/v10/oauth2/token', {
+async function echangerCode(code: string): Promise<{ id: string; username: string; avatar: string | null } | null> {
+  const jeton = await fetch('https://discord.com/api/v10/oauth2/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: env.clientId, client_secret: env.clientSecret, grant_type: 'authorization_code', code, redirect_uri: redirectUri() }),
+    body: new URLSearchParams({ client_id: environnement.clientId, client_secret: environnement.secretClient, grant_type: 'authorization_code', code, redirect_uri: uriRedirection() }),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!token.ok) return null;
-  const { access_token } = (await token.json()) as { access_token: string };
-  const me = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${access_token}` }, signal: AbortSignal.timeout(10_000) });
-  if (!me.ok) return null;
-  const user = (await me.json()) as { id: string; username: string; global_name?: string; avatar: string | null };
-  return { id: user.id, username: user.global_name ?? user.username, avatar: user.avatar };
+  if (!jeton.ok) return null;
+  const { access_token } = (await jeton.json()) as { access_token: string };
+  const moi = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${access_token}` }, signal: AbortSignal.timeout(10_000) });
+  if (!moi.ok) return null;
+  const utilisateur = (await moi.json()) as { id: string; username: string; global_name?: string; avatar: string | null };
+  return { id: utilisateur.id, username: utilisateur.global_name ?? utilisateur.username, avatar: utilisateur.avatar };
 }
 
 // ─── Accès ─────────────────────────────────────────────────────────────────
 
-async function manageableGuilds(client: Client<true>, userId: string): Promise<Guild[]> {
-  const out: Guild[] = [];
-  for (const guild of client.guilds.cache.values()) {
-    if (isBotOwner(userId)) {
-      out.push(guild);
+async function serveursGerables(client: Client<true>, utilisateurId: string): Promise<Guild[]> {
+  const sortie: Guild[] = [];
+  for (const serveur of client.guilds.cache.values()) {
+    if (estProprietaireBot(utilisateurId)) {
+      sortie.push(serveur);
       continue;
     }
-    const member = guild.members.cache.get(userId) ?? (await guild.members.fetch(userId).catch(() => null));
-    if (member && getLevel(member) >= PermLevel.ADMIN) out.push(guild);
+    const membre = serveur.members.cache.get(utilisateurId) ?? (await serveur.members.fetch(utilisateurId).catch(() => null));
+    if (membre && lireNiveau(membre) >= Niveau.ADMIN) sortie.push(serveur);
   }
-  return out;
+  return sortie;
 }
 
-async function requireGuildAccess(client: Client<true>, session: Session, guildId: string): Promise<{ guild: Guild; level: PermLevel } | null> {
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) return null;
-  if (isBotOwner(session.user.id)) return { guild, level: PermLevel.BOT_OWNER };
-  const member = guild.members.cache.get(session.user.id) ?? (await guild.members.fetch(session.user.id).catch(() => null));
-  if (!member) return null;
-  const level = getLevel(member);
-  return level >= PermLevel.ADMIN ? { guild, level } : null;
+async function exigerAccesServeur(client: Client<true>, session: Session, serveurId: string): Promise<{ guild: Guild; level: Niveau } | null> {
+  const serveur = client.guilds.cache.get(serveurId);
+  if (!serveur) return null;
+  if (estProprietaireBot(session.utilisateur.id)) return { guild: serveur, level: Niveau.PROPRIETAIRE_BOT };
+  const membre = serveur.members.cache.get(session.utilisateur.id) ?? (await serveur.members.fetch(session.utilisateur.id).catch(() => null));
+  if (!membre) return null;
+  const niveau = lireNiveau(membre);
+  return niveau >= Niveau.ADMIN ? { guild: serveur, level: niveau } : null;
 }
 
 // ─── Pages ─────────────────────────────────────────────────────────────────
 
-function brandName(guild?: Guild | null): string {
-  if (!guild) return process.env.BOT_BRAND_NAME?.trim() || 'Twitch Community';
-  const brand = brandFor(guild.id);
-  return brand.key ? brand.name : guild.name;
+function nomEnseigne(serveur?: Guild | null): string {
+  if (!serveur) return process.env.BOT_BRAND_NAME?.trim() || 'Twitch Community';
+  const enseigne = enseigneDe(serveur.id);
+  return enseigne.cle ? enseigne.nom : serveur.name;
 }
 
-function guildPage(session: Session, guild: Guild, path: string, title: string, body: string): string {
-  return page({ title, brand: brandName(guild), body, user: session.user, nav: navFor(guild.id), current: path, csrf: session.csrf, accent: toHex(brandFor(guild.id).color) });
+function pageServeur(session: Session, serveur: Guild, chemin: string, titre: string, corps: string): string {
+  return page({ titre, enseigne: nomEnseigne(serveur), corps, utilisateur: session.utilisateur, navigation: navigationPour(serveur.id), actuel: chemin, csrf: session.csrf, accent: enHexa(enseigneDe(serveur.id).couleur) });
 }
 
-function homePage(client: Client<true>, guild: Guild, level: PermLevel): string {
-  const states = getModuleStates(guild.id).filter((s) => s.module.toggleable);
-  const count = (sql: string) => all<{ n: number }>(sql, guild.id)[0]?.n ?? 0;
-  return `<h1>🤖 ${h(brandName(guild))}</h1><p class="sub">Serveur : <b>${h(guild.name)}</b> · ${client.ws.ping >= 0 ? '🟢 En ligne' : '🟠 Connexion…'} · ton accès : ${h(levelLabel(level))}</p>
+function pageAccueil(client: Client<true>, serveur: Guild, niveau: Niveau): string {
+  const etats = lireEtatsModules(serveur.id).filter((s) => s.module.desactivable);
+  const nombre = (requete: string) => lireTout<{ n: number }>(requete, serveur.id)[0]?.n ?? 0;
+  return `<h1>🤖 ${h(nomEnseigne(serveur))}</h1><p class="sub">Serveur : <b>${h(serveur.name)}</b> · ${client.ws.ping >= 0 ? '🟢 En ligne' : '🟠 Connexion…'} · ton accès : ${h(libelleNiveau(niveau))}</p>
 <div class="grid">
-  <div class="card"><div class="muted">Membres</div><div class="stat">${guild.memberCount}</div></div>
-  <div class="card"><div class="muted">Modules actifs</div><div class="stat">${states.filter((s) => s.enabled).length}/${states.length}</div></div>
-  <div class="card"><div class="muted">Tickets ouverts</div><div class="stat">${count("SELECT COUNT(*) AS n FROM tickets WHERE guild_id = ? AND status = 'open'")}</div></div>
-  <div class="card"><div class="muted">Giveaways en cours</div><div class="stat">${count("SELECT COUNT(*) AS n FROM giveaways WHERE guild_id = ? AND status = 'running'")}</div></div>
-  <div class="card"><div class="muted">Chaînes Twitch en live</div><div class="stat">${count('SELECT COUNT(*) AS n FROM twitch_channels WHERE guild_id = ? AND live_stream_id IS NOT NULL')}</div></div>
-  <div class="card"><div class="muted">Warns actifs</div><div class="stat">${count('SELECT COUNT(*) AS n FROM warnings WHERE guild_id = ? AND active = 1')}</div></div>
+  <div class="card"><div class="muted">Membres</div><div class="stat">${serveur.memberCount}</div></div>
+  <div class="card"><div class="muted">Modules actifs</div><div class="stat">${etats.filter((s) => s.enabled).length}/${etats.length}</div></div>
+  <div class="card"><div class="muted">Tickets ouverts</div><div class="stat">${nombre("SELECT COUNT(*) AS n FROM tickets WHERE serveur_id = ? AND statut = 'open'")}</div></div>
+  <div class="card"><div class="muted">Giveaways en cours</div><div class="stat">${nombre("SELECT COUNT(*) AS n FROM tirages WHERE serveur_id = ? AND statut = 'running'")}</div></div>
+  <div class="card"><div class="muted">Chaînes Twitch en live</div><div class="stat">${nombre('SELECT COUNT(*) AS n FROM chaines_twitch WHERE serveur_id = ? AND live_id IS NOT NULL')}</div></div>
+  <div class="card"><div class="muted">Warns actifs</div><div class="stat">${nombre('SELECT COUNT(*) AS n FROM avertissements WHERE serveur_id = ? AND actif = 1')}</div></div>
 </div>
 <h2 style="margin-top:28px">Modules</h2>
-<div class="grid">${states
+<div class="grid">${etats
     .slice(0, 12)
-    .map((s) => `<div class="card row"><span>${s.module.emoji} ${h(s.module.name)}</span><span class="pill ${s.enabled ? 'on' : 'off'}">${s.enabled ? '🟢 Activé' : '🔴 Désactivé'}</span></div>`)
+    .map((s) => `<div class="card row"><span>${s.module.emoji} ${h(s.module.nom)}</span><span class="pill ${s.enabled ? 'on' : 'off'}">${s.enabled ? '🟢 Activé' : '🔴 Désactivé'}</span></div>`)
     .join('')}</div>`;
 }
 
-function modulesPage(session: Session, guild: Guild, notice?: string): string {
-  const states = getModuleStates(guild.id).filter((s) => s.module.toggleable);
-  return `<h1>🧩 Modules</h1><p class="sub">Un module désactivé ne répond plus, sans casser les autres.</p>${notice ? `<div class="notice">${h(notice)}</div>` : ''}
-<div class="grid">${states
+function pageModules(session: Session, serveur: Guild, avertissement?: string): string {
+  const etats = lireEtatsModules(serveur.id).filter((s) => s.module.desactivable);
+  return `<h1>🧩 Modules</h1><p class="sub">Un module désactivé ne répond plus, sans casser les autres.</p>${avertissement ? `<div class="notice">${h(avertissement)}</div>` : ''}
+<div class="grid">${etats
     .map(
-      (s) => `<div class="card"><div class="row"><h3>${s.module.emoji} ${h(s.module.name)}</h3><span class="pill ${s.enabled ? 'on' : 'off'}">${s.enabled ? 'Activé' : 'Désactivé'}</span></div>
+      (s) => `<div class="card"><div class="row"><h3>${s.module.emoji} ${h(s.module.nom)}</h3><span class="pill ${s.enabled ? 'on' : 'off'}">${s.enabled ? 'Activé' : 'Désactivé'}</span></div>
 <p class="muted">${h(s.module.description)}</p>
-<form method="post" action="/g/${guild.id}/modules">${csrfField(session.csrf)}<input type="hidden" name="module" value="${h(s.module.id)}"/><input type="hidden" name="enabled" value="${s.enabled ? '0' : '1'}"/>
+<form method="post" action="/g/${serveur.id}/modules">${champCsrf(session.csrf)}<input type="hidden" name="module" value="${h(s.module.id)}"/><input type="hidden" name="enabled" value="${s.enabled ? '0' : '1'}"/>
 <button class="${s.enabled ? 'danger' : ''}" type="submit">${s.enabled ? 'Désactiver' : 'Activer'}</button></form></div>`,
     )
     .join('')}</div>`;
 }
 
-function ticketsPage(guild: Guild): string {
-  const rows = all<{ number: number; channel_id: string; user_id: string; category: string; status: string; claimed_by: string | null; created_at: number }>(
-    'SELECT number, channel_id, user_id, category, status, claimed_by, created_at FROM tickets WHERE guild_id = ? ORDER BY created_at DESC LIMIT 100',
-    guild.id,
+function pageTickets(serveur: Guild): string {
+  const rangees = lireTout<{ numero: number; salon_id: string; utilisateur_id: string; categorie: string; statut: string; pris_par: string | null; cree_le: number }>(
+    'SELECT numero, salon_id, utilisateur_id, categorie, statut, pris_par, cree_le FROM tickets WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 100',
+    serveur.id,
   );
-  const name = (id: string | null) => (id ? h(guild.members.cache.get(id)?.user.tag ?? id) : '—');
+  const nom = (id: string | null) => (id ? h(serveur.members.cache.get(id)?.user.tag ?? id) : '—');
   return `<h1>🎫 Tickets</h1><p class="sub">Les 100 derniers tickets.</p>${table(
     ['N°', 'Statut', 'Motif', 'Ouvert par', 'Pris en charge', 'Date'],
-    rows.map((t) => [`#${t.number}`, t.status === 'open' ? '<span class="pill on">ouvert</span>' : `<span class="pill off">${h(t.status)}</span>`, h(t.category), name(t.user_id), name(t.claimed_by), date(t.created_at)]),
+    rangees.map((t) => [`#${t.numero}`, t.statut === 'open' ? '<span class="pill on">ouvert</span>' : `<span class="pill off">${h(t.statut)}</span>`, h(t.categorie), nom(t.utilisateur_id), nom(t.pris_par), date(t.cree_le)]),
     'Aucun ticket.',
   )}`;
 }
 
-function giveawaysPage(guild: Guild): string {
-  const rows = all<{ id: number; prize: string; status: string; winners_count: number; ends_at: number; winners: string }>('SELECT id, prize, status, winners_count, ends_at, winners FROM giveaways WHERE guild_id = ? ORDER BY created_at DESC LIMIT 100', guild.id);
-  const participants = (id: number) => all<{ n: number }>('SELECT COUNT(*) AS n FROM giveaway_entries WHERE giveaway_id = ?', id)[0]?.n ?? 0;
+function pageTirages(serveur: Guild): string {
+  const rangees = lireTout<{ id: number; lot: string; statut: string; nombre_gagnants: number; fin_le: number; gagnants: string }>('SELECT id, lot, statut, nombre_gagnants, fin_le, gagnants FROM tirages WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 100', serveur.id);
+  const participants = (id: number) => lireTout<{ n: number }>('SELECT COUNT(*) AS n FROM participations_tirages WHERE tirage_id = ?', id)[0]?.n ?? 0;
   return `<h1>🎉 Giveaways</h1><p class="sub">Lance-les depuis Discord avec <code>/giveaway start</code>.</p>${table(
     ['#', 'Lot', 'Statut', 'Participants', 'Gagnants', 'Fin'],
-    rows.map((g) => [
+    rangees.map((g) => [
       String(g.id),
-      h(g.prize),
-      h(g.status),
+      h(g.lot),
+      h(g.statut),
       String(participants(g.id)),
-      parseJson<string[]>(g.winners, []).map((w) => h(guild.members.cache.get(w)?.user.tag ?? w)).join(', ') || `${g.winners_count} à tirer`,
-      date(g.ends_at),
+      lireJson<string[]>(g.gagnants, []).map((w) => h(serveur.members.cache.get(w)?.user.tag ?? w)).join(', ') || `${g.nombre_gagnants} à tirer`,
+      date(g.fin_le),
     ]),
     'Aucun giveaway.',
   )}`;
 }
 
-function twitchPage(guild: Guild): string {
-  const rows = all<{ login: string; display_name: string | null; channel_id: string; live_stream_id: string | null; last_title: string | null; last_game: string | null; peak_viewers: number | null }>(
-    'SELECT login, display_name, channel_id, live_stream_id, last_title, last_game, peak_viewers FROM twitch_channels WHERE guild_id = ? ORDER BY login',
-    guild.id,
+function pageTwitch(serveur: Guild): string {
+  const rangees = lireTout<{ pseudo: string; nom_affiche: string | null; salon_id: string; live_id: string | null; dernier_titre: string | null; dernier_jeu: string | null; pic_spectateurs: number | null }>(
+    'SELECT pseudo, nom_affiche, salon_id, live_id, dernier_titre, dernier_jeu, pic_spectateurs FROM chaines_twitch WHERE serveur_id = ? ORDER BY pseudo',
+    serveur.id,
   );
   return `<h1>🔴 Twitch</h1><p class="sub">Ajoute des chaînes avec <code>/twitch add</code>.</p>${table(
     ['Chaîne', 'État', 'Salon', 'Dernier titre', 'Jeu', 'Pic'],
-    rows.map((r) => [
-      `<a href="https://twitch.tv/${h(r.login)}">${h(r.display_name ?? r.login)}</a>`,
-      r.live_stream_id ? '<span class="pill on">🔴 en live</span>' : '<span class="pill off">hors ligne</span>',
-      `#${h(guild.channels.cache.get(r.channel_id)?.name ?? '?')}`,
-      h(r.last_title ?? '—'),
-      h(r.last_game ?? '—'),
-      String(r.peak_viewers ?? 0),
+    rangees.map((r) => [
+      `<a href="https://twitch.tv/${h(r.pseudo)}">${h(r.nom_affiche ?? r.pseudo)}</a>`,
+      r.live_id ? '<span class="pill on">🔴 en live</span>' : '<span class="pill off">hors ligne</span>',
+      `#${h(serveur.channels.cache.get(r.salon_id)?.name ?? '?')}`,
+      h(r.dernier_titre ?? '—'),
+      h(r.dernier_jeu ?? '—'),
+      String(r.pic_spectateurs ?? 0),
     ]),
     'Aucune chaîne suivie.',
   )}`;
 }
 
-function moderationPage(guild: Guild): string {
-  const rows = all<{ user_id: string; moderator_id: string; reason: string; created_at: number; active: number }>('SELECT user_id, moderator_id, reason, created_at, active FROM warnings WHERE guild_id = ? ORDER BY created_at DESC LIMIT 100', guild.id);
-  const name = (id: string) => h(guild.members.cache.get(id)?.user.tag ?? guild.client.users.cache.get(id)?.tag ?? id);
+function pageModeration(serveur: Guild): string {
+  const rangees = lireTout<{ utilisateur_id: string; moderateur_id: string; raison: string; cree_le: number; actif: number }>('SELECT utilisateur_id, moderateur_id, raison, cree_le, actif FROM avertissements WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 100', serveur.id);
+  const nom = (id: string) => h(serveur.members.cache.get(id)?.user.tag ?? serveur.client.users.cache.get(id)?.tag ?? id);
   return `<h1>🛡️ Modération</h1><p class="sub">Les 100 derniers avertissements.</p>${table(
     ['Membre', 'Raison', 'Par', 'Date', 'Actif'],
-    rows.map((w) => [name(w.user_id), h(w.reason), name(w.moderator_id), date(w.created_at), w.active ? 'oui' : 'retiré']),
+    rangees.map((w) => [nom(w.utilisateur_id), h(w.raison), nom(w.moderateur_id), date(w.cree_le), w.actif ? 'oui' : 'retiré']),
     'Aucun avertissement.',
   )}`;
 }
 
-function logsPage(guild: Guild, pageIndex: number): string {
-  const per = 50;
-  const rows = all<{ category: string; type: string; user_id: string | null; actor_id: string | null; created_at: number; data: string }>(
-    'SELECT category, type, user_id, actor_id, created_at, data FROM logs WHERE guild_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
-    guild.id,
-    per,
-    pageIndex * per,
+function pageJournaux(serveur: Guild, indicePage: number): string {
+  const parPage = 50;
+  const rangees = lireTout<{ categorie: string; type: string; utilisateur_id: string | null; acteur_id: string | null; cree_le: number; donnees: string }>(
+    'SELECT categorie, type, utilisateur_id, acteur_id, cree_le, donnees FROM journaux WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT ? OFFSET ?',
+    serveur.id,
+    parPage,
+    indicePage * parPage,
   );
-  const name = (id: string | null) => (id ? h(guild.members.cache.get(id)?.user.tag ?? id) : '—');
-  const pager = `<p class="row">${pageIndex > 0 ? `<a class="btn" href="?page=${pageIndex - 1}">← Plus récents</a>` : '<span></span>'}${rows.length === per ? `<a class="btn" href="?page=${pageIndex + 1}">Plus anciens →</a>` : ''}</p>`;
+  const nom = (id: string | null) => (id ? h(serveur.members.cache.get(id)?.user.tag ?? id) : '—');
+  const pagination = `<p class="row">${indicePage > 0 ? `<a class="btn" href="?page=${indicePage - 1}">← Plus récents</a>` : '<span></span>'}${rangees.length === parPage ? `<a class="btn" href="?page=${indicePage + 1}">Plus anciens →</a>` : ''}</p>`;
   return `<h1>📜 Logs</h1><p class="sub">L’historique enregistré par le bot.</p>${table(
     ['Date', 'Catégorie', 'Action', 'Membre', 'Par', 'Détails'],
-    rows.map((r) => [date(r.created_at), h(r.category), h(r.type), name(r.user_id), name(r.actor_id), `<span class="muted">${h(r.data.slice(0, 160))}</span>`]),
+    rangees.map((r) => [date(r.cree_le), h(r.categorie), h(r.type), nom(r.utilisateur_id), nom(r.acteur_id), `<span class="muted">${h(r.donnees.slice(0, 160))}</span>`]),
     'Aucun log.',
-  )}${pager}`;
+  )}${pagination}`;
 }
 
-function customizationPage(session: Session, guild: Guild, notice?: string): string {
-  const cfg = getConfig(guild.id).general;
+function pagePersonnalisation(session: Session, serveur: Guild, avertissement?: string): string {
+  const reglages = lireConfig(serveur.id).general;
   const themes = [['brand', '🎥 Enseigne du streamer'], ...Object.entries(THEMES).map(([k, t]) => [k, `${t.emoji} ${t.label}`]), ['custom', '🖌️ Personnalisé']];
-  return `<h1>🎨 Personnalisation</h1><p class="sub">Le thème des messages du bot sur ce serveur.</p>${notice ? `<div class="notice">${h(notice)}</div>` : ''}
-<form class="card" method="post" action="/g/${guild.id}/personnalisation">${csrfField(session.csrf)}
-<label>Thème</label><select name="theme">${themes.map(([v, l]) => `<option value="${h(v!)}"${cfg.theme === v ? ' selected' : ''}>${h(l!)}</option>`).join('')}</select>
-<label>Couleur principale (thème personnalisé)</label><input name="primary" value="${h(cfg.colors.primary)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Succès</label><input name="success" value="${h(cfg.colors.success)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Erreur</label><input name="error" value="${h(cfg.colors.error)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Avertissement</label><input name="warning" value="${h(cfg.colors.warning)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Information</label><input name="info" value="${h(cfg.colors.info)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Pied de page (vide = enseigne)</label><input name="footer" maxlength="128" value="${h(cfg.footer)}"/>
-<label>Fuseau horaire</label><input name="timezone" maxlength="64" value="${h(cfg.timezone)}"/>
+  return `<h1>🎨 Personnalisation</h1><p class="sub">Le thème des messages du bot sur ce serveur.</p>${avertissement ? `<div class="notice">${h(avertissement)}</div>` : ''}
+<form class="card" method="post" action="/g/${serveur.id}/personnalisation">${champCsrf(session.csrf)}
+<label>Thème</label><select name="theme">${themes.map(([v, l]) => `<option value="${h(v!)}"${reglages.theme === v ? ' selected' : ''}>${h(l!)}</option>`).join('')}</select>
+<label>Couleur principale (thème personnalisé)</label><input name="primary" value="${h(reglages.colors.primary)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Succès</label><input name="success" value="${h(reglages.colors.success)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Erreur</label><input name="error" value="${h(reglages.colors.error)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Avertissement</label><input name="warning" value="${h(reglages.colors.warning)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Information</label><input name="info" value="${h(reglages.colors.info)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Pied de page (vide = enseigne)</label><input name="footer" maxlength="128" value="${h(reglages.footer)}"/>
+<label>Fuseau horaire</label><input name="timezone" maxlength="64" value="${h(reglages.fuseau)}"/>
 <p><button type="submit">💾 Enregistrer</button></p></form>`;
 }
 
 // ─── Routeur ───────────────────────────────────────────────────────────────
 
-async function handle(client: Client<true>, req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'inconnu';
-  if (!limiter.hit(ip)) return send(res, 429, page({ title: 'Trop de requêtes', brand: brandName(), body: '<div class="center"><h1>⏳ Doucement</h1><p class="muted">Réessaie dans une minute.</p></div>' }));
-  const url = new URL(req.url ?? '/', env.dashboardUrl);
-  const path = url.pathname.replace(/\/+$/, '') || '/';
-  const session = getSession(req);
+async function traiter(client: Client<true>, conditions: IncomingMessage, reponse: ServerResponse): Promise<void> {
+  const ip = (conditions.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() || conditions.socket.remoteAddress || 'inconnu';
+  if (!limiteur.compter(ip)) return envoyer(reponse, 429, page({ titre: 'Trop de requêtes', enseigne: nomEnseigne(), corps: '<div class="center"><h1>⏳ Doucement</h1><p class="muted">Réessaie dans une minute.</p></div>' }));
+  const url = new URL(conditions.url ?? '/', environnement.siteUrl);
+  const chemin = url.pathname.replace(/\/+$/, '') || '/';
+  const session = lireSession(conditions);
 
-  if (path === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, guilds: client.guilds.cache.size, ping: client.ws.ping }));
+  if (chemin === '/health') {
+    reponse.writeHead(200, { 'Content-Type': 'application/json' });
+    reponse.end(JSON.stringify({ ok: true, guilds: client.guilds.cache.size, ping: client.ws.ping }));
     return;
   }
 
-  if (path === '/login') {
-    const state = randomBytes(18).toString('base64url');
-    pendingStates.set(state, true);
-    const auth = new URL('https://discord.com/oauth2/authorize');
-    auth.search = new URLSearchParams({ client_id: env.clientId, response_type: 'code', scope: 'identify', redirect_uri: redirectUri(), state }).toString();
-    return redirect(res, auth.toString());
+  if (chemin === '/login') {
+    const etat = randomBytes(18).toString('base64url');
+    etatsEnAttente.ecrire(etat, true);
+    const autorisation = new URL('https://discord.com/oauth2/authorize');
+    autorisation.search = new URLSearchParams({ client_id: environnement.clientId, response_type: 'code', scope: 'identify', redirect_uri: uriRedirection(), state: etat }).toString();
+    return rediriger(reponse, autorisation.toString());
   }
 
-  if (path === '/callback') {
-    const state = url.searchParams.get('state') ?? '';
+  if (chemin === '/callback') {
+    const etat = url.searchParams.get('state') ?? '';
     const code = url.searchParams.get('code');
-    if (!code || !pendingStates.has(state)) return send(res, 400, page({ title: 'Connexion refusée', brand: brandName(), body: '<div class="center"><h1>❌ Connexion expirée</h1><p><a class="btn" href="/login">Réessayer</a></p></div>' }));
-    pendingStates.delete(state);
-    const user = await exchangeCode(code).catch(() => null);
-    if (!user) return send(res, 400, page({ title: 'Connexion refusée', brand: brandName(), body: '<div class="center"><h1>❌ Discord a refusé la connexion</h1><p><a class="btn" href="/login">Réessayer</a></p></div>' }));
+    if (!code || !etatsEnAttente.possede(etat)) return envoyer(reponse, 400, page({ titre: 'Connexion refusée', enseigne: nomEnseigne(), corps: '<div class="center"><h1>❌ Connexion expirée</h1><p><a class="btn" href="/login">Réessayer</a></p></div>' }));
+    etatsEnAttente.supprimer(etat);
+    const utilisateur = await echangerCode(code).catch(() => null);
+    if (!utilisateur) return envoyer(reponse, 400, page({ titre: 'Connexion refusée', enseigne: nomEnseigne(), corps: '<div class="center"><h1>❌ Discord a refusé la connexion</h1><p><a class="btn" href="/login">Réessayer</a></p></div>' }));
     const id = randomBytes(32).toString('base64url');
-    sessions.set(id, { id, csrf: randomBytes(24).toString('base64url'), user });
-    log.info(`Connexion au dashboard : ${user.username} (${user.id})`);
-    return redirect(res, '/servers', {
-      'Set-Cookie': `${COOKIE}=${encodeURIComponent(sign(id))}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MS / 1000}${secure() ? '; Secure' : ''}`,
+    sessions.ecrire(id, { id, csrf: randomBytes(24).toString('base64url'), utilisateur });
+    registre.info(`Connexion au dashboard : ${utilisateur.username} (${utilisateur.id})`);
+    return rediriger(reponse, '/servers', {
+      'Set-Cookie': `${COOKIE_SESSION}=${encodeURIComponent(signer(id))}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${DUREE_SESSION_MS / 1000}${securise() ? '; Secure' : ''}`,
     });
   }
 
   if (!session) {
-    if (path === '/') {
-      return send(res, 200, page({ title: 'Connexion', brand: brandName(), body: `<div class="center card"><h1>🤖 ${h(brandName())}</h1><p class="muted">Le tableau de bord du bot. Connecte-toi avec Discord pour gérer tes serveurs.</p><p><a class="btn" href="/login">Se connecter avec Discord</a></p></div>` }));
+    if (chemin === '/') {
+      return envoyer(reponse, 200, page({ titre: 'Connexion', enseigne: nomEnseigne(), corps: `<div class="center card"><h1>🤖 ${h(nomEnseigne())}</h1><p class="muted">Le tableau de bord du bot. Connecte-toi avec Discord pour gérer tes serveurs.</p><p><a class="btn" href="/login">Se connecter avec Discord</a></p></div>` }));
     }
-    return redirect(res, '/');
+    return rediriger(reponse, '/');
   }
 
-  if (req.method === 'POST') {
-    const form = await readForm(req).catch(() => null);
-    if (!form || form.get('csrf') !== session.csrf) return send(res, 403, page({ title: 'Refusé', brand: brandName(), body: '<div class="center"><h1>🔒 Requête refusée</h1></div>' }));
-    if (path === '/logout') {
-      sessions.delete(session.id);
-      return redirect(res, '/', { 'Set-Cookie': `${COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure() ? '; Secure' : ''}` });
+  if (conditions.method === 'POST') {
+    const formulaire = await lireFormulaireWeb(conditions).catch(() => null);
+    if (!formulaire || formulaire.get('csrf') !== session.csrf) return envoyer(reponse, 403, page({ titre: 'Refusé', enseigne: nomEnseigne(), corps: '<div class="center"><h1>🔒 Requête refusée</h1></div>' }));
+    if (chemin === '/logout') {
+      sessions.supprimer(session.id);
+      return rediriger(reponse, '/', { 'Set-Cookie': `${COOKIE_SESSION}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${securise() ? '; Secure' : ''}` });
     }
-    const m = /^\/g\/(\d{17,20})\/(modules|personnalisation)$/.exec(path);
-    if (!m) return send(res, 404, 'Introuvable');
-    const access = await requireGuildAccess(client, session, m[1]!);
-    if (!access) return send(res, 403, page({ title: 'Refusé', brand: brandName(), body: '<div class="center"><h1>🔒 Accès refusé</h1></div>', user: session.user, csrf: session.csrf }));
+    const m = /^\/g\/(\d{17,20})\/(modules|personnalisation)$/.exec(chemin);
+    if (!m) return envoyer(reponse, 404, 'Introuvable');
+    const acces = await exigerAccesServeur(client, session, m[1]!);
+    if (!acces) return envoyer(reponse, 403, page({ titre: 'Refusé', enseigne: nomEnseigne(), corps: '<div class="center"><h1>🔒 Accès refusé</h1></div>', utilisateur: session.utilisateur, csrf: session.csrf }));
     if (m[2] === 'modules') {
-      const mod = getModule(form.get('module') ?? '');
-      if (!mod?.toggleable) return redirect(res, `/g/${m[1]}/modules`);
-      setModuleEnabled(m[1]!, mod.id, form.get('enabled') === '1');
-      log.info(`Dashboard : ${session.user.username} a ${form.get('enabled') === '1' ? 'activé' : 'désactivé'} ${mod.id} sur ${m[1]}`);
-      return send(res, 200, guildPage(session, access.guild, `/g/${m[1]}/modules`, 'Modules', modulesPage(session, access.guild, `${mod.emoji} ${mod.name} ${form.get('enabled') === '1' ? 'activé' : 'désactivé'}.`)));
+      const module = lireModule(formulaire.get('module') ?? '');
+      if (!module?.desactivable) return rediriger(reponse, `/g/${m[1]}/modules`);
+      activerModule(m[1]!, module.id, formulaire.get('enabled') === '1');
+      registre.info(`Dashboard : ${session.utilisateur.username} a ${formulaire.get('enabled') === '1' ? 'activé' : 'désactivé'} ${module.id} sur ${m[1]}`);
+      return envoyer(reponse, 200, pageServeur(session, acces.guild, `/g/${m[1]}/modules`, 'Modules', pageModules(session, acces.guild, `${module.emoji} ${module.nom} ${formulaire.get('enabled') === '1' ? 'activé' : 'désactivé'}.`)));
     }
-    const hex = (v: string | null) => (v && /^#?[0-9a-f]{6}$/i.test(v) ? `#${v.replace('#', '').toUpperCase()}` : null);
-    const theme = form.get('theme') ?? 'brand';
-    const timezone = form.get('timezone') ?? '';
-    updateConfig(m[1]!, (c) => {
+    const hexa = (v: string | null) => (v && /^#?[0-9a-f]{6}$/i.test(v) ? `#${v.replace('#', '').toUpperCase()}` : null);
+    const theme = formulaire.get('theme') ?? 'brand';
+    const fuseau = formulaire.get('timezone') ?? '';
+    modifierConfig(m[1]!, (c) => {
       if (theme === 'brand' || theme === 'custom' || theme in THEMES) c.general.theme = theme as typeof c.general.theme;
       for (const k of ['primary', 'success', 'error', 'warning', 'info'] as const) {
-        const v = hex(form.get(k));
+        const v = hexa(formulaire.get(k));
         if (v) c.general.colors[k] = v;
       }
-      c.general.footer = (form.get('footer') ?? '').slice(0, 128);
-      if (isValidTimezone(timezone)) c.general.timezone = timezone;
+      c.general.footer = (formulaire.get('footer') ?? '').slice(0, 128);
+      if (fuseauValide(fuseau)) c.general.fuseau = fuseau;
     });
-    return send(res, 200, guildPage(session, access.guild, `/g/${m[1]}/personnalisation`, 'Personnalisation', customizationPage(session, access.guild, 'Enregistré.')));
+    return envoyer(reponse, 200, pageServeur(session, acces.guild, `/g/${m[1]}/personnalisation`, 'Personnalisation', pagePersonnalisation(session, acces.guild, 'Enregistré.')));
   }
 
-  if (path === '/' || path === '/servers') {
-    const guilds = await manageableGuilds(client, session.user.id);
-    const invite = `https://discord.com/oauth2/authorize?client_id=${env.clientId}&scope=bot%20applications.commands&permissions=${PermissionFlagsBits.Administrator}`;
-    const body = `<h1>Tes serveurs</h1><p class="sub">Les serveurs où le bot est présent et où tu as un accès Admin (rôle, permission ou whitelist).</p>
-<div class="grid servers">${guilds
+  if (chemin === '/' || chemin === '/servers') {
+    const serveurs = await serveursGerables(client, session.utilisateur.id);
+    const invitation = `https://discord.com/oauth2/authorize?client_id=${environnement.clientId}&scope=bot%20applications.commands&permissions=${PermissionFlagsBits.Administrator}`;
+    const corps = `<h1>Tes serveurs</h1><p class="sub">Les serveurs où le bot est présent et où tu as un accès Admin (rôle, permission ou whitelist).</p>
+<div class="grid servers">${serveurs
       .map((g) => `<a class="card" href="/g/${g.id}">${g.iconURL() ? `<img src="${h(g.iconURL({ size: 96 })!)}" alt=""/>` : `<span class="ph">${h(g.name.slice(0, 1))}</span>`}<span><b>${h(g.name)}</b><br/><span class="muted">${g.memberCount} membres</span></span></a>`)
-      .join('')}</div>${guilds.length ? '' : '<div class="card muted">Aucun serveur accessible.</div>'}<p style="margin-top:24px"><a class="btn" href="${h(invite)}">➕ Ajouter le bot à un serveur</a></p>`;
-    return send(res, 200, page({ title: 'Serveurs', brand: brandName(), body, user: session.user, csrf: session.csrf }));
+      .join('')}</div>${serveurs.length ? '' : '<div class="card muted">Aucun serveur accessible.</div>'}<p style="margin-top:24px"><a class="btn" href="${h(invitation)}">➕ Ajouter le bot à un serveur</a></p>`;
+    return envoyer(reponse, 200, page({ titre: 'Serveurs', enseigne: nomEnseigne(), corps, utilisateur: session.utilisateur, csrf: session.csrf }));
   }
 
-  const m = /^\/g\/(\d{17,20})(?:\/(modules|tickets|giveaways|twitch|moderation|logs|personnalisation))?$/.exec(path);
-  if (!m) return send(res, 404, page({ title: 'Introuvable', brand: brandName(), body: '<div class="center"><h1>404</h1><p><a class="btn" href="/servers">Retour</a></p></div>', user: session.user, csrf: session.csrf }));
-  const access = await requireGuildAccess(client, session, m[1]!);
-  if (!access) return send(res, 403, page({ title: 'Refusé', brand: brandName(), body: '<div class="center"><h1>🔒 Accès refusé</h1><p class="muted">Il faut un accès Admin sur ce serveur.</p></div>', user: session.user, csrf: session.csrf }));
-  const { guild } = access;
+  const m = /^\/g\/(\d{17,20})(?:\/(modules|tickets|giveaways|twitch|moderation|logs|personnalisation))?$/.exec(chemin);
+  if (!m) return envoyer(reponse, 404, page({ titre: 'Introuvable', enseigne: nomEnseigne(), corps: '<div class="center"><h1>404</h1><p><a class="btn" href="/servers">Retour</a></p></div>', utilisateur: session.utilisateur, csrf: session.csrf }));
+  const acces = await exigerAccesServeur(client, session, m[1]!);
+  if (!acces) return envoyer(reponse, 403, page({ titre: 'Refusé', enseigne: nomEnseigne(), corps: '<div class="center"><h1>🔒 Accès refusé</h1><p class="muted">Il faut un accès Admin sur ce serveur.</p></div>', utilisateur: session.utilisateur, csrf: session.csrf }));
+  const { guild: serveur } = acces;
   const section = m[2];
   const pages: Record<string, [string, () => string]> = {
-    '': ['Accueil', () => homePage(client, guild, access.level)],
-    modules: ['Modules', () => modulesPage(session, guild)],
-    tickets: ['Tickets', () => ticketsPage(guild)],
-    giveaways: ['Giveaways', () => giveawaysPage(guild)],
-    twitch: ['Twitch', () => twitchPage(guild)],
-    moderation: ['Modération', () => moderationPage(guild)],
-    logs: ['Logs', () => logsPage(guild, Math.max(0, Number(url.searchParams.get('page')) || 0))],
-    personnalisation: ['Personnalisation', () => customizationPage(session, guild)],
+    '': ['Accueil', () => pageAccueil(client, serveur, acces.level)],
+    modules: ['Modules', () => pageModules(session, serveur)],
+    tickets: ['Tickets', () => pageTickets(serveur)],
+    giveaways: ['Giveaways', () => pageTirages(serveur)],
+    twitch: ['Twitch', () => pageTwitch(serveur)],
+    moderation: ['Modération', () => pageModeration(serveur)],
+    logs: ['Logs', () => pageJournaux(serveur, Math.max(0, Number(url.searchParams.get('page')) || 0))],
+    personnalisation: ['Personnalisation', () => pagePersonnalisation(session, serveur)],
   };
-  const [title, render] = pages[section ?? '']!;
-  return send(res, 200, guildPage(session, guild, path, title, render()));
+  const [titre, afficher] = pages[section ?? '']!;
+  return envoyer(reponse, 200, pageServeur(session, serveur, chemin, titre, afficher()));
 }
 
-let server: http.Server | null = null;
+let serveurWeb: http.Server | null = null;
 
-export function startDashboard(client: Client<true>): void {
-  if (server) return;
-  server = http.createServer((req, res) => {
-    handle(client, req, res).catch((err: unknown) => {
-      log.error('Erreur du dashboard', err);
-      if (!res.headersSent) send(res, 500, page({ title: 'Erreur', brand: brandName(), body: '<div class="center"><h1>❌ Une erreur est survenue</h1></div>' }));
+export function demarrerSite(client: Client<true>): void {
+  if (serveurWeb) return;
+  serveurWeb = http.createServer((conditions, reponse) => {
+    traiter(client, conditions, reponse).catch((echec: unknown) => {
+      registre.erreur('Erreur du dashboard', echec);
+      if (!reponse.headersSent) envoyer(reponse, 500, page({ titre: 'Erreur', enseigne: nomEnseigne(), corps: '<div class="center"><h1>❌ Une erreur est survenue</h1></div>' }));
     });
   });
-  server.headersTimeout = 15_000;
-  server.requestTimeout = 20_000;
-  server.listen(env.dashboardPort, () => log.info(`Dashboard en ligne sur ${env.dashboardUrl} (port ${env.dashboardPort})`));
+  serveurWeb.headersTimeout = 15_000;
+  serveurWeb.requestTimeout = 20_000;
+  serveurWeb.listen(environnement.sitePort, () => registre.info(`Dashboard en ligne sur ${environnement.siteUrl} (port ${environnement.sitePort})`));
 }
 
-export function stopDashboard(): void {
-  server?.close();
-  server = null;
+export function arreterSite(): void {
+  serveurWeb?.close();
+  serveurWeb = null;
 }

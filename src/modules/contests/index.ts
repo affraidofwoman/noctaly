@@ -10,153 +10,153 @@ import {
   type GuildTextBasedChannel,
   type ModalSubmitInteraction,
 } from 'discord.js';
-import { all, get, run } from '../../database/db';
-import { colorFor, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { getConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { journal, resolveTextChannel } from '../../core/logService';
-import { isModuleEnabled } from '../../core/moduleManager';
-import { canBotManageRole } from '../../core/permissions';
-import type { SetupPage } from '../../core/setup';
-import { medal, neutralizeMentions, truncate } from '../../core/text';
-import { parseDuration, ts } from '../../core/time';
-import { button, buildModal, isHttpUrl, row } from '../../core/ui';
-import { PermLevel, type BotModule, type SlashCommand } from '../../core/types';
-import { addCoins } from '../../services/economy';
-import { addXp } from '../../services/xp';
+import { lireTout, lire, executer } from '../../database/db';
+import { couleurPour, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { lireConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { journal, resoudreSalonTexte } from '../../core/logService';
+import { moduleActif } from '../../core/moduleManager';
+import { botPeutGererRole } from '../../core/permissions';
+import type { PageReglage } from '../../core/setup';
+import { medaille, neutraliserMentions, tronquer } from '../../core/text';
+import { lireDuree, marqueTemps } from '../../core/time';
+import { bouton, construireFormulaire, estLienHttp, rangee } from '../../core/ui';
+import { Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
+import { ajouterPieces } from '../../services/economy';
+import { ajouterXp } from '../../services/xp';
 
-interface ContestRow {
+interface LigneConcours {
   id: number;
-  guild_id: string;
-  channel_id: string;
+  serveur_id: string;
+  salon_id: string;
   message_id: string | null;
-  name: string;
+  nom: string;
   description: string;
-  status: 'submissions' | 'voting' | 'ended';
-  submit_ends_at: number;
-  vote_ends_at: number;
-  jury_role_id: string | null;
-  reward_coins: number;
-  reward_xp: number;
-  reward_role_id: string | null;
-  created_by: string;
+  statut: 'submissions' | 'voting' | 'ended';
+  fin_participations_le: number;
+  fin_votes_le: number;
+  role_jury_id: string | null;
+  recompense_pieces: number;
+  recompense_xp: number;
+  recompense_role_id: string | null;
+  cree_par: string;
 }
 
-interface EntryRow {
+interface LigneParticipation {
   id: number;
-  contest_id: number;
-  user_id: string;
-  content: string;
+  concours_id: number;
+  utilisateur_id: string;
+  contenu: string;
   message_id: string | null;
-  created_at: number;
+  cree_le: number;
 }
 
-const JURY_WEIGHT = 3;
+const POIDS_JURY = 3;
 
-function score(entryId: number): number {
-  return get<{ s: number }>('SELECT COALESCE(SUM(score), 0) AS s FROM contest_votes WHERE entry_id = ?', entryId)?.s ?? 0;
+function score(participationId: number): number {
+  return lire<{ s: number }>('SELECT COALESCE(SUM(score), 0) AS s FROM votes_concours WHERE participation_id = ?', participationId)?.s ?? 0;
 }
 
-function entriesOf(contestId: number): EntryRow[] {
-  return all<EntryRow>('SELECT * FROM contest_entries WHERE contest_id = ? ORDER BY created_at', contestId);
+function participationsDe(concoursId: number): LigneParticipation[] {
+  return lireTout<LigneParticipation>('SELECT * FROM participations_concours WHERE concours_id = ? ORDER BY cree_le', concoursId);
 }
 
-function ranking(contestId: number): (EntryRow & { score: number })[] {
-  return entriesOf(contestId)
+function classementConcours(concoursId: number): (LigneParticipation & { score: number })[] {
+  return participationsDe(concoursId)
     .map((e) => ({ ...e, score: score(e.id) }))
-    .sort((a, b) => b.score - a.score || a.created_at - b.created_at);
+    .sort((a, b) => b.score - a.score || a.cree_le - b.cree_le);
 }
 
-function requireContest(guildId: string, id: number | string | undefined): ContestRow {
-  const c = get<ContestRow>('SELECT * FROM contests WHERE id = ? AND guild_id = ?', Number(id), guildId);
-  if (!c) throw new UserError('Concours introuvable.');
+function exigerConcours(serveurId: string, id: number | string | undefined): LigneConcours {
+  const c = lire<LigneConcours>('SELECT * FROM concours WHERE id = ? AND serveur_id = ?', Number(id), serveurId);
+  if (!c) throw new ErreurUtilisateur('Concours introuvable.');
   return c;
 }
 
-function contestMessage(guild: Guild, c: ContestRow) {
-  const entries = entriesOf(c.id).length;
-  const rewards = [c.reward_coins ? `${c.reward_coins} ${getConfig(guild.id).economy.currencyEmoji}` : null, c.reward_xp ? `${c.reward_xp} XP` : null, c.reward_role_id ? `<@&${c.reward_role_id}>` : null].filter(Boolean);
-  const phase = c.status === 'submissions' ? `📝 Participations jusqu’à ${ts(c.submit_ends_at, 'R')}` : c.status === 'voting' ? `🗳️ Votes jusqu’à ${ts(c.vote_ends_at, 'R')}` : '🏁 Concours terminé';
+function messageConcours(serveur: Guild, c: LigneConcours) {
+  const entrees = participationsDe(c.id).length;
+  const recompenses = [c.recompense_pieces ? `${c.recompense_pieces} ${lireConfig(serveur.id).economie.emojiMonnaie}` : null, c.recompense_xp ? `${c.recompense_xp} XP` : null, c.recompense_role_id ? `<@&${c.recompense_role_id}>` : null].filter(Boolean);
+  const phase = c.statut === 'submissions' ? `📝 Participations jusqu’à ${marqueTemps(c.fin_participations_le, 'R')}` : c.statut === 'voting' ? `🗳️ Votes jusqu’à ${marqueTemps(c.fin_votes_le, 'R')}` : '🏁 Concours terminé';
   const embed = new EmbedBuilder()
-    .setColor(colorFor(guild, c.status === 'ended' ? 'info' : 'primary'))
-    .setTitle(`🏆 CONCOURS — ${truncate(c.name.toUpperCase(), 230)}`)
-    .setDescription([c.description, '', phase, `👥 **${entries}** participation(s)`, c.jury_role_id ? `⚖️ Jury : <@&${c.jury_role_id}> (vote ×${JURY_WEIGHT})` : null, rewards.length ? `🎁 Récompenses : ${rewards.join(' · ')}` : null].filter((l) => l !== null).join('\n'));
-  if (c.status === 'ended') {
-    const top = ranking(c.id).slice(0, 3);
-    if (top.length) embed.addFields({ name: 'Classement', value: top.map((e, i) => `${medal(i + 1)} <@${e.user_id}> — **${e.score}** point(s)`).join('\n') });
+    .setColor(couleurPour(serveur, c.statut === 'ended' ? 'info' : 'primary'))
+    .setTitle(`🏆 CONCOURS — ${tronquer(c.nom.toUpperCase(), 230)}`)
+    .setDescription([c.description, '', phase, `👥 **${entrees}** participation(s)`, c.role_jury_id ? `⚖️ Jury : <@&${c.role_jury_id}> (vote ×${POIDS_JURY})` : null, recompenses.length ? `🎁 Récompenses : ${recompenses.join(' · ')}` : null].filter((l) => l !== null).join('\n'));
+  if (c.statut === 'ended') {
+    const meilleurs = classementConcours(c.id).slice(0, 3);
+    if (meilleurs.length) embed.addFields({ name: 'Classement', value: meilleurs.map((e, i) => `${medaille(i + 1)} <@${e.utilisateur_id}> — **${e.score}** point(s)`).join('\n') });
   }
   return {
     embeds: [embed],
-    components: c.status === 'submissions' ? [row(button(`ct:join:${c.id}`, 'Participer', ButtonStyle.Success, '📝'))] : [],
+    components: c.statut === 'submissions' ? [rangee(bouton(`ct:join:${c.id}`, 'Participer', ButtonStyle.Success, '📝'))] : [],
   };
 }
 
-function entryMessage(guild: Guild, c: ContestRow, e: EntryRow) {
+function messageParticipation(serveur: Guild, c: LigneConcours, e: LigneParticipation) {
   const embed = new EmbedBuilder()
-    .setColor(colorFor(guild))
-    .setAuthor({ name: `Participation #${e.id} — ${c.name}` })
-    .setDescription(`<@${e.user_id}>\n\n${truncate(e.content, 3500)}`);
-  const link = /(https?:\/\/\S+\.(?:png|jpe?g|gif|webp))/i.exec(e.content)?.[1];
-  if (link && isHttpUrl(link)) embed.setImage(link);
-  return { embeds: [embed], components: c.status === 'voting' ? [row(button(`ct:vote:${e.id}`, `Voter (${score(e.id)})`, ButtonStyle.Primary, '🗳️'))] : [], allowedMentions: { parse: [] as [] } };
+    .setColor(couleurPour(serveur))
+    .setAuthor({ name: `Participation #${e.id} — ${c.nom}` })
+    .setDescription(`<@${e.utilisateur_id}>\n\n${tronquer(e.contenu, 3500)}`);
+  const lien = /(https?:\/\/\S+\.(?:png|jpe?g|gif|webp))/i.exec(e.contenu)?.[1];
+  if (lien && estLienHttp(lien)) embed.setImage(lien);
+  return { embeds: [embed], components: c.statut === 'voting' ? [rangee(bouton(`ct:vote:${e.id}`, `Voter (${score(e.id)})`, ButtonStyle.Primary, '🗳️'))] : [], allowedMentions: { parse: [] as [] } };
 }
 
-async function refresh(client: Client, c: ContestRow): Promise<void> {
-  const guild = client.guilds.cache.get(c.guild_id);
-  const channel = guild ? resolveTextChannel(guild, c.channel_id) : null;
-  if (!guild || !channel || !c.message_id) return;
-  const message = await channel.messages.fetch(c.message_id).catch(() => null);
-  await message?.edit(contestMessage(guild, c)).catch(() => undefined);
+async function rafraichir(client: Client, c: LigneConcours): Promise<void> {
+  const serveur = client.guilds.cache.get(c.serveur_id);
+  const salon = serveur ? resoudreSalonTexte(serveur, c.salon_id) : null;
+  if (!serveur || !salon || !c.message_id) return;
+  const message = await salon.messages.fetch(c.message_id).catch(() => null);
+  await message?.edit(messageConcours(serveur, c)).catch(() => undefined);
 }
 
-async function startVoting(client: Client, c: ContestRow): Promise<void> {
-  run("UPDATE contests SET status = 'voting' WHERE id = ?", c.id);
-  const updated = { ...c, status: 'voting' as const };
-  const guild = client.guilds.cache.get(c.guild_id);
-  const channel = guild ? resolveTextChannel(guild, c.channel_id) : null;
-  if (guild && channel) {
-    await channel.send({ embeds: [new EmbedBuilder().setColor(colorFor(guild)).setDescription(`🗳️ Les votes du concours **${c.name}** sont ouverts jusqu’à ${ts(c.vote_ends_at, 'f')} !`)] }).catch(() => undefined);
-    for (const e of entriesOf(c.id)) {
-      const sent = await channel.send(entryMessage(guild, updated, e)).catch(() => null);
-      if (sent) run('UPDATE contest_entries SET message_id = ? WHERE id = ?', sent.id, e.id);
+async function ouvrirVotes(client: Client, c: LigneConcours): Promise<void> {
+  executer("UPDATE concours SET statut = 'voting' WHERE id = ?", c.id);
+  const modifie = { ...c, status: 'voting' as const };
+  const serveur = client.guilds.cache.get(c.serveur_id);
+  const salon = serveur ? resoudreSalonTexte(serveur, c.salon_id) : null;
+  if (serveur && salon) {
+    await salon.send({ embeds: [new EmbedBuilder().setColor(couleurPour(serveur)).setDescription(`🗳️ Les votes du concours **${c.nom}** sont ouverts jusqu’à ${marqueTemps(c.fin_votes_le, 'f')} !`)] }).catch(() => undefined);
+    for (const e of participationsDe(c.id)) {
+      const envoye = await salon.send(messageParticipation(serveur, modifie, e)).catch(() => null);
+      if (envoye) executer('UPDATE participations_concours SET message_id = ? WHERE id = ?', envoye.id, e.id);
     }
   }
-  await refresh(client, updated);
+  await rafraichir(client, modifie);
 }
 
-async function finish(client: Client, c: ContestRow): Promise<void> {
-  run("UPDATE contests SET status = 'ended' WHERE id = ?", c.id);
-  const updated = { ...c, status: 'ended' as const };
-  const guild = client.guilds.cache.get(c.guild_id);
-  const channel = guild ? resolveTextChannel(guild, c.channel_id) : null;
-  const top = ranking(c.id);
-  const winner = top[0];
-  if (guild && winner && winner.score > 0) {
-    const member = await guild.members.fetch(winner.user_id).catch(() => null);
-    if (c.reward_coins && isModuleEnabled(guild.id, 'economy')) addCoins(guild.id, winner.user_id, c.reward_coins, 'contest');
-    if (c.reward_xp && isModuleEnabled(guild.id, 'xp')) addXp(guild.id, winner.user_id, c.reward_xp);
-    const role = c.reward_role_id ? guild.roles.cache.get(c.reward_role_id) : null;
-    if (member && role && canBotManageRole(guild, role)) await member.roles.add(role, `Gagnant du concours ${c.name}`).catch(() => undefined);
+async function conclure(client: Client, c: LigneConcours): Promise<void> {
+  executer("UPDATE concours SET statut = 'ended' WHERE id = ?", c.id);
+  const modifie = { ...c, status: 'ended' as const };
+  const serveur = client.guilds.cache.get(c.serveur_id);
+  const salon = serveur ? resoudreSalonTexte(serveur, c.salon_id) : null;
+  const meilleurs = classementConcours(c.id);
+  const gagnant = meilleurs[0];
+  if (serveur && gagnant && gagnant.score > 0) {
+    const membre = await serveur.members.fetch(gagnant.utilisateur_id).catch(() => null);
+    if (c.recompense_pieces && moduleActif(serveur.id, 'economy')) ajouterPieces(serveur.id, gagnant.utilisateur_id, c.recompense_pieces, 'contest');
+    if (c.recompense_xp && moduleActif(serveur.id, 'xp')) ajouterXp(serveur.id, gagnant.utilisateur_id, c.recompense_xp);
+    const role = c.recompense_role_id ? serveur.roles.cache.get(c.recompense_role_id) : null;
+    if (membre && role && botPeutGererRole(serveur, role)) await membre.roles.add(role, `Gagnant du concours ${c.nom}`).catch(() => undefined);
   }
-  if (guild && channel) {
+  if (serveur && salon) {
     // Désactive les boutons de vote.
-    for (const e of entriesOf(c.id)) {
+    for (const e of participationsDe(c.id)) {
       if (!e.message_id) continue;
-      const m = await channel.messages.fetch(e.message_id).catch(() => null);
-      await m?.edit(entryMessage(guild, updated, e)).catch(() => undefined);
+      const m = await salon.messages.fetch(e.message_id).catch(() => null);
+      await m?.edit(messageParticipation(serveur, modifie, e)).catch(() => undefined);
     }
-    const text = winner && winner.score > 0 ? `🏆 Bravo <@${winner.user_id}>, tu remportes le concours **${c.name}** avec **${winner.score}** point(s) !` : `🏁 Le concours **${c.name}** est terminé, sans vote.`;
-    await channel.send({ content: text, allowedMentions: { users: winner ? [winner.user_id] : [] } }).catch(() => undefined);
-    void journal(guild, 'community', { title: 'Concours terminé', tone: 'ok', lines: [text, `**Participations** : ${top.length}`] });
+    const texte = gagnant && gagnant.score > 0 ? `🏆 Bravo <@${gagnant.utilisateur_id}>, tu remportes le concours **${c.nom}** avec **${gagnant.score}** point(s) !` : `🏁 Le concours **${c.nom}** est terminé, sans vote.`;
+    await salon.send({ content: texte, allowedMentions: { users: gagnant ? [gagnant.utilisateur_id] : [] } }).catch(() => undefined);
+    void journal(serveur, 'community', { titre: 'Concours terminé', ton: 'ok', lignes: [texte, `**Participations** : ${meilleurs.length}`] });
   }
-  await refresh(client, updated);
+  await rafraichir(client, modifie);
 }
 
-const contest: SlashCommand = {
-  category: 'community',
-  level: PermLevel.STAFF,
-  data: new SlashCommandBuilder()
+const concours: CommandeSlash = {
+  categorie: 'community',
+  niveau: Niveau.STAFF,
+  donnees: new SlashCommandBuilder()
     .setName('contest')
     .setDescription('Les concours')
     .addSubcommand((s) =>
@@ -180,146 +180,146 @@ const contest: SlashCommand = {
         .addIntegerOption((o) => o.setName('concours').setDescription('Le concours').setRequired(true).setAutocomplete(true)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('Les concours')),
-  subLevels: { list: PermLevel.MEMBER },
-  async autocomplete(interaction) {
-    const rows = all<ContestRow>("SELECT * FROM contests WHERE guild_id = ? AND status != 'ended' ORDER BY created_at DESC LIMIT 25", interaction.guildId);
-    await interaction.respond(rows.map((c) => ({ name: truncate(`#${c.id} · ${c.name} (${c.status})`, 100), value: c.id })));
+  niveauxSousCommandes: { list: Niveau.MEMBRE },
+  async autocompletion(interaction) {
+    const rangees = lireTout<LigneConcours>("SELECT * FROM concours WHERE serveur_id = ? AND statut != 'ended' ORDER BY cree_le DESC LIMIT 25", interaction.guildId);
+    await interaction.respond(rangees.map((c) => ({ name: tronquer(`#${c.id} · ${c.nom} (${c.statut})`, 100), value: c.id })));
   },
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const sub = interaction.options.getSubcommand();
-    if (sub === 'list') {
-      const rows = all<ContestRow>('SELECT * FROM contests WHERE guild_id = ? ORDER BY created_at DESC LIMIT 15', guild.id);
-      return reply(interaction, {
-        embeds: [new EmbedBuilder().setColor(colorFor(guild)).setTitle('🏆 Concours').setDescription(rows.map((c) => `**#${c.id}** ${truncate(c.name, 60)} — ${c.status === 'submissions' ? '📝 participations' : c.status === 'voting' ? '🗳️ votes' : '🏁 terminé'} · ${entriesOf(c.id).length} participation(s)`).join('\n') || '*Aucun concours.*')],
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const sousCommande = interaction.options.getSubcommand();
+    if (sousCommande === 'list') {
+      const rangees = lireTout<LigneConcours>('SELECT * FROM concours WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 15', serveur.id);
+      return repondre(interaction, {
+        embeds: [new EmbedBuilder().setColor(couleurPour(serveur)).setTitle('🏆 Concours').setDescription(rangees.map((c) => `**#${c.id}** ${tronquer(c.nom, 60)} — ${c.statut === 'submissions' ? '📝 participations' : c.statut === 'voting' ? '🗳️ votes' : '🏁 terminé'} · ${participationsDe(c.id).length} participation(s)`).join('\n') || '*Aucun concours.*')],
         ephemeral: true,
       });
     }
-    if (sub === 'next') {
-      const c = requireContest(guild.id, interaction.options.getInteger('concours', true));
+    if (sousCommande === 'next') {
+      const c = exigerConcours(serveur.id, interaction.options.getInteger('concours', true));
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      if (c.status === 'submissions') {
-        run('UPDATE contests SET submit_ends_at = ?, vote_ends_at = MAX(vote_ends_at - (submit_ends_at - ?), ? + 3600000) WHERE id = ?', Date.now(), Date.now(), Date.now(), c.id);
-        await startVoting(interaction.client, requireContest(guild.id, c.id));
-      } else if (c.status === 'voting') await finish(interaction.client, c);
-      return interaction.editReply({ embeds: [ok(guild, 'Phase suivante lancée.')] });
+      if (c.statut === 'submissions') {
+        executer('UPDATE concours SET fin_participations_le = ?, fin_votes_le = MAX(fin_votes_le - (fin_participations_le - ?), ? + 3600000) WHERE id = ?', Date.now(), Date.now(), Date.now(), c.id);
+        await ouvrirVotes(interaction.client, exigerConcours(serveur.id, c.id));
+      } else if (c.statut === 'voting') await conclure(interaction.client, c);
+      return interaction.editReply({ embeds: [ok(serveur, 'Phase suivante lancée.')] });
     }
-    const submit = parseDuration(interaction.options.getString('participations', true));
-    const vote = parseDuration(interaction.options.getString('votes', true));
-    if (!submit || !vote || submit > 60 * 86_400_000 || vote > 60 * 86_400_000) throw new UserError('Durées invalides (ex : `3j`, `12h`, 60 jours max).');
+    const soumettre = lireDuree(interaction.options.getString('participations', true));
+    const vote = lireDuree(interaction.options.getString('votes', true));
+    if (!soumettre || !vote || soumettre > 60 * 86_400_000 || vote > 60 * 86_400_000) throw new ErreurUtilisateur('Durées invalides (ex : `3j`, `12h`, 60 jours max).');
     const role = interaction.options.getRole('role');
-    if (role && !canBotManageRole(guild, guild.roles.cache.get(role.id)!)) throw new UserError('Je ne peux pas donner ce rôle de récompense.');
-    const channel = (interaction.options.getChannel('salon') ?? resolveTextChannel(guild, getConfig(guild.id).contests.defaultChannelId) ?? interaction.channel) as GuildTextBasedChannel | null;
-    if (!channel) throw new UserError('Salon introuvable.');
-    const now = Date.now();
-    const r = run(
-      'INSERT INTO contests (guild_id, channel_id, name, description, submit_ends_at, vote_ends_at, jury_role_id, reward_coins, reward_xp, reward_role_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      guild.id,
-      channel.id,
-      neutralizeMentions(interaction.options.getString('nom', true)),
-      neutralizeMentions(interaction.options.getString('description') ?? ''),
-      now + submit,
-      now + submit + vote,
+    if (role && !botPeutGererRole(serveur, serveur.roles.cache.get(role.id)!)) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle de récompense.');
+    const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(serveur, lireConfig(serveur.id).concours.salonDefautId) ?? interaction.channel) as GuildTextBasedChannel | null;
+    if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
+    const maintenant = Date.now();
+    const r = executer(
+      'INSERT INTO concours (serveur_id, salon_id, nom, description, fin_participations_le, fin_votes_le, role_jury_id, recompense_pieces, recompense_xp, recompense_role_id, cree_par, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      serveur.id,
+      salon.id,
+      neutraliserMentions(interaction.options.getString('nom', true)),
+      neutraliserMentions(interaction.options.getString('description') ?? ''),
+      maintenant + soumettre,
+      maintenant + soumettre + vote,
       interaction.options.getRole('jury')?.id ?? null,
       interaction.options.getInteger('pieces') ?? 0,
       interaction.options.getInteger('xp') ?? 0,
       role?.id ?? null,
       interaction.user.id,
-      now,
+      maintenant,
     );
-    const c = requireContest(guild.id, r.lastInsertRowid);
-    const message = await channel.send(contestMessage(guild, c));
-    run('UPDATE contests SET message_id = ? WHERE id = ?', message.id, c.id);
-    return reply(interaction, { embeds: [ok(guild, `Concours publié : ${message.url}`)], ephemeral: true });
+    const c = exigerConcours(serveur.id, r.lastInsertRowid);
+    const message = await salon.send(messageConcours(serveur, c));
+    executer('UPDATE concours SET message_id = ? WHERE id = ?', message.id, c.id);
+    return repondre(interaction, { embeds: [ok(serveur, `Concours publié : ${message.url}`)], ephemeral: true });
   },
 };
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'contests',
   section: 'community',
-  title: 'Concours',
+  titre: 'Concours',
   emoji: '🏆',
   moduleId: 'contests',
-  order: 14,
+  ordre: 14,
   description: 'Concours en deux phases : participations (texte ou lien d’image) puis votes, avec jury optionnel et récompenses pour le gagnant.',
-  fields: [{ kind: 'channel', key: 'channel', label: 'Salon des concours', get: (c) => c.contests.defaultChannelId, set: (c, v) => void (c.contests.defaultChannelId = v) }],
+  champs: [{ kind: 'channel', cle: 'channel', libelle: 'Salon des concours', get: (c) => c.concours.salonDefautId, set: (c, v) => void (c.concours.salonDefautId = v) }],
 };
 
-export const contestsModule: BotModule = {
+export const moduleConcours: ModuleBot = {
   id: 'contests',
-  name: 'Concours',
+  nom: 'Concours',
   emoji: '🏆',
   description: 'Concours avec participations, votes, jury et classement',
-  toggleable: true,
-  defaultEnabled: false,
-  commands: [contest],
-  setupPages: [setupPage],
-  components: [
+  desactivable: true,
+  actifParDefaut: false,
+  commandes: [concours],
+  pagesReglage: [pageReglage],
+  composants: [
     {
-      prefix: 'ct',
-      async button(interaction: ButtonInteraction<'cached'>, [action, id]) {
+      prefixe: 'ct',
+      async bouton(interaction: ButtonInteraction<'cached'>, [action, id]) {
         if (action === 'join') {
-          const c = requireContest(interaction.guildId, id);
-          if (c.status !== 'submissions') throw new UserError('Les participations sont closes.');
-          const existing = get<EntryRow>('SELECT * FROM contest_entries WHERE contest_id = ? AND user_id = ?', c.id, interaction.user.id);
+          const c = exigerConcours(interaction.guildId, id);
+          if (c.statut !== 'submissions') throw new ErreurUtilisateur('Les participations sont closes.');
+          const existant = lire<LigneParticipation>('SELECT * FROM participations_concours WHERE concours_id = ? AND utilisateur_id = ?', c.id, interaction.user.id);
           return interaction.showModal(
-            buildModal(`ct:entry:${c.id}`, `Participer — ${c.name}`.slice(0, 45), [
-              { id: 'content', label: 'Ta participation (texte et/ou lien d’image)', long: true, value: existing?.content, maxLength: 1500, minLength: 5 },
+            construireFormulaire(`ct:entry:${c.id}`, `Participer — ${c.nom}`.slice(0, 45), [
+              { id: 'content', libelle: 'Ta participation (texte et/ou lien d’image)', long: true, valeur: existant?.contenu, longueurMax: 1500, longueurMin: 5 },
             ]),
           );
         }
         if (action === 'vote') {
-          const entry = get<EntryRow>('SELECT * FROM contest_entries WHERE id = ?', Number(id));
-          if (!entry) throw new UserError('Participation introuvable.');
-          const c = requireContest(interaction.guildId, entry.contest_id);
-          if (c.status !== 'voting') throw new UserError('Les votes sont clos.');
-          if (entry.user_id === interaction.user.id) throw new UserError('Tu ne peux pas voter pour ta propre participation.');
-          const jury = !!c.jury_role_id && interaction.member.roles.cache.has(c.jury_role_id);
+          const entree = lire<LigneParticipation>('SELECT * FROM participations_concours WHERE id = ?', Number(id));
+          if (!entree) throw new ErreurUtilisateur('Participation introuvable.');
+          const c = exigerConcours(interaction.guildId, entree.concours_id);
+          if (c.statut !== 'voting') throw new ErreurUtilisateur('Les votes sont clos.');
+          if (entree.utilisateur_id === interaction.user.id) throw new ErreurUtilisateur('Tu ne peux pas voter pour ta propre participation.');
+          const jury = !!c.role_jury_id && interaction.member.roles.cache.has(c.role_jury_id);
           // Un seul vote par personne dans le concours : voter ailleurs déplace le vote.
-          const previous = get<{ entry_id: number }>('SELECT v.entry_id FROM contest_votes v JOIN contest_entries e ON e.id = v.entry_id WHERE e.contest_id = ? AND v.user_id = ?', c.id, interaction.user.id);
-          if (previous?.entry_id === entry.id) {
-            run('DELETE FROM contest_votes WHERE entry_id = ? AND user_id = ?', entry.id, interaction.user.id);
+          const precedent = lire<{ participation_id: number }>('SELECT v.participation_id FROM votes_concours v JOIN participations_concours e ON e.id = v.participation_id WHERE e.concours_id = ? AND v.utilisateur_id = ?', c.id, interaction.user.id);
+          if (precedent?.participation_id === entree.id) {
+            executer('DELETE FROM votes_concours WHERE participation_id = ? AND utilisateur_id = ?', entree.id, interaction.user.id);
           } else {
-            if (previous) run('DELETE FROM contest_votes WHERE entry_id = ? AND user_id = ?', previous.entry_id, interaction.user.id);
-            run('INSERT INTO contest_votes (entry_id, user_id, score, jury) VALUES (?, ?, ?, ?)', entry.id, interaction.user.id, jury ? JURY_WEIGHT : 1, jury ? 1 : 0);
+            if (precedent) executer('DELETE FROM votes_concours WHERE participation_id = ? AND utilisateur_id = ?', precedent.participation_id, interaction.user.id);
+            executer('INSERT INTO votes_concours (participation_id, utilisateur_id, score, jury) VALUES (?, ?, ?, ?)', entree.id, interaction.user.id, jury ? POIDS_JURY : 1, jury ? 1 : 0);
           }
-          await interaction.update(entryMessage(interaction.guild, c, entry));
-          if (previous && previous.entry_id !== entry.id) {
-            const prev = get<EntryRow>('SELECT * FROM contest_entries WHERE id = ?', previous.entry_id);
-            const channel = resolveTextChannel(interaction.guild, c.channel_id);
-            const m = prev?.message_id ? await channel?.messages.fetch(prev.message_id).catch(() => null) : null;
-            if (prev && m) await m.edit(entryMessage(interaction.guild, c, prev)).catch(() => undefined);
+          await interaction.update(messageParticipation(interaction.guild, c, entree));
+          if (precedent && precedent.participation_id !== entree.id) {
+            const anterieur = lire<LigneParticipation>('SELECT * FROM participations_concours WHERE id = ?', precedent.participation_id);
+            const salon = resoudreSalonTexte(interaction.guild, c.salon_id);
+            const m = anterieur?.message_id ? await salon?.messages.fetch(anterieur.message_id).catch(() => null) : null;
+            if (anterieur && m) await m.edit(messageParticipation(interaction.guild, c, anterieur)).catch(() => undefined);
           }
-          await interaction.followUp({ embeds: [ok(interaction.guild, previous?.entry_id === entry.id ? 'Vote retiré.' : `Vote enregistré${jury ? ' (jury ×3)' : ''} pour la participation #${entry.id}.`)], flags: MessageFlags.Ephemeral });
+          await interaction.followUp({ embeds: [ok(interaction.guild, precedent?.participation_id === entree.id ? 'Vote retiré.' : `Vote enregistré${jury ? ' (jury ×3)' : ''} pour la participation #${entree.id}.`)], flags: MessageFlags.Ephemeral });
         }
       },
-      async modal(interaction: ModalSubmitInteraction<'cached'>, [action, id]) {
+      async fenetre(interaction: ModalSubmitInteraction<'cached'>, [action, id]) {
         if (action !== 'entry') return;
-        const c = requireContest(interaction.guildId, id);
-        if (c.status !== 'submissions') throw new UserError('Les participations sont closes.');
-        const content = neutralizeMentions(interaction.fields.getTextInputValue('content').trim());
-        run(
-          `INSERT INTO contest_entries (contest_id, user_id, content, created_at) VALUES (?, ?, ?, ?)
-           ON CONFLICT(contest_id, user_id) DO UPDATE SET content = excluded.content`,
+        const c = exigerConcours(interaction.guildId, id);
+        if (c.statut !== 'submissions') throw new ErreurUtilisateur('Les participations sont closes.');
+        const contenu = neutraliserMentions(interaction.fields.getTextInputValue('content').trim());
+        executer(
+          `INSERT INTO participations_concours (concours_id, utilisateur_id, contenu, cree_le) VALUES (?, ?, ?, ?)
+           ON CONFLICT(concours_id, utilisateur_id) DO UPDATE SET contenu = excluded.contenu`,
           c.id,
           interaction.user.id,
-          content,
+          contenu,
           Date.now(),
         );
-        await refresh(interaction.client, c);
-        await interaction.reply({ embeds: [ok(interaction.guild, `Participation enregistrée pour **${c.name}** ! Les votes ouvrent ${ts(c.submit_ends_at, 'R')}.`)], flags: MessageFlags.Ephemeral });
+        await rafraichir(interaction.client, c);
+        await interaction.reply({ embeds: [ok(interaction.guild, `Participation enregistrée pour **${c.nom}** ! Les votes ouvrent ${marqueTemps(c.fin_participations_le, 'R')}.`)], flags: MessageFlags.Ephemeral });
       },
     },
   ],
-  tasks: [
+  taches: [
     {
-      name: 'contests',
-      intervalMs: 60_000,
-      runOnStart: true,
-      async run(client) {
-        const now = Date.now();
-        for (const c of all<ContestRow>("SELECT * FROM contests WHERE status = 'submissions' AND submit_ends_at <= ?", now)) await startVoting(client, c);
-        for (const c of all<ContestRow>("SELECT * FROM contests WHERE status = 'voting' AND vote_ends_at <= ?", now)) await finish(client, c);
+      nom: 'contests',
+      intervalleMs: 60_000,
+      auDemarrage: true,
+      async executer(client) {
+        const maintenant = Date.now();
+        for (const c of lireTout<LigneConcours>("SELECT * FROM concours WHERE statut = 'submissions' AND fin_participations_le <= ?", maintenant)) await ouvrirVotes(client, c);
+        for (const c of lireTout<LigneConcours>("SELECT * FROM concours WHERE statut = 'voting' AND fin_votes_le <= ?", maintenant)) await conclure(client, c);
       },
     },
   ],

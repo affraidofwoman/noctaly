@@ -1,6 +1,6 @@
-export { neutralizeMentions, truncate } from '../../core/text';
+export { neutraliserMentions as neutralizeMentions, tronquer as truncate } from '../../core/text';
 
-export function mentionListShort(ids: string[], max: number): string {
-  const shown = ids.slice(0, max).map((id) => `<@${id}>`).join(' ');
-  return ids.length > max ? `${shown} +${ids.length - max}` : shown;
+export function listeMentionsCourte(ids: string[], max: number): string {
+  const affiches = ids.slice(0, max).map((id) => `<@${id}>`).join(' ');
+  return ids.length > max ? `${affiches} +${ids.length - max}` : affiches;
 }

@@ -1,109 +1,109 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Guild } from 'discord.js';
-import { all, get, run, transaction } from '../database/db';
-import { env } from '../core/env';
-import { resetConfigCache } from '../core/guildConfig';
-import { clearModuleCache } from '../core/moduleManager';
-import { clearWhitelistCache } from '../core/whitelists';
+import { lireTout, lire, executer, transaction } from '../database/db';
+import { environnement } from '../core/env';
+import { viderCacheConfig } from '../core/guildConfig';
+import { viderCacheModules } from '../core/moduleManager';
+import { viderCacheWhitelists } from '../core/whitelists';
 
 /** Tables de configuration sauvegardées par serveur (les données d'activité restent en place). */
-const TABLES: { table: string; where: string }[] = [
-  { table: 'guild_settings', where: 'guild_id = ?' },
-  { table: 'guild_modules', where: 'guild_id = ?' },
-  { table: 'whitelists', where: 'scope = ?' },
-  { table: 'twitch_channels', where: 'guild_id = ?' },
-  { table: 'reaction_roles', where: 'guild_id = ?' },
-  { table: 'custom_commands', where: 'guild_id = ?' },
-  { table: 'auto_responses', where: 'guild_id = ?' },
-  { table: 'levels', where: 'guild_id = ?' },
-  { table: 'badges', where: 'guild_id = ?' },
-  { table: 'shop_items', where: 'guild_id = ?' },
-  { table: 'forms', where: 'guild_id = ?' },
-  { table: 'blacklist', where: 'scope = ?' },
+export const TABLES: { table: string; filtre: string }[] = [
+  { table: 'reglages_serveurs', filtre: 'serveur_id = ?' },
+  { table: 'modules_serveurs', filtre: 'serveur_id = ?' },
+  { table: 'whitelists', filtre: 'portee = ?' },
+  { table: 'chaines_twitch', filtre: 'serveur_id = ?' },
+  { table: 'panneaux_roles', filtre: 'serveur_id = ?' },
+  { table: 'commandes_perso', filtre: 'serveur_id = ?' },
+  { table: 'reponses_auto', filtre: 'serveur_id = ?' },
+  { table: 'roles_niveaux', filtre: 'serveur_id = ?' },
+  { table: 'badges', filtre: 'serveur_id = ?' },
+  { table: 'articles_boutique', filtre: 'serveur_id = ?' },
+  { table: 'formulaires', filtre: 'serveur_id = ?' },
+  { table: 'liste_noire', filtre: 'portee = ?' },
 ];
 
-export interface BackupFile {
+export interface FichierSauvegarde {
   version: 1;
-  guildId: string;
-  guildName: string;
+  serveurId: string;
+  nomServeur: string;
   createdAt: number;
   tables: Record<string, Record<string, unknown>[]>;
-  entries: Record<string, unknown>[];
+  entrees: Record<string, unknown>[];
   structure: { roles: { name: string; color: number; position: number }[]; channels: { name: string; type: number; parent: string | null }[] };
 }
 
-function dirFor(guildId: string): string {
-  const dir = path.join(env.backupDir, guildId);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+function dossierDe(serveurId: string): string {
+  const dossier = path.join(environnement.dossierSauvegardes, serveurId);
+  fs.mkdirSync(dossier, { recursive: true });
+  return dossier;
 }
 
-export function createBackup(guild: Guild, createdBy: string, name = 'manuelle'): { id: number; file: string; size: number; data: BackupFile } {
-  const tables: BackupFile['tables'] = {};
-  for (const { table, where } of TABLES) tables[table] = all<Record<string, unknown>>(`SELECT * FROM ${table} WHERE ${where}`, guild.id);
-  const panelIds = (tables.reaction_roles ?? []).map((r) => Number(r.id));
-  const entries = panelIds.length ? all<Record<string, unknown>>(`SELECT * FROM reaction_role_entries WHERE panel_id IN (${panelIds.map(() => '?').join(',')})`, ...panelIds) : [];
-  const data: BackupFile = {
+export function creerSauvegarde(serveur: Guild, creePar: string, nom = 'manuelle'): { id: number; file: string; size: number; data: FichierSauvegarde } {
+  const tables: FichierSauvegarde['tables'] = {};
+  for (const { table, filtre } of TABLES) tables[table] = lireTout<Record<string, unknown>>(`SELECT * FROM ${table} WHERE ${filtre}`, serveur.id);
+  const panneauxIds = (tables.panneaux_roles ?? []).map((r) => Number(r.id));
+  const entrees = panneauxIds.length ? lireTout<Record<string, unknown>>(`SELECT * FROM roles_panneaux WHERE panneau_id IN (${panneauxIds.map(() => '?').join(',')})`, ...panneauxIds) : [];
+  const donnees: FichierSauvegarde = {
     version: 1,
-    guildId: guild.id,
-    guildName: guild.name,
+    serveurId: serveur.id,
+    nomServeur: serveur.name,
     createdAt: Date.now(),
     tables,
-    entries,
+    entrees,
     structure: {
-      roles: guild.roles.cache.filter((r) => r.id !== guild.id && !r.managed).map((r) => ({ name: r.name, color: r.color, position: r.position })),
-      channels: guild.channels.cache.map((c) => ({ name: c.name, type: c.type, parent: c.parent?.name ?? null })),
+      roles: serveur.roles.cache.filter((r) => r.id !== serveur.id && !r.managed).map((r) => ({ name: r.name, color: r.color, position: r.position })),
+      channels: serveur.channels.cache.map((c) => ({ name: c.name, type: c.type, parent: c.parent?.name ?? null })),
     },
   };
-  const json = JSON.stringify(data);
-  const file = path.join(dirFor(guild.id), `${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  fs.writeFileSync(file, json, { mode: 0o600 });
-  const r = run('INSERT INTO backups (guild_id, name, file, size, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)', guild.id, name, file, json.length, createdBy, Date.now());
-  return { id: r.lastInsertRowid, file, size: json.length, data };
+  const json = JSON.stringify(donnees);
+  const fichier = path.join(dossierDe(serveur.id), `${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  fs.writeFileSync(fichier, json, { mode: 0o600 });
+  const r = executer('INSERT INTO sauvegardes (serveur_id, nom, fichier, taille, cree_par, cree_le) VALUES (?, ?, ?, ?, ?, ?)', serveur.id, nom, fichier, json.length, creePar, Date.now());
+  return { id: r.lastInsertRowid, file: fichier, size: json.length, data: donnees };
 }
 
-export function listBackups(guildId: string): { id: number; name: string; file: string; size: number; created_by: string; created_at: number }[] {
-  return all('SELECT id, name, file, size, created_by, created_at FROM backups WHERE guild_id = ? ORDER BY created_at DESC LIMIT 25', guildId);
+export function listerSauvegardes(serveurId: string): { id: number; nom: string; fichier: string; taille: number; cree_par: string; cree_le: number }[] {
+  return lireTout('SELECT id, nom, fichier, taille, cree_par, cree_le FROM sauvegardes WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 25', serveurId);
 }
 
 /** Garde les N sauvegardes automatiques les plus récentes. */
-export function pruneAutoBackups(guildId: string, keep = 7): void {
-  const autos = all<{ id: number; file: string }>("SELECT id, file FROM backups WHERE guild_id = ? AND name = 'automatique' ORDER BY created_at DESC", guildId);
-  for (const old of autos.slice(keep)) {
-    fs.rmSync(old.file, { force: true });
-    run('DELETE FROM backups WHERE id = ?', old.id);
+export function purgerSauvegardesAuto(serveurId: string, garder = 7): void {
+  const autos = lireTout<{ id: number; fichier: string }>("SELECT id, fichier FROM sauvegardes WHERE serveur_id = ? AND nom = 'automatique' ORDER BY cree_le DESC", serveurId);
+  for (const ancien of autos.slice(garder)) {
+    fs.rmSync(ancien.fichier, { force: true });
+    executer('DELETE FROM sauvegardes WHERE id = ?', ancien.id);
   }
 }
 
 /** Restaure la configuration du bot d'un serveur. Ne modifie jamais les salons ni les rôles Discord. */
-export function restoreBackup(guildId: string, backupId: number): { tables: number; rows: number } {
-  const row = get<{ file: string }>('SELECT file FROM backups WHERE id = ? AND guild_id = ?', backupId, guildId);
-  if (!row || !fs.existsSync(row.file)) throw new Error('Sauvegarde introuvable');
-  const data = JSON.parse(fs.readFileSync(row.file, 'utf8')) as BackupFile;
-  if (data.version !== 1 || data.guildId !== guildId) throw new Error('Cette sauvegarde ne correspond pas à ce serveur');
-  let rows = 0;
+export function restaurerSauvegarde(serveurId: string, sauvegardeId: number): { tables: number; rows: number } {
+  const rangee = lire<{ fichier: string }>('SELECT fichier FROM sauvegardes WHERE id = ? AND serveur_id = ?', sauvegardeId, serveurId);
+  if (!rangee || !fs.existsSync(rangee.fichier)) throw new Error('Sauvegarde introuvable');
+  const donnees = JSON.parse(fs.readFileSync(rangee.fichier, 'utf8')) as FichierSauvegarde;
+  if (donnees.version !== 1 || donnees.serveurId !== serveurId) throw new Error('Cette sauvegarde ne correspond pas à ce serveur');
+  let rangees = 0;
   transaction(() => {
-    const oldPanels = all<{ id: number }>('SELECT id FROM reaction_roles WHERE guild_id = ?', guildId).map((p) => p.id);
-    for (const id of oldPanels) run('DELETE FROM reaction_role_entries WHERE panel_id = ?', id);
-    for (const { table, where } of TABLES) {
-      run(`DELETE FROM ${table} WHERE ${where}`, guildId);
-      for (const record of data.tables[table] ?? []) {
-        const keys = Object.keys(record);
-        if (!keys.length || keys.some((k) => !/^[a-z_]+$/.test(k))) continue;
-        run(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`, ...keys.map((k) => record[k] as string | number | null));
-        rows++;
+    const anciensPanneaux = lireTout<{ id: number }>('SELECT id FROM panneaux_roles WHERE serveur_id = ?', serveurId).map((p) => p.id);
+    for (const id of anciensPanneaux) executer('DELETE FROM roles_panneaux WHERE panneau_id = ?', id);
+    for (const { table, filtre } of TABLES) {
+      executer(`DELETE FROM ${table} WHERE ${filtre}`, serveurId);
+      for (const enregistrer of donnees.tables[table] ?? []) {
+        const cles = Object.keys(enregistrer);
+        if (!cles.length || cles.some((k) => !/^[a-z_]+$/.test(k))) continue;
+        executer(`INSERT INTO ${table} (${cles.join(', ')}) VALUES (${cles.map(() => '?').join(', ')})`, ...cles.map((k) => enregistrer[k] as string | number | null));
+        rangees++;
       }
     }
-    for (const record of data.entries ?? []) {
-      const keys = Object.keys(record);
-      if (keys.some((k) => !/^[a-z_]+$/.test(k))) continue;
-      run(`INSERT OR IGNORE INTO reaction_role_entries (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`, ...keys.map((k) => record[k] as string | number | null));
-      rows++;
+    for (const enregistrer of donnees.entrees ?? []) {
+      const cles = Object.keys(enregistrer);
+      if (cles.some((k) => !/^[a-z_]+$/.test(k))) continue;
+      executer(`INSERT OR IGNORE INTO roles_panneaux (${cles.join(', ')}) VALUES (${cles.map(() => '?').join(', ')})`, ...cles.map((k) => enregistrer[k] as string | number | null));
+      rangees++;
     }
   });
-  resetConfigCache(guildId);
-  clearModuleCache(guildId);
-  clearWhitelistCache();
-  return { tables: TABLES.length, rows };
+  viderCacheConfig(serveurId);
+  viderCacheModules(serveurId);
+  viderCacheWhitelists();
+  return { tables: TABLES.length, rows: rangees };
 }

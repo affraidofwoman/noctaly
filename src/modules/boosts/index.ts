@@ -1,77 +1,77 @@
 import { EmbedBuilder, MessageType, SlashCommandBuilder, type GuildMember, type Message } from 'discord.js';
-import { all, get, run } from '../../database/db';
-import { emojiFor } from '../../core/brand';
-import { brandEmbed, colorFor, info, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { getConfig, updateConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { journal, resolveTextChannel } from '../../core/logService';
-import { isModuleEnabled } from '../../core/moduleManager';
-import { canBotManageRole } from '../../core/permissions';
-import type { SetupPage } from '../../core/setup';
-import { medal, truncate } from '../../core/text';
-import { renderTemplate } from '../../core/variables';
-import { on, PermLevel, type BotModule, type SlashCommand } from '../../core/types';
-import { getBadge, grantBadge } from '../../services/badges';
-import { addCoins } from '../../services/economy';
+import { lireTout, lire, executer } from '../../database/db';
+import { emojiPour } from '../../core/brand';
+import { embedEnseigne, couleurPour, info, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { lireConfig, modifierConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { journal, resoudreSalonTexte } from '../../core/logService';
+import { moduleActif } from '../../core/moduleManager';
+import { botPeutGererRole } from '../../core/permissions';
+import type { PageReglage } from '../../core/setup';
+import { medaille, tronquer } from '../../core/text';
+import { remplirModele } from '../../core/variables';
+import { sur, Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
+import { lireBadge, donnerBadge } from '../../services/badges';
+import { ajouterPieces } from '../../services/economy';
 
-const BOOST_TYPES = new Set([MessageType.GuildBoost, MessageType.GuildBoostTier1, MessageType.GuildBoostTier2, MessageType.GuildBoostTier3]);
-const recentBoosts = new Map<string, number>();
+const TYPES_BOOST = new Set([MessageType.GuildBoost, MessageType.GuildBoostTier1, MessageType.GuildBoostTier2, MessageType.GuildBoostTier3]);
+const boostsRecents = new Map<string, number>();
 
-async function applyRewards(member: GuildMember, count: number): Promise<string[]> {
-  const guild = member.guild;
-  const given: string[] = [];
-  for (const r of getConfig(guild.id).boosts.rewards.filter((x) => x.count === count)) {
-    const role = r.roleId ? guild.roles.cache.get(r.roleId) : null;
-    if (role && canBotManageRole(guild, role)) {
-      await member.roles.add(role, `Récompense de ${count} boost(s)`).catch(() => undefined);
-      given.push(`<@&${role.id}>`);
+async function appliquerRecompenses(membre: GuildMember, nombre: number): Promise<string[]> {
+  const serveur = membre.guild;
+  const donnes: string[] = [];
+  for (const r of lireConfig(serveur.id).boosts.recompenses.filter((x) => x.count === nombre)) {
+    const role = r.roleId ? serveur.roles.cache.get(r.roleId) : null;
+    if (role && botPeutGererRole(serveur, role)) {
+      await membre.roles.add(role, `Récompense de ${nombre} boost(s)`).catch(() => undefined);
+      donnes.push(`<@&${role.id}>`);
     }
-    if (r.badgeId && grantBadge(guild.id, member.id, r.badgeId)) given.push(`${getBadge(guild.id, r.badgeId)?.emoji ?? '🏅'} badge`);
-    if (r.coins > 0 && isModuleEnabled(guild.id, 'economy')) {
-      addCoins(guild.id, member.id, r.coins, 'boost');
-      given.push(`${r.coins} ${getConfig(guild.id).economy.currencyEmoji}`);
+    if (r.badgeId && donnerBadge(serveur.id, membre.id, r.badgeId)) donnes.push(`${lireBadge(serveur.id, r.badgeId)?.emoji ?? '🏅'} badge`);
+    if (r.pieces > 0 && moduleActif(serveur.id, 'economy')) {
+      ajouterPieces(serveur.id, membre.id, r.pieces, 'boost');
+      donnes.push(`${r.pieces} ${lireConfig(serveur.id).economie.emojiMonnaie}`);
     }
   }
-  return given;
+  return donnes;
 }
 
 /** Un boost : compteur, rôle booster, badge VIP, récompenses et annonce. */
-async function recordBoost(member: GuildMember): Promise<void> {
-  const guild = member.guild;
-  const key = `${guild.id}:${member.id}`;
-  if ((recentBoosts.get(key) ?? 0) > Date.now()) return;
-  recentBoosts.set(key, Date.now() + 30_000);
-  const now = Date.now();
-  run(
-    `INSERT INTO boosts (guild_id, user_id, count, first_boost_at, last_boost_at) VALUES (?, ?, 1, ?, ?)
-     ON CONFLICT(guild_id, user_id) DO UPDATE SET count = count + 1, last_boost_at = excluded.last_boost_at`,
-    guild.id,
-    member.id,
-    now,
-    now,
+async function enregistrerBoost(membre: GuildMember): Promise<void> {
+  const serveur = membre.guild;
+  const cle = `${serveur.id}:${membre.id}`;
+  if ((boostsRecents.get(cle) ?? 0) > Date.now()) return;
+  boostsRecents.set(cle, Date.now() + 30_000);
+  const maintenant = Date.now();
+  executer(
+    `INSERT INTO boosts (serveur_id, utilisateur_id, nombre, premier_boost_le, dernier_boost_le) VALUES (?, ?, 1, ?, ?)
+     ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET nombre = nombre + 1, dernier_boost_le = excluded.dernier_boost_le`,
+    serveur.id,
+    membre.id,
+    maintenant,
+    maintenant,
   );
-  const count = get<{ count: number }>('SELECT count FROM boosts WHERE guild_id = ? AND user_id = ?', guild.id, member.id)?.count ?? 1;
-  const cfg = getConfig(guild.id).boosts;
-  const boosterRole = cfg.boosterRoleId ? guild.roles.cache.get(cfg.boosterRoleId) : null;
-  if (boosterRole && canBotManageRole(guild, boosterRole)) await member.roles.add(boosterRole, 'Booster').catch(() => undefined);
-  grantBadge(guild.id, member.id, 'vip');
-  const rewards = await applyRewards(member, count);
-  void journal(guild, 'boost', { title: 'Nouveau boost', tone: 'ok', lines: [`**Membre** : <@${member.id}>`, `**Boosts de ce membre** : ${count}`, `**Boosts du serveur** : ${guild.premiumSubscriptionCount ?? 0}`, rewards.length ? `**Récompenses** : ${rewards.join(', ')}` : null] });
-  const channel = resolveTextChannel(guild, cfg.channelId);
-  if (!channel) return;
+  const nombre = lire<{ nombre: number }>('SELECT nombre FROM boosts WHERE serveur_id = ? AND utilisateur_id = ?', serveur.id, membre.id)?.nombre ?? 1;
+  const reglages = lireConfig(serveur.id).boosts;
+  const roleBooster = reglages.roleBoosterId ? serveur.roles.cache.get(reglages.roleBoosterId) : null;
+  if (roleBooster && botPeutGererRole(serveur, roleBooster)) await membre.roles.add(roleBooster, 'Booster').catch(() => undefined);
+  donnerBadge(serveur.id, membre.id, 'vip');
+  const recompenses = await appliquerRecompenses(membre, nombre);
+  void journal(serveur, 'boost', { titre: 'Nouveau boost', ton: 'ok', lignes: [`**Membre** : <@${membre.id}>`, `**Boosts de ce membre** : ${nombre}`, `**Boosts du serveur** : ${serveur.premiumSubscriptionCount ?? 0}`, recompenses.length ? `**Récompenses** : ${recompenses.join(', ')}` : null] });
+  const salon = resoudreSalonTexte(serveur, reglages.channelId);
+  if (!salon) return;
   const embed = new EmbedBuilder()
-    .setColor(colorFor(guild))
-    .setTitle(`${emojiFor(guild.id, 'boost')} NOUVEAU BOOST !`)
-    .setDescription(truncate(renderTemplate(cfg.message, { member, guild }), 4000) + (rewards.length ? `\n\n🎁 Récompenses : ${rewards.join(', ')}` : ''))
-    .setThumbnail(member.user.displayAvatarURL({ size: 256 }));
-  await channel.send({ content: `<@${member.id}>`, embeds: [embed], allowedMentions: { users: [member.id] } }).catch(() => undefined);
+    .setColor(couleurPour(serveur))
+    .setTitle(`${emojiPour(serveur.id, 'boost')} NOUVEAU BOOST !`)
+    .setDescription(tronquer(remplirModele(reglages.message, { membre, serveur }), 4000) + (recompenses.length ? `\n\n🎁 Récompenses : ${recompenses.join(', ')}` : ''))
+    .setThumbnail(membre.user.displayAvatarURL({ size: 256 }));
+  await salon.send({ content: `<@${membre.id}>`, embeds: [embed], allowedMentions: { users: [membre.id] } }).catch(() => undefined);
 }
 
-const boost: SlashCommand = {
-  category: 'community',
-  level: PermLevel.MEMBER,
-  data: new SlashCommandBuilder()
+const boost: CommandeSlash = {
+  categorie: 'community',
+  niveau: Niveau.MEMBRE,
+  donnees: new SlashCommandBuilder()
     .setName('boost')
     .setDescription('Les boosts du serveur')
     .addSubcommand((s) => s.setName('top').setDescription('Les boosters du serveur'))
@@ -91,92 +91,92 @@ const boost: SlashCommand = {
         .setDescription('Retirer les récompenses d’un palier')
         .addIntegerOption((o) => o.setName('boosts').setDescription('Le palier').setRequired(true).setMinValue(1).setMaxValue(100)),
     ),
-  subLevels: { recompense: PermLevel.ADMIN, retirer: PermLevel.ADMIN, recompenses: PermLevel.STAFF },
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const sub = interaction.options.getSubcommand();
-    if (sub === 'top') {
-      const rows = all<{ user_id: string; count: number }>('SELECT user_id, count FROM boosts WHERE guild_id = ? ORDER BY count DESC, first_boost_at LIMIT 25', guild.id);
-      return reply(interaction, {
-        embeds: [brandEmbed(guild).setTitle('🚀 Boosters').setDescription(rows.map((r, i) => `${medal(i + 1)} <@${r.user_id}> — **${r.count}** boost(s)`).join('\n') || '*Aucun boost enregistré.*').setFooter({ text: `${guild.premiumSubscriptionCount ?? 0} boosts · niveau ${guild.premiumTier}` })],
+  niveauxSousCommandes: { recompense: Niveau.ADMIN, retirer: Niveau.ADMIN, recompenses: Niveau.STAFF },
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const sousCommande = interaction.options.getSubcommand();
+    if (sousCommande === 'top') {
+      const rangees = lireTout<{ utilisateur_id: string; nombre: number }>('SELECT utilisateur_id, nombre FROM boosts WHERE serveur_id = ? ORDER BY nombre DESC, premier_boost_le LIMIT 25', serveur.id);
+      return repondre(interaction, {
+        embeds: [embedEnseigne(serveur).setTitle('🚀 Boosters').setDescription(rangees.map((r, i) => `${medaille(i + 1)} <@${r.utilisateur_id}> — **${r.nombre}** boost(s)`).join('\n') || '*Aucun boost enregistré.*').setFooter({ text: `${serveur.premiumSubscriptionCount ?? 0} boosts · niveau ${serveur.premiumTier}` })],
       });
     }
-    if (sub === 'recompenses') {
-      const rewards = getConfig(guild.id).boosts.rewards;
-      return reply(interaction, {
-        embeds: [info(guild, rewards.map((r) => `**${r.count} boost(s)** → ${[r.roleId ? `<@&${r.roleId}>` : null, r.badgeId ? `badge \`${r.badgeId}\`` : null, r.coins ? `${r.coins} pièces` : null].filter(Boolean).join(', ')}`).join('\n') || 'Aucune récompense.', { titre: 'Récompenses de boost', sujet: '🚀' })],
+    if (sousCommande === 'recompenses') {
+      const recompenses = lireConfig(serveur.id).boosts.recompenses;
+      return repondre(interaction, {
+        embeds: [info(serveur, recompenses.map((r) => `**${r.count} boost(s)** → ${[r.roleId ? `<@&${r.roleId}>` : null, r.badgeId ? `badge \`${r.badgeId}\`` : null, r.pieces ? `${r.pieces} pièces` : null].filter(Boolean).join(', ')}`).join('\n') || 'Aucune récompense.', { titre: 'Récompenses de boost', sujet: '🚀' })],
         ephemeral: true,
       });
     }
-    const count = interaction.options.getInteger('boosts', true);
-    if (sub === 'retirer') {
-      updateConfig(guild.id, (c) => void (c.boosts.rewards = c.boosts.rewards.filter((r) => r.count !== count)));
-      return reply(interaction, { embeds: [ok(guild, `Récompenses du palier ${count} retirées.`)], ephemeral: true });
+    const nombre = interaction.options.getInteger('boosts', true);
+    if (sousCommande === 'retirer') {
+      modifierConfig(serveur.id, (c) => void (c.boosts.recompenses = c.boosts.recompenses.filter((r) => r.count !== nombre)));
+      return repondre(interaction, { embeds: [ok(serveur, `Récompenses du palier ${nombre} retirées.`)], ephemeral: true });
     }
     const role = interaction.options.getRole('role');
     const badgeId = interaction.options.getString('badge');
-    const coins = interaction.options.getInteger('pieces') ?? 0;
-    if (!role && !badgeId && !coins) throw new UserError('Choisis au moins un rôle, un badge ou des pièces.');
-    if (role && !canBotManageRole(guild, guild.roles.cache.get(role.id)!)) throw new UserError('Je ne peux pas donner ce rôle.');
-    if (badgeId && !getBadge(guild.id, badgeId)) throw new UserError('Badge introuvable (voir `/badge liste`).');
-    updateConfig(guild.id, (c) => c.boosts.rewards.push({ count, roleId: role?.id ?? null, badgeId, coins }));
-    return reply(interaction, { embeds: [ok(guild, `Récompense ajoutée au palier **${count} boost(s)**.`)], ephemeral: true });
+    const pieces = interaction.options.getInteger('pieces') ?? 0;
+    if (!role && !badgeId && !pieces) throw new ErreurUtilisateur('Choisis au moins un rôle, un badge ou des pièces.');
+    if (role && !botPeutGererRole(serveur, serveur.roles.cache.get(role.id)!)) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle.');
+    if (badgeId && !lireBadge(serveur.id, badgeId)) throw new ErreurUtilisateur('Badge introuvable (voir `/badge liste`).');
+    modifierConfig(serveur.id, (c) => c.boosts.recompenses.push({ count: nombre, roleId: role?.id ?? null, badgeId, pieces }));
+    return repondre(interaction, { embeds: [ok(serveur, `Récompense ajoutée au palier **${nombre} boost(s)**.`)], ephemeral: true });
   },
 };
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'boosts',
   section: 'community',
-  title: 'Boosts',
+  titre: 'Boosts',
   emoji: '🚀',
   moduleId: 'boosts',
-  order: 13,
+  ordre: 13,
   description: 'Remercier les boosters, leur donner un rôle et des récompenses par palier (`/boost recompense`).\n-# Variables : `{mention}` `{user}` `{boosts}`',
-  fields: [
-    { kind: 'channel', key: 'channel', label: 'Salon des remerciements', get: (c) => c.boosts.channelId, set: (c, v) => void (c.boosts.channelId = v) },
-    { kind: 'role', key: 'role', label: 'Rôle booster', assignable: true, get: (c) => c.boosts.boosterRoleId, set: (c, v) => void (c.boosts.boosterRoleId = v) },
-    { kind: 'text', key: 'message', label: 'Message', long: true, maxLength: 1500, required: true, get: (c) => c.boosts.message, set: (c, v) => void (c.boosts.message = v) },
+  champs: [
+    { kind: 'channel', cle: 'channel', libelle: 'Salon des remerciements', get: (c) => c.boosts.channelId, set: (c, v) => void (c.boosts.channelId = v) },
+    { kind: 'role', cle: 'role', libelle: 'Rôle booster', attribuable: true, get: (c) => c.boosts.roleBoosterId, set: (c, v) => void (c.boosts.roleBoosterId = v) },
+    { kind: 'text', cle: 'message', libelle: 'Message', long: true, maxLength: 1500, required: true, get: (c) => c.boosts.message, set: (c, v) => void (c.boosts.message = v) },
   ],
 };
 
-export const boostsModule: BotModule = {
+export const moduleBoosts: ModuleBot = {
   id: 'boosts',
-  name: 'Boosts',
+  nom: 'Boosts',
   emoji: '🚀',
   description: 'Remerciements, rôle booster et récompenses de boost',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [boost],
-  setupPages: [setupPage],
-  events: [
-    on('messageCreate', async (message: Message) => {
-      if (!message.inGuild() || !BOOST_TYPES.has(message.type) || !message.member) return;
-      await recordBoost(message.member);
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [boost],
+  pagesReglage: [pageReglage],
+  evenements: [
+    sur('messageCreate', async (message: Message) => {
+      if (!message.inGuild() || !TYPES_BOOST.has(message.type) || !message.member) return;
+      await enregistrerBoost(message.member);
     }, 20),
-    on('guildMemberUpdate', async (before, after) => {
-      const cfg = getConfig(after.guild.id).boosts;
-      if (!before.premiumSince && after.premiumSince) {
+    sur('guildMemberUpdate', async (avant, apres) => {
+      const reglages = lireConfig(apres.guild.id).boosts;
+      if (!avant.premiumSince && apres.premiumSince) {
         // Laisse le message système arriver en premier (il compte chaque boost) avant d'utiliser ce repli.
-        setTimeout(() => void recordBoost(after), 5_000).unref();
-      } else if (before.premiumSince && !after.premiumSince) {
-        const role = cfg.boosterRoleId ? after.guild.roles.cache.get(cfg.boosterRoleId) : null;
-        if (role && canBotManageRole(after.guild, role)) await after.roles.remove(role, 'Ne booste plus').catch(() => undefined);
-        void journal(after.guild, 'boost', { title: 'Fin de boost', tone: 'alerte', lines: [`<@${after.id}> ne booste plus le serveur.`] });
+        setTimeout(() => void enregistrerBoost(apres), 5_000).unref();
+      } else if (avant.premiumSince && !apres.premiumSince) {
+        const role = reglages.roleBoosterId ? apres.guild.roles.cache.get(reglages.roleBoosterId) : null;
+        if (role && botPeutGererRole(apres.guild, role)) await apres.roles.remove(role, 'Ne booste plus').catch(() => undefined);
+        void journal(apres.guild, 'boost', { titre: 'Fin de boost', ton: 'alerte', lignes: [`<@${apres.id}> ne booste plus le serveur.`] });
       }
     }),
   ],
   tests: [
     {
       id: 'thanks',
-      label: 'Remerciement de boost',
+      libelle: 'Remerciement de boost',
       emoji: '🚀',
       description: 'Voir le message de remerciement à ton nom (sans compter de boost)',
-      async run(interaction) {
-        const cfg = getConfig(interaction.guildId).boosts;
-        const channel = resolveTextChannel(interaction.guild, cfg.channelId);
-        if (!channel) return '⚠️ Aucun salon de remerciements utilisable.';
-        await channel.send({ embeds: [new EmbedBuilder().setColor(colorFor(interaction.guild)).setTitle('🚀 NOUVEAU BOOST ! (test)').setDescription(renderTemplate(cfg.message, { member: interaction.member, guild: interaction.guild }))], allowedMentions: { parse: [] } });
-        return `✅ Message de test posté dans <#${channel.id}>.`;
+      async executer(interaction) {
+        const reglages = lireConfig(interaction.guildId).boosts;
+        const salon = resoudreSalonTexte(interaction.guild, reglages.channelId);
+        if (!salon) return '⚠️ Aucun salon de remerciements utilisable.';
+        await salon.send({ embeds: [new EmbedBuilder().setColor(couleurPour(interaction.guild)).setTitle('🚀 NOUVEAU BOOST ! (test)').setDescription(remplirModele(reglages.message, { membre: interaction.member, serveur: interaction.guild }))], allowedMentions: { parse: [] } });
+        return `✅ Message de test posté dans <#${salon.id}>.`;
       },
     },
   ],

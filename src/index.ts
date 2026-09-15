@@ -1,159 +1,159 @@
 import { ActivityType, Events, type Client } from 'discord.js';
-import { botState } from './core/bot';
-import { createClient } from './core/client';
-import { confirmComponent } from './core/confirm';
-import { deployCommands } from './core/deploy';
-import { Dispatcher } from './core/dispatcher';
-import { assertRuntimeEnv, env } from './core/env';
-import { getConfig } from './core/guildConfig';
+import { etatBot } from './core/bot';
+import { creerClient } from './core/client';
+import { composantConfirmation } from './core/confirm';
+import { enregistrerCommandes } from './core/deploy';
+import { Aiguilleur } from './core/dispatcher';
+import { verifierEnvironnement, environnement } from './core/env';
+import { lireConfig } from './core/guildConfig';
 import { journal } from './core/logService';
-import { createLogger } from './core/logger';
-import { registerModules } from './core/moduleManager';
-import { paginationComponent } from './core/pagination';
-import { scheduler } from './core/scheduler';
-import { registerSetupPages } from './core/setup';
-import { trashComponent } from './core/trash';
-import { closeDatabase, openDatabase, run } from './database/db';
-import { startDashboard, stopDashboard } from './dashboard/server';
-import { bindActivityClient } from './services/activity';
+import { creerRegistre } from './core/logger';
+import { enregistrerModules } from './core/moduleManager';
+import { composantPagination } from './core/pagination';
+import { planificateur } from './core/scheduler';
+import { enregistrerPagesReglage } from './core/setup';
+import { composantCorbeille } from './core/trash';
+import { fermerBase, ouvrirBase, executer } from './database/db';
+import { demarrerSite, arreterSite } from './dashboard/server';
+import { lierClientActivite } from './services/activity';
 import { modules } from './modules';
 
-const log = createLogger('main');
+const registre = creerRegistre('main');
 
-function trackGuild(guildId: string, joined: boolean): void {
-  if (joined) {
-    run(
-      `INSERT INTO guilds (guild_id, joined_at) VALUES (?, ?)
-       ON CONFLICT(guild_id) DO UPDATE SET left_at = NULL`,
-      guildId,
+function suivreServeur(serveurId: string, inscrit: boolean): void {
+  if (inscrit) {
+    executer(
+      `INSERT INTO serveurs (serveur_id, arrive_le) VALUES (?, ?)
+       ON CONFLICT(serveur_id) DO UPDATE SET parti_le = NULL`,
+      serveurId,
       Date.now(),
     );
   } else {
-    run('UPDATE guilds SET left_at = ? WHERE guild_id = ?', Date.now(), guildId);
+    executer('UPDATE serveurs SET parti_le = ? WHERE serveur_id = ?', Date.now(), serveurId);
   }
 }
 
-function startPresenceRotation(client: Client<true>): void {
-  let index = 0;
-  const update = () => {
-    const members = client.guilds.cache.reduce((sum, g) => sum + g.memberCount, 0);
-    const statuses: { name: string; type: ActivityType }[] = [
-      { name: `🎮 avec ${members} membres`, type: ActivityType.Custom },
+function demarrerRotationStatut(client: Client<true>): void {
+  let indice = 0;
+  const mettreAJour = () => {
+    const membres = client.guilds.cache.reduce((somme, g) => somme + g.memberCount, 0);
+    const statuts: { name: string; type: ActivityType }[] = [
+      { name: `🎮 avec ${membres} membres`, type: ActivityType.Custom },
       { name: '🔴 Twitch', type: ActivityType.Custom },
       { name: '🎫 /ticket • 🎉 Giveaways', type: ActivityType.Custom },
       { name: '❓ /help pour découvrir le bot', type: ActivityType.Custom },
     ];
-    const status = statuses[index++ % statuses.length]!;
-    client.user.setPresence({ activities: [{ name: status.name, type: status.type }], status: 'online' });
+    const statut = statuts[indice++ % statuts.length]!;
+    client.user.setPresence({ activities: [{ name: statut.name, type: statut.type }], status: 'online' });
   };
-  update();
+  mettreAJour();
   // Une mise à jour toutes les 5 minutes : largement sous les limites de l'API.
-  setInterval(update, 5 * 60_000).unref();
+  setInterval(mettreAJour, 5 * 60_000).unref();
 }
 
-async function main(): Promise<void> {
-  assertRuntimeEnv();
-  openDatabase();
-  registerModules(modules);
-  registerSetupPages(modules.flatMap((m) => m.setupPages ?? []));
+async function demarrer(): Promise<void> {
+  verifierEnvironnement();
+  ouvrirBase();
+  enregistrerModules(modules);
+  enregistrerPagesReglage(modules.flatMap((m) => m.pagesReglage ?? []));
 
-  const client = createClient();
-  const dispatcher = new Dispatcher(modules, [paginationComponent, confirmComponent, trashComponent]);
-  botState.dispatcher = dispatcher;
-  dispatcher.attach(client);
+  const client = creerClient();
+  const aiguilleur = new Aiguilleur(modules, [composantPagination, composantConfirmation, composantCorbeille]);
+  etatBot.aiguilleur = aiguilleur;
+  aiguilleur.brancher(client);
 
-  for (const mod of modules) for (const task of mod.tasks ?? []) scheduler.add(task);
+  for (const module of modules) for (const tache of module.taches ?? []) planificateur.ajouter(tache);
 
-  client.once(Events.ClientReady, async (ready) => {
-    botState.client = ready;
-    bindActivityClient(ready);
-    log.info(`Connecté en tant que ${ready.user.tag} sur ${ready.guilds.cache.size} serveur(s).`);
-    for (const guild of ready.guilds.cache.values()) {
-      trackGuild(guild.id, true);
-      getConfig(guild.id);
+  client.once(Events.ClientReady, async (pret) => {
+    etatBot.client = pret;
+    lierClientActivite(pret);
+    registre.info(`Connecté en tant que ${pret.user.tag} sur ${pret.guilds.cache.size} serveur(s).`);
+    for (const serveur of pret.guilds.cache.values()) {
+      suivreServeur(serveur.id, true);
+      lireConfig(serveur.id);
     }
 
-    if (env.autoDeploy) {
-      await deployCommands(modules).catch((err: unknown) => log.error('Enregistrement des commandes impossible', err));
+    if (environnement.enregistrementAuto) {
+      await enregistrerCommandes(modules).catch((echec: unknown) => registre.erreur('Enregistrement des commandes impossible', echec));
     }
 
-    for (const mod of modules) {
-      if (!mod.onReady) continue;
+    for (const module of modules) {
+      if (!module.auDemarrage) continue;
       try {
-        await mod.onReady(ready);
-      } catch (err) {
-        log.error(`Initialisation du module ${mod.id} en échec`, err);
+        await module.auDemarrage(pret);
+      } catch (echec) {
+        registre.erreur(`Initialisation du module ${module.id} en échec`, echec);
       }
     }
 
-    scheduler.start(ready);
-    startPresenceRotation(ready);
+    planificateur.demarrer(pret);
+    demarrerRotationStatut(pret);
 
-    const uptimeNote = `**Modules** : ${modules.length} · **Serveurs** : ${ready.guilds.cache.size} · **Node** : ${process.version}`;
-    for (const guild of ready.guilds.cache.values()) {
-      void journal(guild, 'health', { title: 'Bot démarré', tone: 'ok', lines: [uptimeNote, `**Twitch** : ${env.twitchClientId ? 'configuré' : 'non configuré'}`] });
+    const noteDemarrage = `**Modules** : ${modules.length} · **Serveurs** : ${pret.guilds.cache.size} · **Node** : ${process.version}`;
+    for (const serveur of pret.guilds.cache.values()) {
+      void journal(serveur, 'health', { titre: 'Bot démarré', ton: 'ok', lignes: [noteDemarrage, `**Twitch** : ${environnement.twitchClientId ? 'configuré' : 'non configuré'}`] });
     }
 
-    if (env.dashboardEnabled) {
+    if (environnement.siteActif) {
       try {
-        startDashboard(ready);
-      } catch (err) {
-        log.error('Dashboard non démarré', err);
+        demarrerSite(pret);
+      } catch (echec) {
+        registre.erreur('Dashboard non démarré', echec);
       }
     }
   });
 
-  client.on(Events.GuildCreate, (guild) => {
-    trackGuild(guild.id, true);
-    log.info(`Ajouté au serveur ${guild.name} (${guild.id})`);
+  client.on(Events.GuildCreate, (serveur) => {
+    suivreServeur(serveur.id, true);
+    registre.info(`Ajouté au serveur ${serveur.name} (${serveur.id})`);
   });
-  client.on(Events.GuildDelete, (guild) => {
-    trackGuild(guild.id, false);
-    log.info(`Retiré du serveur ${guild.id}`);
+  client.on(Events.GuildDelete, (serveur) => {
+    suivreServeur(serveur.id, false);
+    registre.info(`Retiré du serveur ${serveur.id}`);
   });
-  client.on(Events.Error, (err) => log.error('Erreur client Discord', err));
-  client.on(Events.Warn, (msg) => log.warn(msg));
-  client.on(Events.ShardDisconnect, () => log.warn('Déconnecté de Discord, reconnexion automatique…'));
+  client.on(Events.Error, (echec) => registre.erreur('Erreur client Discord', echec));
+  client.on(Events.Warn, (charge) => registre.avertir(charge));
+  client.on(Events.ShardDisconnect, () => registre.avertir('Déconnecté de Discord, reconnexion automatique…'));
 
-  runningClient = client;
+  clientActif = client;
   process.once('SIGINT', () => {
-    log.info('Arrêt demandé (SIGINT)…');
-    void exitCleanly(0);
+    registre.info('Arrêt demandé (SIGINT)…');
+    void quitterProprement(0);
   });
   process.once('SIGTERM', () => {
-    log.info('Arrêt demandé (SIGTERM)…');
-    void exitCleanly(0);
+    registre.info('Arrêt demandé (SIGTERM)…');
+    void quitterProprement(0);
   });
 
-  await client.login(env.discordToken);
+  await client.login(environnement.jetonDiscord);
 }
 
-let runningClient: Client | null = null;
-let exiting = false;
+let clientActif: Client | null = null;
+let enArret = false;
 
 /** Arrêt propre : tâches, modules, dashboard, connexion Discord puis base de données. */
-async function exitCleanly(code: number): Promise<void> {
-  if (exiting) return;
-  exiting = true;
-  scheduler.stop();
-  for (const mod of modules) {
-    if (mod.onShutdown) await Promise.resolve(mod.onShutdown()).catch(() => undefined);
+async function quitterProprement(code: number): Promise<void> {
+  if (enArret) return;
+  enArret = true;
+  planificateur.arreter();
+  for (const module of modules) {
+    if (module.aLArret) await Promise.resolve(module.aLArret()).catch(() => undefined);
   }
-  stopDashboard();
-  await runningClient?.destroy().catch(() => undefined);
-  closeDatabase();
+  arreterSite();
+  await clientActif?.destroy().catch(() => undefined);
+  fermerBase();
   // Laisse les connexions se fermer : un exit immédiat fait planter libuv sous Windows.
   setTimeout(() => process.exit(code), 300);
 }
 
-process.on('unhandledRejection', (reason) => log.error('Promesse rejetée non gérée', reason));
-process.on('uncaughtException', (err) => log.error('Exception non capturée', err));
+process.on('unhandledRejection', (raison) => registre.erreur('Promesse rejetée non gérée', raison));
+process.on('uncaughtException', (echec) => registre.erreur('Exception non capturée', echec));
 
-main().catch((err: unknown) => {
-  const message = String((err as Error)?.message ?? err);
-  if ((err as { code?: string }).code === 'TokenInvalid') log.error('Jeton Discord invalide : vérifie DISCORD_TOKEN dans le fichier .env.');
+demarrer().catch((echec: unknown) => {
+  const message = String((echec as Error)?.message ?? echec);
+  if ((echec as { code?: string }).code === 'TokenInvalid') registre.erreur('Jeton Discord invalide : vérifie DISCORD_TOKEN dans le fichier .env.');
   else if (/disallowed intents/i.test(message)) {
-    log.error('Intents refusés : active « Server Members Intent » et « Message Content Intent » dans le Developer Portal (Bot → Privileged Gateway Intents).');
-  } else log.error('Démarrage impossible', err);
-  void exitCleanly(1);
+    registre.erreur('Intents refusés : active « Server Members Intent » et « Message Content Intent » dans le Developer Portal (Bot → Privileged Gateway Intents).');
+  } else registre.erreur('Démarrage impossible', echec);
+  void quitterProprement(1);
 });

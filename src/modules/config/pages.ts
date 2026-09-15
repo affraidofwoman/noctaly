@@ -1,53 +1,53 @@
 import { ChannelType } from 'discord.js';
-import { ensureLogChannels } from '../../core/logService';
+import { creerSalonsJournal } from '../../core/logService';
 import { ok } from '../../core/embeds';
-import type { SetupPage } from '../../core/setup';
+import type { PageReglage } from '../../core/setup';
 import { THEMES } from '../../core/themes';
-import { isValidTimezone } from '../../core/time';
-import { PREFIX_DOMAINS, type PrefixDomain } from '../../core/types';
-import { UserError } from '../../core/errors';
+import { fuseauValide } from '../../core/time';
+import { DOMAINES_PREFIXES, type DomainePrefixe } from '../../core/types';
+import { ErreurUtilisateur } from '../../core/errors';
 
-const prefixField = (domain: PrefixDomain) => ({
+const champPrefixe = (domaine: DomainePrefixe) => ({
   kind: 'text' as const,
-  key: `prefix_${domain}`,
-  label: `Préfixe ${PREFIX_DOMAINS[domain].label.toLowerCase()}`,
+  cle: `prefix_${domaine}`,
+  libelle: `Préfixe ${DOMAINES_PREFIXES[domaine].label.toLowerCase()}`,
   maxLength: 5,
   required: true,
-  get: (c: import('../../core/guildConfig').GuildConfig) => c.prefixes[domain],
-  set: (c: import('../../core/guildConfig').GuildConfig, v: string) => {
-    c.prefixes[domain] = v;
+  get: (c: import('../../core/guildConfig').ConfigServeur) => c.prefixes[domaine],
+  set: (c: import('../../core/guildConfig').ConfigServeur, v: string) => {
+    c.prefixes[domaine] = v;
   },
   validate: (v: string) => (/^\S{1,5}$/.test(v) && !/[`\\]/.test(v) ? null : '1 à 5 caractères, sans espace.'),
 });
 
-export const configPages: SetupPage[] = [
+export const pagesAdministration: PageReglage[] = [
   {
     id: 'appearance',
     section: 'appearance',
-    title: 'Apparence',
+    titre: 'Apparence',
     emoji: '🎨',
     description: 'Le thème des messages du bot. « Enseigne » reprend les couleurs du streamer (réglées par l’owner bot avec /custom).',
-    fields: [
+    champs: [
       {
         kind: 'choice',
-        key: 'theme',
-        label: 'Thème',
+        cle: 'theme',
+        libelle: 'Thème',
         options: [
           { value: 'brand', label: 'Enseigne du streamer', emoji: '🎥' },
-          ...Object.entries(THEMES).map(([value, t]) => ({ value, label: t.label, emoji: t.emoji })),
+          ...Object.entries(THEMES).map(([valeur, t]) => ({ value: valeur, label: t.label, emoji: t.emoji })),
           { value: 'custom', label: 'Personnalisé (couleurs ci-dessous)', emoji: '🖌️' },
         ],
         get: (c) => c.general.theme,
         set: (c, v) => {
           c.general.theme = v as typeof c.general.theme;
-          const preset = THEMES[v as keyof typeof THEMES];
-          if (preset) c.general.colors = { ...preset.colors };
+          const modele = THEMES[v as keyof typeof THEMES];
+          if (modele) c.general.colors = { ...modele.colors };
         },
       },
       {
         kind: 'text',
-        key: 'primary',
-        label: 'Couleur principale (#hex)',
+        cle: 'primary',
+        libelle: 'Couleur principale (#hex)',
         maxLength: 7,
         get: (c) => c.general.colors.primary,
         set: (c, v) => {
@@ -58,8 +58,8 @@ export const configPages: SetupPage[] = [
       },
       {
         kind: 'text',
-        key: 'footer',
-        label: 'Pied de page (vide = enseigne)',
+        cle: 'footer',
+        libelle: 'Pied de page (vide = enseigne)',
         maxLength: 128,
         get: (c) => c.general.footer,
         set: (c, v) => {
@@ -68,23 +68,23 @@ export const configPages: SetupPage[] = [
       },
       {
         kind: 'text',
-        key: 'timezone',
-        label: 'Fuseau horaire',
+        cle: 'timezone',
+        libelle: 'Fuseau horaire',
         maxLength: 64,
         required: true,
-        get: (c) => c.general.timezone,
+        get: (c) => c.general.fuseau,
         set: (c, v) => {
-          c.general.timezone = v;
+          c.general.fuseau = v;
         },
-        validate: (v) => (isValidTimezone(v) ? null : 'Fuseau IANA attendu (ex : Europe/Paris).'),
+        validate: (v) => (fuseauValide(v) ? null : 'Fuseau IANA attendu (ex : Europe/Paris).'),
       },
       {
         kind: 'channel',
-        key: 'staff',
-        label: 'Salon staff (rapports, candidatures…)',
-        get: (c) => c.general.staffChannelId,
+        cle: 'staff',
+        libelle: 'Salon staff (rapports, candidatures…)',
+        get: (c) => c.general.salonStaffId,
         set: (c, v) => {
-          c.general.staffChannelId = v;
+          c.general.salonStaffId = v;
         },
       },
     ],
@@ -92,92 +92,92 @@ export const configPages: SetupPage[] = [
   {
     id: 'perms-high',
     section: 'security',
-    title: 'Rôles — direction',
+    titre: 'Rôles — direction',
     emoji: '👑',
-    order: 10,
+    ordre: 10,
     description:
       'Rôles qui donnent un accès au bot. Les whitelists par ID (`/wl`) s’ajoutent à ces rôles.\n-# Propriétaire du serveur = Streamer · Administrateur Discord = Admin.',
-    fields: [
-      { kind: 'roles', key: 'streamer', label: '🎥 Streamer', get: (c) => c.permissions.streamer, set: (c, v) => void (c.permissions.streamer = v) },
-      { kind: 'roles', key: 'admin', label: '🛠️ Admin', get: (c) => c.permissions.admin, set: (c, v) => void (c.permissions.admin = v) },
-      { kind: 'roles', key: 'moderator', label: '🛡️ Système (modération)', get: (c) => c.permissions.moderator, set: (c, v) => void (c.permissions.moderator = v) },
+    champs: [
+      { kind: 'roles', cle: 'streamer', libelle: '🎥 Streamer', get: (c) => c.permissions.streamer, set: (c, v) => void (c.permissions.streamer = v) },
+      { kind: 'roles', cle: 'admin', libelle: '🛠️ Admin', get: (c) => c.permissions.admin, set: (c, v) => void (c.permissions.admin = v) },
+      { kind: 'roles', cle: 'moderator', libelle: '🛡️ Système (modération)', get: (c) => c.permissions.moderateur, set: (c, v) => void (c.permissions.moderateur = v) },
     ],
   },
   {
     id: 'perms-staff',
     section: 'security',
-    title: 'Rôles — équipe',
+    titre: 'Rôles — équipe',
     emoji: '⭐',
-    order: 11,
+    ordre: 11,
     description: 'Rôles de l’équipe. Chaque niveau garde tout ce que donnent les précédents.',
-    fields: [
-      { kind: 'roles', key: 'staff', label: '⭐ Staff', get: (c) => c.permissions.staff, set: (c, v) => void (c.permissions.staff = v) },
-      { kind: 'roles', key: 'support', label: '🎫 Support', get: (c) => c.permissions.support, set: (c, v) => void (c.permissions.support = v) },
+    champs: [
+      { kind: 'roles', cle: 'staff', libelle: '⭐ Staff', get: (c) => c.permissions.staff, set: (c, v) => void (c.permissions.staff = v) },
+      { kind: 'roles', cle: 'support', libelle: '🎫 Support', get: (c) => c.permissions.support, set: (c, v) => void (c.permissions.support = v) },
     ],
   },
   {
     id: 'prefixes',
     section: 'security',
-    title: 'Préfixes & salons de commandes',
+    titre: 'Préfixes & salons de commandes',
     emoji: '⌨️',
-    order: 12,
+    ordre: 12,
     description:
       'Les commandes à préfixe sont rangées par domaine : `+` sanctions, `&` salons, `=` général, `.` owner, `m!` musique.\n-# Salons de commandes : là où les commandes à préfixe marchent (vide = partout, le bypass ignore la règle).',
-    fields: [
-      prefixField('sanction'),
-      prefixField('salon'),
-      prefixField('general'),
-      prefixField('owner'),
-      prefixField('music'),
+    champs: [
+      champPrefixe('sanction'),
+      champPrefixe('salon'),
+      champPrefixe('general'),
+      champPrefixe('owner'),
+      champPrefixe('music'),
       {
         kind: 'channels',
-        key: 'cmdchannels',
-        label: 'Salons de commandes',
+        cle: 'cmdchannels',
+        libelle: 'Salons de commandes',
         channelTypes: [ChannelType.GuildText, ChannelType.GuildVoice],
-        get: (c) => c.commands.allowedChannels,
-        set: (c, v) => void (c.commands.allowedChannels = v),
+        get: (c) => c.commandes.salonsAutorises,
+        set: (c, v) => void (c.commandes.salonsAutorises = v),
       },
-      { kind: 'toggle', key: 'deltrigger', label: 'Effacer la commande', get: (c) => c.commands.deleteTrigger, set: (c, v) => void (c.commands.deleteTrigger = v) },
+      { kind: 'toggle', cle: 'deltrigger', libelle: 'Effacer la commande', get: (c) => c.commandes.effacerCommande, set: (c, v) => void (c.commandes.effacerCommande = v) },
     ],
   },
   {
     id: 'logs',
     section: 'logs',
-    title: 'Logs',
+    titre: 'Logs',
     emoji: '📜',
     moduleId: 'logs',
     description:
       'Un salon par type de log, rangés dans des catégories « Logs · … » visibles seulement par le staff concerné et les whitelists.\n-# « Créer les salons » ne touche jamais aux salons existants.',
-    fields: [
+    champs: [
       {
         kind: 'channel',
-        key: 'fallback',
-        label: 'Salon par défaut (types sans salon)',
-        get: (c) => c.logs.fallbackChannelId,
-        set: (c, v) => void (c.logs.fallbackChannelId = v),
+        cle: 'fallback',
+        libelle: 'Salon par défaut (types sans salon)',
+        get: (c) => c.journaux.salonSecoursId,
+        set: (c, v) => void (c.journaux.salonSecoursId = v),
       },
       {
         kind: 'channels',
-        key: 'ignored',
-        label: 'Salons ignorés par les logs',
+        cle: 'ignored',
+        libelle: 'Salons ignorés par les logs',
         channelTypes: [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement],
-        get: (c) => c.logs.ignoredChannels,
-        set: (c, v) => void (c.logs.ignoredChannels = v),
+        get: (c) => c.journaux.salonsIgnores,
+        set: (c, v) => void (c.journaux.salonsIgnores = v),
       },
     ],
     actions: [
       {
         id: 'create',
-        label: 'Créer les salons',
+        libelle: 'Créer les salons',
         emoji: '🏗️',
-        async run(interaction) {
+        async executer(interaction) {
           await interaction.deferReply({ flags: 64 });
-          const { created, linked } = await ensureLogChannels(interaction.guild).catch((err: unknown) => {
-            throw err instanceof Error && (err as { code?: number }).code === 50013
-              ? new UserError('Il me faut la permission « Gérer les salons ».')
-              : err;
+          const { cree, titreLie } = await creerSalonsJournal(interaction.guild).catch((echec: unknown) => {
+            throw echec instanceof Error && (echec as { code?: number }).code === 50013
+              ? new ErreurUtilisateur('Il me faut la permission « Gérer les salons ».')
+              : echec;
           });
-          await interaction.editReply({ embeds: [ok(interaction.guild, `**${created}** salon(s) ou catégorie(s) créé(s), **${linked}** déjà présent(s) et relié(s).`, { titre: 'Salons de logs' })] });
+          await interaction.editReply({ embeds: [ok(interaction.guild, `**${cree}** salon(s) ou catégorie(s) créé(s), **${titreLie}** déjà présent(s) et relié(s).`, { titre: 'Salons de logs' })] });
         },
       },
     ],

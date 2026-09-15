@@ -1,35 +1,35 @@
-import { env } from './env';
+import { environnement } from './env';
 
-const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 } as const;
-type Level = keyof typeof LEVELS;
+const NIVEAUX = { debug: 10, info: 20, warn: 30, error: 40 } as const;
+type NiveauRegistre = keyof typeof NIVEAUX;
 
-const threshold = LEVELS[(env.logLevel as Level) in LEVELS ? (env.logLevel as Level) : 'info'];
+const seuil = NIVEAUX[(environnement.niveauRegistre as NiveauRegistre) in NIVEAUX ? (environnement.niveauRegistre as NiveauRegistre) : 'info'];
 
-function write(level: Level, scope: string, message: string, extra?: unknown): void {
-  if (LEVELS[level] < threshold) return;
-  const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${scope}] ${message}`;
-  const out = level === 'error' || level === 'warn' ? console.error : console.log;
-  if (extra === undefined) out(line);
-  else if (extra instanceof Error) out(line, '\n', extra.stack ?? extra.message);
-  else out(line, extra);
+function ecrire(niveau: NiveauRegistre, portee: string, message: string, extra?: unknown): void {
+  if (NIVEAUX[niveau] < seuil) return;
+  const ligne = `${new Date().toISOString()} ${niveau.toUpperCase().padEnd(5)} [${portee}] ${message}`;
+  const sortie = niveau === 'error' || niveau === 'warn' ? console.error : console.log;
+  if (extra === undefined) sortie(ligne);
+  else if (extra instanceof Error) sortie(ligne, '\n', extra.stack ?? extra.message);
+  else sortie(ligne, extra);
 }
 
-export interface Logger {
-  debug(message: string, extra?: unknown): void;
+export interface Registre {
+  debogage(message: string, extra?: unknown): void;
   info(message: string, extra?: unknown): void;
-  warn(message: string, extra?: unknown): void;
-  error(message: string, extra?: unknown): void;
-  child(scope: string): Logger;
+  avertir(message: string, extra?: unknown): void;
+  erreur(message: string, extra?: unknown): void;
+  enfant(portee: string): Registre;
 }
 
-export function createLogger(scope: string): Logger {
+export function creerRegistre(portee: string): Registre {
   return {
-    debug: (m, e) => write('debug', scope, m, e),
-    info: (m, e) => write('info', scope, m, e),
-    warn: (m, e) => write('warn', scope, m, e),
-    error: (m, e) => write('error', scope, m, e),
-    child: (sub) => createLogger(`${scope}:${sub}`),
+    debogage: (m, e) => ecrire('debug', portee, m, e),
+    info: (m, e) => ecrire('info', portee, m, e),
+    avertir: (m, e) => ecrire('warn', portee, m, e),
+    erreur: (m, e) => ecrire('error', portee, m, e),
+    enfant: (sousCommande) => creerRegistre(`${portee}:${sousCommande}`),
   };
 }
 
-export const logger = createLogger('bot');
+export const registre = creerRegistre('bot');

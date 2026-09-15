@@ -15,164 +15,164 @@ import {
   type PartialUser,
   type User,
 } from 'discord.js';
-import { all, get, run, transaction } from '../../database/db';
-import { colorFor, info, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { reply } from '../../core/interactions';
+import { lireTout, lire, executer, transaction } from '../../database/db';
+import { couleurPour, info, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { repondre } from '../../core/interactions';
 import { journal } from '../../core/logService';
-import { canBotManageRole } from '../../core/permissions';
-import { truncate } from '../../core/text';
-import { button, row } from '../../core/ui';
-import { on, PermLevel, type BotModule, type SlashCommand } from '../../core/types';
+import { botPeutGererRole } from '../../core/permissions';
+import { tronquer } from '../../core/text';
+import { bouton, rangee } from '../../core/ui';
+import { sur, Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
 
-type PanelType = 'button' | 'reaction' | 'select';
-type PanelMode = 'toggle' | 'unique' | 'add';
+type TypePanneau = 'button' | 'reaction' | 'select';
+type ModePanneau = 'toggle' | 'unique' | 'add';
 
-interface PanelRow {
+interface LignePanneau {
   id: number;
-  guild_id: string;
-  channel_id: string;
+  serveur_id: string;
+  salon_id: string;
   message_id: string | null;
-  title: string;
+  titre: string;
   description: string;
-  type: PanelType;
-  mode: PanelMode;
-  kind: string;
-  created_at: number;
+  type: TypePanneau;
+  mode: ModePanneau;
+  genre: string;
+  cree_le: number;
 }
 
-interface EntryRow {
-  panel_id: number;
+interface LigneParticipation {
+  panneau_id: number;
   role_id: string;
   emoji: string | null;
-  label: string;
+  libelle: string;
   position: number;
 }
 
-const MODE_LABEL: Record<PanelMode, string> = { toggle: 'Cliquer ajoute / enlève', unique: 'Un seul rôle à la fois', add: 'Ajout seulement' };
+const LIBELLE_MODE: Record<ModePanneau, string> = { toggle: 'Cliquer ajoute / enlève', unique: 'Un seul rôle à la fois', add: 'Ajout seulement' };
 
-function entries(panelId: number): EntryRow[] {
-  return all<EntryRow>('SELECT * FROM reaction_role_entries WHERE panel_id = ? ORDER BY position, label', panelId);
+function entrees(panneauId: number): LigneParticipation[] {
+  return lireTout<LigneParticipation>('SELECT * FROM roles_panneaux WHERE panneau_id = ? ORDER BY position, libelle', panneauId);
 }
 
-function requirePanel(guildId: string, id: number | string | undefined): PanelRow {
-  const panel = get<PanelRow>('SELECT * FROM reaction_roles WHERE id = ? AND guild_id = ?', Number(id), guildId);
-  if (!panel) throw new UserError('Panneau introuvable.');
-  return panel;
+function exigerPanneau(serveurId: string, id: number | string | undefined): LignePanneau {
+  const panneauBoutons = lire<LignePanneau>('SELECT * FROM panneaux_roles WHERE id = ? AND serveur_id = ?', Number(id), serveurId);
+  if (!panneauBoutons) throw new ErreurUtilisateur('Panneau introuvable.');
+  return panneauBoutons;
 }
 
 /** Normalise un émoji saisi : unicode ou <:nom:id> ; pour les réactions, l'identifiant sert de clé. */
-function emojiKey(raw: string | null): string | null {
-  if (!raw) return null;
-  const custom = /<a?:\w+:(\d+)>/.exec(raw);
-  return custom ? custom[1]! : raw.trim();
+function cleEmoji(brut: string | null): string | null {
+  if (!brut) return null;
+  const enseignes = /<a?:\w+:(\d+)>/.exec(brut);
+  return enseignes ? enseignes[1]! : brut.trim();
 }
 
-function render(guild: Guild, panel: PanelRow) {
-  const list = entries(panel.id);
+function afficher(serveur: Guild, panneauBoutons: LignePanneau) {
+  const liste = entrees(panneauBoutons.id);
   const embed = new EmbedBuilder()
-    .setColor(colorFor(guild))
-    .setTitle(truncate(panel.title, 256))
+    .setColor(couleurPour(serveur))
+    .setTitle(tronquer(panneauBoutons.titre, 256))
     .setDescription(
-      truncate(
-        [panel.description, '', ...list.map((e) => `${e.emoji ?? '•'} **${e.label}** — <@&${e.role_id}>`), '', `-# ${panel.type === 'reaction' ? 'Réagis' : 'Clique'} pour choisir · ${MODE_LABEL[panel.mode]}`]
+      tronquer(
+        [panneauBoutons.description, '', ...liste.map((e) => `${e.emoji ?? '•'} **${e.libelle}** — <@&${e.role_id}>`), '', `-# ${panneauBoutons.type === 'reaction' ? 'Réagis' : 'Clique'} pour choisir · ${LIBELLE_MODE[panneauBoutons.mode]}`]
           .filter((l, i) => l !== '' || i > 0)
           .join('\n'),
         4096,
       ),
     );
-  if (panel.type === 'button') {
-    const buttons = list.slice(0, 25).map((e) => button(`rr:b:${panel.id}:${e.role_id}`, e.label, ButtonStyle.Secondary, e.emoji ?? undefined));
-    const rows = [];
-    for (let i = 0; i < buttons.length; i += 5) rows.push(row(...buttons.slice(i, i + 5)));
-    return { embeds: [embed], components: rows };
+  if (panneauBoutons.type === 'button') {
+    const boutons = liste.slice(0, 25).map((e) => bouton(`rr:b:${panneauBoutons.id}:${e.role_id}`, e.libelle, ButtonStyle.Secondary, e.emoji ?? undefined));
+    const rangees = [];
+    for (let i = 0; i < boutons.length; i += 5) rangees.push(rangee(...boutons.slice(i, i + 5)));
+    return { embeds: [embed], components: rangees };
   }
-  if (panel.type === 'select' && list.length) {
-    const select = new StringSelectMenuBuilder()
-      .setCustomId(`rr:s:${panel.id}`)
+  if (panneauBoutons.type === 'select' && liste.length) {
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId(`rr:s:${panneauBoutons.id}`)
       .setPlaceholder('Choisis tes rôles')
       .setMinValues(0)
-      .setMaxValues(panel.mode === 'unique' ? 1 : list.length)
-      .addOptions(list.slice(0, 25).map((e) => ({ label: e.label, value: e.role_id, emoji: e.emoji ?? undefined })));
-    return { embeds: [embed], components: [row(select)] };
+      .setMaxValues(panneauBoutons.mode === 'unique' ? 1 : liste.length)
+      .addOptions(liste.slice(0, 25).map((e) => ({ label: e.libelle, value: e.role_id, emoji: e.emoji ?? undefined })));
+    return { embeds: [embed], components: [rangee(menu)] };
   }
   return { embeds: [embed], components: [] };
 }
 
-async function publish(guild: Guild, panel: PanelRow): Promise<string> {
-  const channel = guild.channels.cache.get(panel.channel_id) as GuildTextBasedChannel | undefined;
-  if (!channel?.isTextBased()) throw new UserError('Le salon du panneau est introuvable.');
-  const payload = render(guild, panel);
-  let message = panel.message_id ? await channel.messages.fetch(panel.message_id).catch(() => null) : null;
-  if (message) await message.edit(payload);
+async function publier(serveur: Guild, panneauBoutons: LignePanneau): Promise<string> {
+  const salon = serveur.channels.cache.get(panneauBoutons.salon_id) as GuildTextBasedChannel | undefined;
+  if (!salon?.isTextBased()) throw new ErreurUtilisateur('Le salon du panneau est introuvable.');
+  const charge = afficher(serveur, panneauBoutons);
+  let message = panneauBoutons.message_id ? await salon.messages.fetch(panneauBoutons.message_id).catch(() => null) : null;
+  if (message) await message.edit(charge);
   else {
-    message = await channel.send(payload);
-    run('UPDATE reaction_roles SET message_id = ? WHERE id = ?', message.id, panel.id);
+    message = await salon.send(charge);
+    executer('UPDATE panneaux_roles SET message_id = ? WHERE id = ?', message.id, panneauBoutons.id);
   }
-  if (panel.type === 'reaction') {
-    for (const e of entries(panel.id)) if (e.emoji) await message.react(e.emoji).catch(() => undefined);
+  if (panneauBoutons.type === 'reaction') {
+    for (const e of entrees(panneauBoutons.id)) if (e.emoji) await message.react(e.emoji).catch(() => undefined);
   }
   return message.url;
 }
 
 /** Applique un choix de rôle en respectant le mode du panneau. Retourne un compte rendu. */
-async function applyChoice(member: GuildMember, panel: PanelRow, roleId: string, forceAdd?: boolean): Promise<string> {
-  const role = member.guild.roles.cache.get(roleId);
-  if (!role) throw new UserError('Ce rôle n’existe plus.');
-  if (!canBotManageRole(member.guild, role)) throw new UserError('Je ne peux pas donner ce rôle (il est au-dessus du mien).');
-  const has = member.roles.cache.has(roleId);
-  const add = forceAdd ?? !has;
-  if (!add) {
-    if (panel.mode === 'add') return `Tu gardes <@&${roleId}>.`;
-    await member.roles.remove(roleId, `Panneau de rôles #${panel.id}`);
+async function appliquerChoix(membre: GuildMember, panneauBoutons: LignePanneau, roleId: string, forcerAjout?: boolean): Promise<string> {
+  const role = membre.guild.roles.cache.get(roleId);
+  if (!role) throw new ErreurUtilisateur('Ce rôle n’existe plus.');
+  if (!botPeutGererRole(membre.guild, role)) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle (il est au-dessus du mien).');
+  const possede = membre.roles.cache.has(roleId);
+  const ajouter = forcerAjout ?? !possede;
+  if (!ajouter) {
+    if (panneauBoutons.mode === 'add') return `Tu gardes <@&${roleId}>.`;
+    await membre.roles.remove(roleId, `Panneau de rôles #${panneauBoutons.id}`);
     return `➖ <@&${roleId}> retiré.`;
   }
-  if (has) return `Tu as déjà <@&${roleId}>.`;
-  if (panel.mode === 'unique') {
-    const others = entries(panel.id).map((e) => e.role_id).filter((id) => id !== roleId && member.roles.cache.has(id));
-    if (others.length) await member.roles.remove(others, `Panneau de rôles #${panel.id} (unique)`).catch(() => undefined);
+  if (possede) return `Tu as déjà <@&${roleId}>.`;
+  if (panneauBoutons.mode === 'unique') {
+    const autres = entrees(panneauBoutons.id).map((e) => e.role_id).filter((id) => id !== roleId && membre.roles.cache.has(id));
+    if (autres.length) await membre.roles.remove(autres, `Panneau de rôles #${panneauBoutons.id} (unique)`).catch(() => undefined);
   }
-  await member.roles.add(roleId, `Panneau de rôles #${panel.id}`);
-  void journal(member.guild, 'autorole', { title: 'Rôle choisi', tone: 'ok', lines: [`**Membre** : <@${member.id}>`, `**Rôle** : <@&${roleId}>`, `**Panneau** : ${panel.title}`] });
+  await membre.roles.add(roleId, `Panneau de rôles #${panneauBoutons.id}`);
+  void journal(membre.guild, 'autorole', { titre: 'Rôle choisi', ton: 'ok', lignes: [`**Membre** : <@${membre.id}>`, `**Rôle** : <@&${roleId}>`, `**Panneau** : ${panneauBoutons.titre}`] });
   return `➕ <@&${roleId}> ajouté.`;
 }
 
-async function onReaction(reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser, added: boolean) {
-  if (user.bot) return;
+async function surReaction(reaction: MessageReaction | PartialMessageReaction, utilisateur: User | PartialUser, ajoute: boolean) {
+  if (utilisateur.bot) return;
   const message = reaction.message;
   if (!message.guildId) return;
-  const panel = get<PanelRow>("SELECT * FROM reaction_roles WHERE message_id = ? AND type = 'reaction'", message.id);
-  if (!panel) return;
-  const key = reaction.emoji.id ?? reaction.emoji.name;
-  const entry = entries(panel.id).find((e) => emojiKey(e.emoji) === key);
-  if (!entry) return;
-  const guild = message.guild ?? (await reaction.client.guilds.fetch(message.guildId));
-  const member = await guild.members.fetch(user.id).catch(() => null);
-  if (!member) return;
-  if (!added && panel.mode === 'add') return;
-  await applyChoice(member, panel, entry.role_id, added).catch(() => undefined);
-  if (added && panel.mode === 'unique') {
-    const full = reaction.partial ? await reaction.fetch().catch(() => null) : reaction;
-    const msg = full?.message;
-    if (msg) {
-      for (const other of msg.reactions.cache.values()) {
-        if ((other.emoji.id ?? other.emoji.name) !== key) await other.users.remove(user.id).catch(() => undefined);
+  const panneauBoutons = lire<LignePanneau>("SELECT * FROM panneaux_roles WHERE message_id = ? AND type = 'reaction'", message.id);
+  if (!panneauBoutons) return;
+  const cle = reaction.emoji.id ?? reaction.emoji.name;
+  const entree = entrees(panneauBoutons.id).find((e) => cleEmoji(e.emoji) === cle);
+  if (!entree) return;
+  const serveur = message.guild ?? (await reaction.client.guilds.fetch(message.guildId));
+  const membre = await serveur.members.fetch(utilisateur.id).catch(() => null);
+  if (!membre) return;
+  if (!ajoute && panneauBoutons.mode === 'add') return;
+  await appliquerChoix(membre, panneauBoutons, entree.role_id, ajoute).catch(() => undefined);
+  if (ajoute && panneauBoutons.mode === 'unique') {
+    const complet = reaction.partial ? await reaction.fetch().catch(() => null) : reaction;
+    const charge = complet?.message;
+    if (charge) {
+      for (const autre of charge.reactions.cache.values()) {
+        if ((autre.emoji.id ?? autre.emoji.name) !== cle) await autre.users.remove(utilisateur.id).catch(() => undefined);
       }
     }
   }
 }
 
-function panelsAutocomplete(guildId: string, focused: string) {
-  return all<PanelRow>('SELECT * FROM reaction_roles WHERE guild_id = ? ORDER BY created_at DESC LIMIT 100', guildId)
-    .filter((p) => `${p.id} ${p.title}`.toLowerCase().includes(focused.toLowerCase()))
+function autocompletionPanneaux(serveurId: string, saisie: string) {
+  return lireTout<LignePanneau>('SELECT * FROM panneaux_roles WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 100', serveurId)
+    .filter((p) => `${p.id} ${p.titre}`.toLowerCase().includes(saisie.toLowerCase()))
     .slice(0, 25)
-    .map((p) => ({ name: truncate(`#${p.id} · ${p.title} (${p.type})`, 100), value: p.id }));
+    .map((p) => ({ name: tronquer(`#${p.id} · ${p.titre} (${p.type})`, 100), value: p.id }));
 }
 
-const reactionrole: SlashCommand = {
-  category: 'roles',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder()
+const panneauRoles: CommandeSlash = {
+  categorie: 'roles',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder()
     .setName('reactionrole')
     .setDescription('Panneaux de rôles')
     .addSubcommand((s) =>
@@ -212,69 +212,69 @@ const reactionrole: SlashCommand = {
         .addIntegerOption((o) => o.setName('panneau').setDescription('Le panneau').setRequired(true).setAutocomplete(true)),
     )
     .addSubcommand((s) => s.setName('liste').setDescription('Les panneaux du serveur')),
-  async autocomplete(interaction) {
-    await interaction.respond(panelsAutocomplete(interaction.guildId, String(interaction.options.getFocused())));
+  async autocompletion(interaction) {
+    await interaction.respond(autocompletionPanneaux(interaction.guildId, String(interaction.options.getFocused())));
   },
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const sub = interaction.options.getSubcommand();
-    if (sub === 'liste') {
-      const panels = all<PanelRow>('SELECT * FROM reaction_roles WHERE guild_id = ? ORDER BY created_at DESC', guild.id);
-      const lines = panels.map((p) => `**#${p.id}** ${truncate(p.title, 60)} — ${p.type} · ${entries(p.id).length} rôle(s) · <#${p.channel_id}>`);
-      return reply(interaction, { embeds: [info(guild, lines.join('\n') || 'Aucun panneau.', { titre: 'Panneaux de rôles', sujet: '🎭' })], ephemeral: true });
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const sousCommande = interaction.options.getSubcommand();
+    if (sousCommande === 'liste') {
+      const panneaux = lireTout<LignePanneau>('SELECT * FROM panneaux_roles WHERE serveur_id = ? ORDER BY cree_le DESC', serveur.id);
+      const lignes = panneaux.map((p) => `**#${p.id}** ${tronquer(p.titre, 60)} — ${p.type} · ${entrees(p.id).length} rôle(s) · <#${p.salon_id}>`);
+      return repondre(interaction, { embeds: [info(serveur, lignes.join('\n') || 'Aucun panneau.', { titre: 'Panneaux de rôles', sujet: '🎭' })], ephemeral: true });
     }
-    if (sub === 'creer') {
-      const channel = interaction.options.getChannel('salon') ?? interaction.channel;
-      if (!channel) return;
-      const r = run(
-        'INSERT INTO reaction_roles (guild_id, channel_id, title, description, type, mode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        guild.id,
-        channel.id,
+    if (sousCommande === 'creer') {
+      const salon = interaction.options.getChannel('salon') ?? interaction.channel;
+      if (!salon) return;
+      const r = executer(
+        'INSERT INTO panneaux_roles (serveur_id, salon_id, titre, description, type, mode, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        serveur.id,
+        salon.id,
         interaction.options.getString('titre', true),
         interaction.options.getString('description') ?? '',
         interaction.options.getString('type', true),
         interaction.options.getString('mode') ?? 'toggle',
         Date.now(),
       );
-      return reply(interaction, { embeds: [ok(guild, `Panneau **#${r.lastInsertRowid}** créé. Ajoute des rôles avec \`/reactionrole ajouter\` : il sera publié automatiquement.`)], ephemeral: true });
+      return repondre(interaction, { embeds: [ok(serveur, `Panneau **#${r.lastInsertRowid}** créé. Ajoute des rôles avec \`/reactionrole ajouter\` : il sera publié automatiquement.`)], ephemeral: true });
     }
-    const panel = requirePanel(guild.id, interaction.options.getInteger('panneau', true));
-    if (sub === 'supprimer') {
-      const channel = guild.channels.cache.get(panel.channel_id);
-      if (channel?.isTextBased() && panel.message_id) await channel.messages.delete(panel.message_id).catch(() => undefined);
-      run('DELETE FROM reaction_roles WHERE id = ?', panel.id);
-      return reply(interaction, { embeds: [ok(guild, `Panneau #${panel.id} supprimé.`)], ephemeral: true });
+    const panneauBoutons = exigerPanneau(serveur.id, interaction.options.getInteger('panneau', true));
+    if (sousCommande === 'supprimer') {
+      const salon = serveur.channels.cache.get(panneauBoutons.salon_id);
+      if (salon?.isTextBased() && panneauBoutons.message_id) await salon.messages.delete(panneauBoutons.message_id).catch(() => undefined);
+      executer('DELETE FROM panneaux_roles WHERE id = ?', panneauBoutons.id);
+      return repondre(interaction, { embeds: [ok(serveur, `Panneau #${panneauBoutons.id} supprimé.`)], ephemeral: true });
     }
     const role = interaction.options.getRole('role', true);
-    if (sub === 'retirer') {
-      run('DELETE FROM reaction_role_entries WHERE panel_id = ? AND role_id = ?', panel.id, role.id);
-      const url = await publish(guild, panel);
-      return reply(interaction, { embeds: [ok(guild, `<@&${role.id}> retiré du panneau. ${url}`)], ephemeral: true });
+    if (sousCommande === 'retirer') {
+      executer('DELETE FROM roles_panneaux WHERE panneau_id = ? AND role_id = ?', panneauBoutons.id, role.id);
+      const url = await publier(serveur, panneauBoutons);
+      return repondre(interaction, { embeds: [ok(serveur, `<@&${role.id}> retiré du panneau. ${url}`)], ephemeral: true });
     }
     const emoji = interaction.options.getString('emoji');
-    if (panel.type === 'reaction' && !emoji) throw new UserError('Un émoji est obligatoire pour un panneau à réactions.');
-    if (!canBotManageRole(guild, guild.roles.cache.get(role.id)!)) throw new UserError('Je ne peux pas donner ce rôle : place mon rôle au-dessus.');
-    if (entries(panel.id).length >= 25) throw new UserError('25 rôles maximum par panneau.');
+    if (panneauBoutons.type === 'reaction' && !emoji) throw new ErreurUtilisateur('Un émoji est obligatoire pour un panneau à réactions.');
+    if (!botPeutGererRole(serveur, serveur.roles.cache.get(role.id)!)) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle : place mon rôle au-dessus.');
+    if (entrees(panneauBoutons.id).length >= 25) throw new ErreurUtilisateur('25 rôles maximum par panneau.');
     transaction(() => {
-      const position = entries(panel.id).length;
-      run(
-        'INSERT OR REPLACE INTO reaction_role_entries (panel_id, role_id, emoji, label, position) VALUES (?, ?, ?, ?, ?)',
-        panel.id,
+      const position = entrees(panneauBoutons.id).length;
+      executer(
+        'INSERT OR REPLACE INTO roles_panneaux (panneau_id, role_id, emoji, libelle, position) VALUES (?, ?, ?, ?, ?)',
+        panneauBoutons.id,
         role.id,
         emoji,
         interaction.options.getString('label') ?? role.name,
         position,
       );
     });
-    const url = await publish(guild, panel);
-    return reply(interaction, { embeds: [ok(guild, `<@&${role.id}> ajouté au panneau. ${url}`)], ephemeral: true });
+    const url = await publier(serveur, panneauBoutons);
+    return repondre(interaction, { embeds: [ok(serveur, `<@&${role.id}> ajouté au panneau. ${url}`)], ephemeral: true });
   },
 };
 
-const notificationrole: SlashCommand = {
-  category: 'roles',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder()
+const roleNotifications: CommandeSlash = {
+  categorie: 'roles',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder()
     .setName('notificationrole')
     .setDescription('Panneau 🔔 notifications en un clic')
     .addRoleOption((o) => o.setName('lives').setDescription('Rôle 🔴 Lives Twitch'))
@@ -283,74 +283,74 @@ const notificationrole: SlashCommand = {
     .addRoleOption((o) => o.setName('annonces').setDescription('Rôle 📢 Annonces'))
     .addRoleOption((o) => o.setName('evenements').setDescription('Rôle 🎮 Événements'))
     .addChannelOption((o) => o.setName('salon').setDescription('Où (ici par défaut)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const picks: [string, string, string][] = [
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const choix: [string, string, string][] = [
       ['lives', '🔴', 'Lives Twitch'],
       ['youtube', '🎥', 'YouTube'],
       ['giveaways', '🎉', 'Giveaways'],
       ['annonces', '📢', 'Annonces'],
       ['evenements', '🎮', 'Événements'],
     ];
-    const chosen = picks.map(([opt, emoji, label]) => ({ role: interaction.options.getRole(opt), emoji, label })).filter((p) => p.role);
-    if (!chosen.length) throw new UserError('Choisis au moins un rôle.');
-    const blocked = chosen.filter((c) => !canBotManageRole(guild, guild.roles.cache.get(c.role!.id)!));
-    if (blocked.length) throw new UserError(`Je ne peux pas donner ${blocked.map((b) => `<@&${b.role!.id}>`).join(', ')} : place mon rôle au-dessus.`);
-    const channel = interaction.options.getChannel('salon') ?? interaction.channel;
-    if (!channel) return;
-    const panelId = transaction(() => {
-      const r = run(
-        "INSERT INTO reaction_roles (guild_id, channel_id, title, description, type, mode, kind, created_at) VALUES (?, ?, '🔔 NOTIFICATIONS', ?, 'button', 'toggle', 'notification', ?)",
-        guild.id,
-        channel.id,
+    const choisis = choix.map(([option, emoji, libelle]) => ({ role: interaction.options.getRole(option), emoji, label: libelle })).filter((p) => p.role);
+    if (!choisis.length) throw new ErreurUtilisateur('Choisis au moins un rôle.');
+    const bloques = choisis.filter((c) => !botPeutGererRole(serveur, serveur.roles.cache.get(c.role!.id)!));
+    if (bloques.length) throw new ErreurUtilisateur(`Je ne peux pas donner ${bloques.map((b) => `<@&${b.role!.id}>`).join(', ')} : place mon rôle au-dessus.`);
+    const salon = interaction.options.getChannel('salon') ?? interaction.channel;
+    if (!salon) return;
+    const panneauId = transaction(() => {
+      const r = executer(
+        "INSERT INTO panneaux_roles (serveur_id, salon_id, titre, description, type, mode, genre, cree_le) VALUES (?, ?, '🔔 NOTIFICATIONS', ?, 'button', 'toggle', 'notification', ?)",
+        serveur.id,
+        salon.id,
         'Choisis toi-même les notifications que tu veux recevoir.',
         Date.now(),
       );
-      chosen.forEach((c, i) => run('INSERT INTO reaction_role_entries (panel_id, role_id, emoji, label, position) VALUES (?, ?, ?, ?, ?)', r.lastInsertRowid, c.role!.id, c.emoji, c.label, i));
+      choisis.forEach((c, i) => executer('INSERT INTO roles_panneaux (panneau_id, role_id, emoji, libelle, position) VALUES (?, ?, ?, ?, ?)', r.lastInsertRowid, c.role!.id, c.emoji, c.label, i));
       return r.lastInsertRowid;
     });
-    const url = await publish(guild, requirePanel(guild.id, panelId));
-    await reply(interaction, { embeds: [ok(guild, `Panneau de notifications publié : ${url}`)], ephemeral: true });
+    const url = await publier(serveur, exigerPanneau(serveur.id, panneauId));
+    await repondre(interaction, { embeds: [ok(serveur, `Panneau de notifications publié : ${url}`)], ephemeral: true });
   },
 };
 
-export const reactionRolesModule: BotModule = {
+export const moduleRolesAChoisir: ModuleBot = {
   id: 'reactionroles',
-  name: 'Rôles à choisir',
+  nom: 'Rôles à choisir',
   emoji: '🎭',
   description: 'Panneaux de rôles : réactions, boutons, menus et notifications',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [reactionrole, notificationrole],
-  components: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [panneauRoles, roleNotifications],
+  composants: [
     {
-      prefix: 'rr',
-      async button(interaction: ButtonInteraction<'cached'>, [, panelId, roleId]) {
-        const panel = requirePanel(interaction.guildId, panelId);
-        if (!entries(panel.id).some((e) => e.role_id === roleId)) throw new UserError('Ce rôle n’est plus proposé.');
-        const text = await applyChoice(interaction.member, panel, roleId!);
-        await interaction.reply({ embeds: [ok(interaction.guild, text)], flags: MessageFlags.Ephemeral });
+      prefixe: 'rr',
+      async bouton(interaction: ButtonInteraction<'cached'>, [, panneauId, roleId]) {
+        const panneauBoutons = exigerPanneau(interaction.guildId, panneauId);
+        if (!entrees(panneauBoutons.id).some((e) => e.role_id === roleId)) throw new ErreurUtilisateur('Ce rôle n’est plus proposé.');
+        const texte = await appliquerChoix(interaction.member, panneauBoutons, roleId!);
+        await interaction.reply({ embeds: [ok(interaction.guild, texte)], flags: MessageFlags.Ephemeral });
       },
-      async select(interaction: AnySelectMenuInteraction<'cached'>, [, panelId]) {
+      async menu(interaction: AnySelectMenuInteraction<'cached'>, [, panneauId]) {
         if (!interaction.isStringSelectMenu()) return;
-        const panel = requirePanel(interaction.guildId, panelId);
-        const offered = entries(panel.id).map((e) => e.role_id);
-        const wanted = new Set(interaction.values.filter((v) => offered.includes(v)));
-        const results: string[] = [];
-        for (const roleId of offered) {
-          const has = interaction.member.roles.cache.has(roleId);
-          if (wanted.has(roleId) && !has) results.push(await applyChoice(interaction.member, panel, roleId, true).catch((e: Error) => `⚠️ ${e.message}`));
-          if (!wanted.has(roleId) && has && panel.mode !== 'add') results.push(await applyChoice(interaction.member, panel, roleId, false).catch((e: Error) => `⚠️ ${e.message}`));
+        const panneauBoutons = exigerPanneau(interaction.guildId, panneauId);
+        const proposes = entrees(panneauBoutons.id).map((e) => e.role_id);
+        const voulus = new Set(interaction.values.filter((v) => proposes.includes(v)));
+        const resultats: string[] = [];
+        for (const roleId of proposes) {
+          const possede = interaction.member.roles.cache.has(roleId);
+          if (voulus.has(roleId) && !possede) resultats.push(await appliquerChoix(interaction.member, panneauBoutons, roleId, true).catch((e: Error) => `⚠️ ${e.message}`));
+          if (!voulus.has(roleId) && possede && panneauBoutons.mode !== 'add') resultats.push(await appliquerChoix(interaction.member, panneauBoutons, roleId, false).catch((e: Error) => `⚠️ ${e.message}`));
         }
-        await interaction.reply({ embeds: [ok(interaction.guild, results.join('\n') || 'Aucun changement.')], flags: MessageFlags.Ephemeral });
+        await interaction.reply({ embeds: [ok(interaction.guild, resultats.join('\n') || 'Aucun changement.')], flags: MessageFlags.Ephemeral });
       },
     },
   ],
-  events: [
-    on('messageReactionAdd', (reaction, user) => onReaction(reaction, user, true)),
-    on('messageReactionRemove', (reaction, user) => onReaction(reaction, user, false)),
-    on('messageDelete', (message) => {
-      run('UPDATE reaction_roles SET message_id = NULL WHERE message_id = ?', message.id);
+  evenements: [
+    sur('messageReactionAdd', (reaction, utilisateur) => surReaction(reaction, utilisateur, true)),
+    sur('messageReactionRemove', (reaction, utilisateur) => surReaction(reaction, utilisateur, false)),
+    sur('messageDelete', (message) => {
+      executer('UPDATE panneaux_roles SET message_id = NULL WHERE message_id = ?', message.id);
     }),
   ],
 };

@@ -1,54 +1,54 @@
 import { EmbedBuilder, type APIEmbedField, type Guild, type User } from 'discord.js';
-import { brandFor, emojiFor, type Brand } from './brand';
-import { getConfig } from './guildConfig';
-import { hexToInt, THEMES, type ThemeColors } from './themes';
+import { enseigneDe, emojiPour, type Enseigne } from './brand';
+import { lireConfig } from './guildConfig';
+import { hexaEnEntier, THEMES, type CouleursTheme } from './themes';
 
-export type EmbedKind = keyof ThemeColors;
+export type GenreEmbed = keyof CouleursTheme;
 
-type GuildRef = Guild | string | null | undefined;
+type RefServeur = Guild | string | null | undefined;
 
-function idOf(guild: GuildRef): string | null {
-  if (!guild) return null;
-  return typeof guild === 'string' ? guild : guild.id;
+function idDe(serveur: RefServeur): string | null {
+  if (!serveur) return null;
+  return typeof serveur === 'string' ? serveur : serveur.id;
 }
 
 /** Tons d'état repris du bot Airline, utilisés avec le thème "enseigne". */
-const BRAND_TONES: Omit<ThemeColors, 'primary'> = {
+const TONS_ENSEIGNE: Omit<CouleursTheme, 'primary'> = {
   success: '#3FE08F',
   error: '#E0455A',
   warning: '#F0B232',
   info: '#46C8FF',
 };
 
-export function colorFor(guild: GuildRef, kind: EmbedKind = 'primary'): number {
-  const id = idOf(guild);
-  const brand = brandFor(id);
-  if (!id) return kind === 'primary' ? brand.color : hexToInt(BRAND_TONES[kind]);
-  const general = getConfig(id).general;
-  if (general.theme === 'brand') return kind === 'primary' ? brand.color : hexToInt(BRAND_TONES[kind]);
-  if (general.theme === 'custom') return hexToInt(general.colors[kind]);
-  return hexToInt(THEMES[general.theme]?.colors[kind] ?? general.colors[kind]);
+export function couleurPour(serveur: RefServeur, genre: GenreEmbed = 'primary'): number {
+  const id = idDe(serveur);
+  const enseigne = enseigneDe(id);
+  if (!id) return genre === 'primary' ? enseigne.couleur : hexaEnEntier(TONS_ENSEIGNE[genre]);
+  const general = lireConfig(id).general;
+  if (general.theme === 'brand') return genre === 'primary' ? enseigne.couleur : hexaEnEntier(TONS_ENSEIGNE[genre]);
+  if (general.theme === 'custom') return hexaEnEntier(general.colors[genre]);
+  return hexaEnEntier(THEMES[general.theme]?.colors[genre] ?? general.colors[genre]);
 }
 
-export function brandOf(guild: GuildRef): Brand {
-  return brandFor(idOf(guild));
+export function enseigneDuServeur(serveur: RefServeur): Enseigne {
+  return enseigneDe(idDe(serveur));
 }
 
 /** Nom affiché : enseigne du streamer, sinon nom du serveur. */
-export function brandName(guild: GuildRef): string {
-  const brand = brandOf(guild);
-  if (brand.key) return brand.name;
-  return guild && typeof guild !== 'string' ? guild.name : brand.name;
+export function nomEnseigne(serveur: RefServeur): string {
+  const enseigne = enseigneDuServeur(serveur);
+  if (enseigne.cle) return enseigne.nom;
+  return serveur && typeof serveur !== 'string' ? serveur.name : enseigne.nom;
 }
 
 /** Embed à l'identité visuelle du serveur (enseigne du streamer ou thème choisi). */
-export function brandEmbed(guild: GuildRef, kind: EmbedKind = 'primary'): EmbedBuilder {
-  const embed = new EmbedBuilder().setColor(colorFor(guild, kind));
-  if (guild && typeof guild !== 'string') {
-    const brand = brandOf(guild);
-    const custom = getConfig(guild.id).general.footer;
-    const text = custom || brand.footer || brandName(guild);
-    embed.setFooter({ text: text.slice(0, 2048), iconURL: brand.logo ?? guild.iconURL() ?? undefined });
+export function embedEnseigne(serveur: RefServeur, genre: GenreEmbed = 'primary'): EmbedBuilder {
+  const embed = new EmbedBuilder().setColor(couleurPour(serveur, genre));
+  if (serveur && typeof serveur !== 'string') {
+    const enseigne = enseigneDuServeur(serveur);
+    const enseignes = lireConfig(serveur.id).general.footer;
+    const texte = enseignes || enseigne.pied || nomEnseigne(serveur);
+    embed.setFooter({ text: texte.slice(0, 2048), iconURL: enseigne.logo ?? serveur.iconURL() ?? undefined });
   }
   return embed;
 }
@@ -81,14 +81,14 @@ export function total(emoji: string, libelle: string, valeur: string | number): 
 }
 
 /** Signe un embed : pied « tag » + horodatage. */
-export function signer(embed: EmbedBuilder, user: User | null | undefined): EmbedBuilder {
-  if (!user) return embed;
-  return embed.setFooter({ text: user.tag, iconURL: user.displayAvatarURL({ size: 64 }) }).setTimestamp();
+export function signer(embed: EmbedBuilder, utilisateur: User | null | undefined): EmbedBuilder {
+  if (!utilisateur) return embed;
+  return embed.setFooter({ text: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) }).setTimestamp();
 }
 
-function bati(guild: GuildRef, kind: EmbedKind, defaultEmoji: string, texte: string, options: ReponseOptions = {}): EmbedBuilder {
-  const emoji = options.emoji ?? defaultEmoji;
-  const embed = new EmbedBuilder().setColor(colorFor(guild, kind));
+function bati(serveur: RefServeur, genre: GenreEmbed, emojiParDefaut: string, texte: string, options: ReponseOptions = {}): EmbedBuilder {
+  const emoji = options.emoji ?? emojiParDefaut;
+  const embed = new EmbedBuilder().setColor(couleurPour(serveur, genre));
   if (options.titre) {
     embed.setTitle(`${options.sujet ?? emoji} ${options.titre}`.trim().slice(0, 256));
     embed.setDescription(texte.trim().slice(0, 4096) || null);
@@ -101,11 +101,11 @@ function bati(guild: GuildRef, kind: EmbedKind, defaultEmoji: string, texte: str
   return signer(embed, options.par);
 }
 
-export const ok = (guild: GuildRef, texte: string, options?: ReponseOptions) => bati(guild, 'success', emojiFor(idOf(guild), 'valide'), texte, options);
-export const erreur = (guild: GuildRef, texte: string, options?: ReponseOptions) => bati(guild, 'error', emojiFor(idOf(guild), 'probleme'), texte, options);
-export const refus = (guild: GuildRef, texte: string, options?: ReponseOptions) => bati(guild, 'error', emojiFor(idOf(guild), 'refus'), texte, options);
-export const info = (guild: GuildRef, texte: string, options?: ReponseOptions) => bati(guild, 'primary', emojiFor(idOf(guild), 'info'), texte, options);
-export const attention = (guild: GuildRef, texte: string, options?: ReponseOptions) => bati(guild, 'warning', emojiFor(idOf(guild), 'attention'), texte, options);
+export const ok = (serveur: RefServeur, texte: string, options?: ReponseOptions) => bati(serveur, 'success', emojiPour(idDe(serveur), 'valide'), texte, options);
+export const erreur = (serveur: RefServeur, texte: string, options?: ReponseOptions) => bati(serveur, 'error', emojiPour(idDe(serveur), 'probleme'), texte, options);
+export const refus = (serveur: RefServeur, texte: string, options?: ReponseOptions) => bati(serveur, 'error', emojiPour(idDe(serveur), 'refus'), texte, options);
+export const info = (serveur: RefServeur, texte: string, options?: ReponseOptions) => bati(serveur, 'primary', emojiPour(idDe(serveur), 'info'), texte, options);
+export const attention = (serveur: RefServeur, texte: string, options?: ReponseOptions) => bati(serveur, 'warning', emojiPour(idDe(serveur), 'attention'), texte, options);
 
 export interface PanneauSection {
   emoji: string;
@@ -116,10 +116,10 @@ export interface PanneauSection {
 
 /** Panneau complet : titre, ouverture, sections à puces, totaux. */
 export function panneau(
-  guild: GuildRef,
+  serveur: RefServeur,
   opts: { sujet?: string; titre?: string; ouverture?: string; sections?: PanneauSection[]; totaux?: { emoji: string; libelle: string; valeur: string | number }[]; texte?: string; par?: User | null },
 ): EmbedBuilder {
-  const embed = brandEmbed(guild);
+  const embed = embedEnseigne(serveur);
   if (opts.titre) embed.setTitle(`${opts.sujet ? `${opts.sujet} ` : ''}${opts.titre}`.slice(0, 256));
   const bloc: string[] = [];
   if (opts.ouverture) bloc.push(opts.ouverture.trim());
@@ -138,20 +138,20 @@ export function panneau(
 }
 
 // Raccourcis historiques utilisés par le cœur.
-export function successEmbed(guild: GuildRef, description: string, title = 'C’est fait'): EmbedBuilder {
-  return ok(guild, description, { titre: title });
+export function embedSucces(serveur: RefServeur, description: string, titre = 'C’est fait'): EmbedBuilder {
+  return ok(serveur, description, { titre });
 }
 
-export function errorEmbed(guild: GuildRef, description: string, title = 'Une erreur est survenue'): EmbedBuilder {
-  return erreur(guild, description, { titre: title });
+export function embedErreur(serveur: RefServeur, description: string, titre = 'Une erreur est survenue'): EmbedBuilder {
+  return erreur(serveur, description, { titre });
 }
 
-export function warningEmbed(guild: GuildRef, description: string, title = 'Êtes-vous sûr ?'): EmbedBuilder {
-  return attention(guild, description, { titre: title });
+export function embedAvertissement(serveur: RefServeur, description: string, titre = 'Êtes-vous sûr ?'): EmbedBuilder {
+  return attention(serveur, description, { titre });
 }
 
-export function infoEmbed(guild: GuildRef, description: string, title = 'Information'): EmbedBuilder {
-  return info(guild, description, { titre: title });
+export function embedInfo(serveur: RefServeur, description: string, titre = 'Information'): EmbedBuilder {
+  return info(serveur, description, { titre });
 }
 
-export const SEPARATOR = '━━━━━━━━━━━━━━━━━━';
+export const SEPARATEUR = '━━━━━━━━━━━━━━━━━━';

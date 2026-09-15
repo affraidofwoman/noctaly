@@ -1,24 +1,24 @@
-import { escapeHtml } from '../services/transcript';
+import { echapperHtml } from '../services/transcript';
 
-export const h = escapeHtml;
+export const h = echapperHtml;
 
-export interface NavItem {
+export interface EntreeNavigation {
   href: string;
-  label: string;
-  icon: string;
+  libelle: string;
+  icone: string;
 }
 
-export function navFor(guildId: string): NavItem[] {
-  const base = `/g/${guildId}`;
+export function navigationPour(serveurId: string): EntreeNavigation[] {
+  const base = `/g/${serveurId}`;
   return [
-    { href: base, label: 'Accueil', icon: '🏠' },
-    { href: `${base}/modules`, label: 'Modules', icon: '🧩' },
-    { href: `${base}/tickets`, label: 'Tickets', icon: '🎫' },
-    { href: `${base}/giveaways`, label: 'Giveaways', icon: '🎉' },
-    { href: `${base}/twitch`, label: 'Twitch', icon: '🔴' },
-    { href: `${base}/moderation`, label: 'Modération', icon: '🛡️' },
-    { href: `${base}/logs`, label: 'Logs', icon: '📜' },
-    { href: `${base}/personnalisation`, label: 'Personnalisation', icon: '🎨' },
+    { href: base, libelle: 'Accueil', icone: '🏠' },
+    { href: `${base}/modules`, libelle: 'Modules', icone: '🧩' },
+    { href: `${base}/tickets`, libelle: 'Tickets', icone: '🎫' },
+    { href: `${base}/giveaways`, libelle: 'Giveaways', icone: '🎉' },
+    { href: `${base}/twitch`, libelle: 'Twitch', icone: '🔴' },
+    { href: `${base}/moderation`, libelle: 'Modération', icone: '🛡️' },
+    { href: `${base}/logs`, libelle: 'Logs', icone: '📜' },
+    { href: `${base}/personnalisation`, libelle: 'Personnalisation', icone: '🎨' },
   ];
 }
 
@@ -63,39 +63,39 @@ form.inline{display:inline}
 @media (max-width:760px){nav{display:none}main{padding:18px}}
 `;
 
-export interface PageOptions {
-  title: string;
-  brand: string;
-  body: string;
-  user?: { username: string; avatar: string | null; id: string } | null;
-  nav?: NavItem[];
-  current?: string;
+export interface OptionsPage {
+  titre: string;
+  enseigne: string;
+  corps: string;
+  utilisateur?: { username: string; avatar: string | null; id: string } | null;
+  navigation?: EntreeNavigation[];
+  actuel?: string;
   csrf?: string;
   accent?: string;
 }
 
-export function page(o: PageOptions): string {
-  const avatar = o.user?.avatar ? `https://cdn.discordapp.com/avatars/${o.user.id}/${o.user.avatar}.png?size=64` : null;
-  const nav = o.nav
-    ? `<nav>${o.nav.map((n) => `<a class="${n.href === o.current ? 'on' : ''}" href="${h(n.href)}">${n.icon} ${h(n.label)}</a>`).join('')}<a href="/servers">↩️ Serveurs</a></nav>`
+export function page(o: OptionsPage): string {
+  const avatar = o.utilisateur?.avatar ? `https://cdn.discordapp.com/avatars/${o.utilisateur.id}/${o.utilisateur.avatar}.png?size=64` : null;
+  const navigation = o.navigation
+    ? `<nav>${o.navigation.map((n) => `<a class="${n.href === o.actuel ? 'on' : ''}" href="${h(n.href)}">${n.icone} ${h(n.libelle)}</a>`).join('')}<a href="/servers">↩️ Serveurs</a></nav>`
     : '';
   const accent = o.accent && /^#[0-9a-f]{6}$/i.test(o.accent) ? `<style>:root{--accent:${o.accent}}</style>` : '';
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${h(o.title)} · ${h(o.brand)}</title><style>${STYLE}</style>${accent}</head><body>
-<div class="top"><a class="brand" href="/servers">🤖 ${h(o.brand)}</a>${
-    o.user
-      ? `<div class="user">${avatar ? `<img src="${h(avatar)}" alt=""/>` : ''}<span>${h(o.user.username)}</span><form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="${h(o.csrf ?? '')}"/><button class="ghost" type="submit">Déconnexion</button></form></div>`
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${h(o.titre)} · ${h(o.enseigne)}</title><style>${STYLE}</style>${accent}</head><body>
+<div class="top"><a class="brand" href="/servers">🤖 ${h(o.enseigne)}</a>${
+    o.utilisateur
+      ? `<div class="user">${avatar ? `<img src="${h(avatar)}" alt=""/>` : ''}<span>${h(o.utilisateur.username)}</span><form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="${h(o.csrf ?? '')}"/><button class="ghost" type="submit">Déconnexion</button></form></div>`
       : ''
   }</div>
-<div class="layout">${nav}<main>${o.body}</main></div></body></html>`;
+<div class="layout">${navigation}<main>${o.corps}</main></div></body></html>`;
 }
 
-export function csrfField(token: string): string {
-  return `<input type="hidden" name="csrf" value="${h(token)}"/>`;
+export function champCsrf(jeton: string): string {
+  return `<input type="hidden" name="csrf" value="${h(jeton)}"/>`;
 }
 
-export function table(headers: string[], rows: string[][], empty = 'Rien à afficher.'): string {
-  if (!rows.length) return `<div class="card muted">${h(empty)}</div>`;
-  return `<table><thead><tr>${headers.map((x) => `<th>${h(x)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+export function table(entetes: string[], rangees: string[][], vide = 'Rien à afficher.'): string {
+  if (!rangees.length) return `<div class="card muted">${h(vide)}</div>`;
+  return `<table><thead><tr>${entetes.map((x) => `<th>${h(x)}</th>`).join('')}</tr></thead><tbody>${rangees.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
 export function date(ms: number | null | undefined): string {

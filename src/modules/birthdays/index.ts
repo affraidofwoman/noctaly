@@ -1,83 +1,83 @@
 import { EmbedBuilder, SlashCommandBuilder, type Client, type Guild } from 'discord.js';
-import { all, get, run } from '../../database/db';
-import { emojiFor } from '../../core/brand';
-import { brandEmbed, colorFor, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { getConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { resolveTextChannel } from '../../core/logService';
-import { isModuleEnabled } from '../../core/moduleManager';
-import { linesToPages, paginate } from '../../core/pagination';
-import { canBotManageRole, getLevel } from '../../core/permissions';
-import type { SetupPage } from '../../core/setup';
-import { truncate } from '../../core/text';
-import { MONTHS_FR, zonedParts } from '../../core/time';
-import { renderTemplate } from '../../core/variables';
-import { PermLevel, type BotModule, type PrefixCommand, type SlashCommand } from '../../core/types';
-import { grantBadge } from '../../services/badges';
+import { lireTout, lire, executer } from '../../database/db';
+import { emojiPour } from '../../core/brand';
+import { embedEnseigne, couleurPour, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { lireConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { resoudreSalonTexte } from '../../core/logService';
+import { moduleActif } from '../../core/moduleManager';
+import { lignesEnPages, paginer } from '../../core/pagination';
+import { botPeutGererRole, lireNiveau } from '../../core/permissions';
+import type { PageReglage } from '../../core/setup';
+import { tronquer } from '../../core/text';
+import { MOIS, partiesFuseau } from '../../core/time';
+import { remplirModele } from '../../core/variables';
+import { Niveau, type ModuleBot, type CommandePrefixe, type CommandeSlash } from '../../core/types';
+import { donnerBadge } from '../../services/badges';
 
-interface BirthdayRow {
-  user_id: string;
-  day: number;
-  month: number;
-  last_announced_year: number | null;
-  role_given_at: number | null;
+interface LigneAnniversaire {
+  utilisateur_id: string;
+  jour: number;
+  mois: number;
+  annee_annoncee: number | null;
+  role_donne_le: number | null;
 }
 
-const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const JOURS_PAR_MOIS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
-export function isValidBirthday(day: number, month: number): boolean {
-  return Number.isInteger(day) && Number.isInteger(month) && month >= 1 && month <= 12 && day >= 1 && day <= DAYS_IN_MONTH[month - 1]!;
+export function anniversaireValide(jour: number, mois: number): boolean {
+  return Number.isInteger(jour) && Number.isInteger(mois) && mois >= 1 && mois <= 12 && jour >= 1 && jour <= JOURS_PAR_MOIS[mois - 1]!;
 }
 
 /** Le 29 février est fêté le 28 les années non bissextiles. */
-export function isBirthdayToday(row: { day: number; month: number }, today: { day: number; month: number; year: number }): boolean {
-  const leap = (today.year % 4 === 0 && today.year % 100 !== 0) || today.year % 400 === 0;
-  if (row.month === 2 && row.day === 29 && !leap) return today.month === 2 && today.day === 28;
-  return row.day === today.day && row.month === today.month;
+export function estAnniversaire(rangee: { jour: number; mois: number }, aujourdhui: { jour: number; mois: number; annee: number }): boolean {
+  const bissextile = (aujourdhui.annee % 4 === 0 && aujourdhui.annee % 100 !== 0) || aujourdhui.annee % 400 === 0;
+  if (rangee.mois === 2 && rangee.jour === 29 && !bissextile) return aujourdhui.mois === 2 && aujourdhui.jour === 28;
+  return rangee.jour === aujourdhui.jour && rangee.mois === aujourdhui.mois;
 }
 
-async function processGuild(guild: Guild): Promise<void> {
-  const cfg = getConfig(guild.id).birthdays;
-  const now = zonedParts(Date.now(), getConfig(guild.id).general.timezone);
-  const role = cfg.roleId ? guild.roles.cache.get(cfg.roleId) : null;
+async function traiterServeur(serveur: Guild): Promise<void> {
+  const reglages = lireConfig(serveur.id).anniversaires;
+  const maintenant = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau);
+  const role = reglages.roleId ? serveur.roles.cache.get(reglages.roleId) : null;
 
   // Retire le rôle d'anniversaire après 24 h.
   if (role) {
-    for (const r of all<BirthdayRow>('SELECT * FROM birthdays WHERE guild_id = ? AND role_given_at IS NOT NULL AND role_given_at < ?', guild.id, Date.now() - 86_400_000)) {
-      const member = await guild.members.fetch(r.user_id).catch(() => null);
-      if (member && canBotManageRole(guild, role)) await member.roles.remove(role, 'Fin de l’anniversaire').catch(() => undefined);
-      run('UPDATE birthdays SET role_given_at = NULL WHERE guild_id = ? AND user_id = ?', guild.id, r.user_id);
+    for (const r of lireTout<LigneAnniversaire>('SELECT * FROM anniversaires WHERE serveur_id = ? AND role_donne_le IS NOT NULL AND role_donne_le < ?', serveur.id, Date.now() - 86_400_000)) {
+      const membre = await serveur.members.fetch(r.utilisateur_id).catch(() => null);
+      if (membre && botPeutGererRole(serveur, role)) await membre.roles.remove(role, 'Fin de l’anniversaire').catch(() => undefined);
+      executer('UPDATE anniversaires SET role_donne_le = NULL WHERE serveur_id = ? AND utilisateur_id = ?', serveur.id, r.utilisateur_id);
     }
   }
 
-  if (now.hour < cfg.hour) return;
-  const due = all<BirthdayRow>('SELECT * FROM birthdays WHERE guild_id = ? AND (last_announced_year IS NULL OR last_announced_year < ?)', guild.id, now.year).filter((r) => isBirthdayToday(r, now));
-  if (!due.length) return;
-  const channel = resolveTextChannel(guild, cfg.channelId);
-  for (const r of due) {
-    run('UPDATE birthdays SET last_announced_year = ? WHERE guild_id = ? AND user_id = ?', now.year, guild.id, r.user_id);
-    const member = await guild.members.fetch(r.user_id).catch(() => null);
-    if (!member) continue;
-    grantBadge(guild.id, member.id, 'birthday');
-    if (role && canBotManageRole(guild, role)) {
-      await member.roles.add(role, 'Anniversaire').catch(() => undefined);
-      run('UPDATE birthdays SET role_given_at = ? WHERE guild_id = ? AND user_id = ?', Date.now(), guild.id, r.user_id);
+  if (maintenant.heure < reglages.hour) return;
+  const echus = lireTout<LigneAnniversaire>('SELECT * FROM anniversaires WHERE serveur_id = ? AND (annee_annoncee IS NULL OR annee_annoncee < ?)', serveur.id, maintenant.annee).filter((r) => estAnniversaire(r, maintenant));
+  if (!echus.length) return;
+  const salon = resoudreSalonTexte(serveur, reglages.channelId);
+  for (const r of echus) {
+    executer('UPDATE anniversaires SET annee_annoncee = ? WHERE serveur_id = ? AND utilisateur_id = ?', maintenant.annee, serveur.id, r.utilisateur_id);
+    const membre = await serveur.members.fetch(r.utilisateur_id).catch(() => null);
+    if (!membre) continue;
+    donnerBadge(serveur.id, membre.id, 'birthday');
+    if (role && botPeutGererRole(serveur, role)) {
+      await membre.roles.add(role, 'Anniversaire').catch(() => undefined);
+      executer('UPDATE anniversaires SET role_donne_le = ? WHERE serveur_id = ? AND utilisateur_id = ?', Date.now(), serveur.id, r.utilisateur_id);
     }
-    if (channel) {
+    if (salon) {
       const embed = new EmbedBuilder()
-        .setColor(colorFor(guild))
-        .setTitle(`${emojiFor(guild.id, 'anniversaire')} ANNIVERSAIRE !`)
-        .setDescription(truncate(renderTemplate(cfg.message, { member, guild }), 4096))
-        .setThumbnail(member.user.displayAvatarURL({ size: 256 }));
-      await channel.send({ content: `<@${member.id}>`, embeds: [embed], allowedMentions: { users: [member.id] } }).catch(() => undefined);
+        .setColor(couleurPour(serveur))
+        .setTitle(`${emojiPour(serveur.id, 'anniversaire')} ANNIVERSAIRE !`)
+        .setDescription(tronquer(remplirModele(reglages.message, { membre, serveur }), 4096))
+        .setThumbnail(membre.user.displayAvatarURL({ size: 256 }));
+      await salon.send({ content: `<@${membre.id}>`, embeds: [embed], allowedMentions: { users: [membre.id] } }).catch(() => undefined);
     }
   }
 }
 
-const birthday: SlashCommand = {
-  category: 'community',
-  data: new SlashCommandBuilder()
+const commandeAnniversaire: CommandeSlash = {
+  categorie: 'community',
+  donnees: new SlashCommandBuilder()
     .setName('birthday')
     .setDescription('Les anniversaires')
     .addSubcommand((s) =>
@@ -85,7 +85,7 @@ const birthday: SlashCommand = {
         .setName('set')
         .setDescription('Enregistrer ton anniversaire')
         .addIntegerOption((o) => o.setName('jour').setDescription('Jour').setRequired(true).setMinValue(1).setMaxValue(31))
-        .addIntegerOption((o) => o.setName('mois').setDescription('Mois').setRequired(true).addChoices(...MONTHS_FR.map((m, i) => ({ name: m, value: i + 1 }))))
+        .addIntegerOption((o) => o.setName('mois').setDescription('Mois').setRequired(true).addChoices(...MOIS.map((m, i) => ({ name: m, value: i + 1 }))))
         .addUserOption((o) => o.setName('membre').setDescription('Pour quelqu’un d’autre (staff)')),
     )
     .addSubcommand((s) =>
@@ -95,107 +95,107 @@ const birthday: SlashCommand = {
         .addUserOption((o) => o.setName('membre').setDescription('Pour quelqu’un d’autre (staff)')),
     )
     .addSubcommand((s) => s.setName('list').setDescription('Les prochains anniversaires')),
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const sub = interaction.options.getSubcommand();
-    const other = interaction.options.getUser('membre');
-    if (other && other.id !== interaction.user.id && getLevel(interaction.member) < PermLevel.STAFF) {
-      throw new UserError('Seul le staff peut modifier l’anniversaire de quelqu’un d’autre.');
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const sousCommande = interaction.options.getSubcommand();
+    const autre = interaction.options.getUser('membre');
+    if (autre && autre.id !== interaction.user.id && lireNiveau(interaction.member) < Niveau.STAFF) {
+      throw new ErreurUtilisateur('Seul le staff peut modifier l’anniversaire de quelqu’un d’autre.');
     }
-    const userId = other?.id ?? interaction.user.id;
-    if (sub === 'set') {
-      const day = interaction.options.getInteger('jour', true);
-      const month = interaction.options.getInteger('mois', true);
-      if (!isValidBirthday(day, month)) throw new UserError('Cette date n’existe pas.');
-      const year = zonedParts(Date.now(), getConfig(guild.id).general.timezone).year;
-      const today = zonedParts(Date.now(), getConfig(guild.id).general.timezone);
+    const utilisateurId = autre?.id ?? interaction.user.id;
+    if (sousCommande === 'set') {
+      const jour = interaction.options.getInteger('jour', true);
+      const mois = interaction.options.getInteger('mois', true);
+      if (!anniversaireValide(jour, mois)) throw new ErreurUtilisateur('Cette date n’existe pas.');
+      const annee = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau).annee;
+      const aujourdhui = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau);
       // Enregistré aujourd'hui même : on ne le souhaite pas une seconde fois s'il est déjà passé l'heure.
-      const skipThisYear = isBirthdayToday({ day, month }, today) && today.hour >= getConfig(guild.id).birthdays.hour;
-      run(
-        `INSERT INTO birthdays (guild_id, user_id, day, month, last_announced_year) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(guild_id, user_id) DO UPDATE SET day = excluded.day, month = excluded.month, last_announced_year = excluded.last_announced_year`,
-        guild.id,
-        userId,
-        day,
-        month,
-        skipThisYear ? year : null,
+      const ignorerCetteAnnee = estAnniversaire({ jour, mois }, aujourdhui) && aujourdhui.heure >= lireConfig(serveur.id).anniversaires.hour;
+      executer(
+        `INSERT INTO anniversaires (serveur_id, utilisateur_id, jour, mois, annee_annoncee) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET jour = excluded.jour, mois = excluded.mois, annee_annoncee = excluded.annee_annoncee`,
+        serveur.id,
+        utilisateurId,
+        jour,
+        mois,
+        ignorerCetteAnnee ? annee : null,
       );
-      return reply(interaction, { embeds: [ok(guild, `🎂 Anniversaire de <@${userId}> enregistré : **${day} ${MONTHS_FR[month - 1]}**.`)], ephemeral: true });
+      return repondre(interaction, { embeds: [ok(serveur, `🎂 Anniversaire de <@${utilisateurId}> enregistré : **${jour} ${MOIS[mois - 1]}**.`)], ephemeral: true });
     }
-    if (sub === 'remove') {
-      const r = run('DELETE FROM birthdays WHERE guild_id = ? AND user_id = ?', guild.id, userId);
-      return reply(interaction, { embeds: [ok(guild, r.changes ? 'Anniversaire retiré.' : 'Aucun anniversaire enregistré.')], ephemeral: true });
+    if (sousCommande === 'remove') {
+      const r = executer('DELETE FROM anniversaires WHERE serveur_id = ? AND utilisateur_id = ?', serveur.id, utilisateurId);
+      return repondre(interaction, { embeds: [ok(serveur, r.changes ? 'Anniversaire retiré.' : 'Aucun anniversaire enregistré.')], ephemeral: true });
     }
-    const today = zonedParts(Date.now(), getConfig(guild.id).general.timezone);
-    const rows = all<BirthdayRow>('SELECT * FROM birthdays WHERE guild_id = ?', guild.id);
-    const score = (r: BirthdayRow) => {
-      const v = (r.month - today.month) * 31 + (r.day - today.day);
+    const aujourdhui = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau);
+    const rangees = lireTout<LigneAnniversaire>('SELECT * FROM anniversaires WHERE serveur_id = ?', serveur.id);
+    const score = (r: LigneAnniversaire) => {
+      const v = (r.mois - aujourdhui.mois) * 31 + (r.jour - aujourdhui.jour);
       return v < 0 ? v + 12 * 31 : v;
     };
-    const lines = rows.sort((a, b) => score(a) - score(b)).map((r) => `${score(r) === 0 ? '🎉' : '🎂'} **${r.day} ${MONTHS_FR[r.month - 1]}** — <@${r.user_id}>`);
-    if (!lines.length) lines.push('*Aucun anniversaire enregistré. Ajoute le tien avec `/birthday set` !*');
-    return paginate(interaction, linesToPages(lines, 15, (content, page, total) => brandEmbed(guild).setTitle('🎂 Anniversaires à venir').setDescription(content).setFooter({ text: `Page ${page}/${total}` })));
+    const lignes = rangees.sort((a, b) => score(a) - score(b)).map((r) => `${score(r) === 0 ? '🎉' : '🎂'} **${r.jour} ${MOIS[r.mois - 1]}** — <@${r.utilisateur_id}>`);
+    if (!lignes.length) lignes.push('*Aucun anniversaire enregistré. Ajoute le tien avec `/birthday set` !*');
+    return paginer(interaction, lignesEnPages(lignes, 15, (contenu, page, total) => embedEnseigne(serveur).setTitle('🎂 Anniversaires à venir').setDescription(contenu).setFooter({ text: `Page ${page}/${total}` })));
   },
 };
 
-const prefixCommands: PrefixCommand[] = [
+const commandesPrefixe: CommandePrefixe[] = [
   {
-    name: 'anniv',
-    aliases: ['birthday', 'bday'],
-    domain: 'general',
-    category: 'community',
+    nom: 'anniv',
+    alias: ['birthday', 'bday'],
+    domaine: 'general',
+    categorie: 'community',
     description: 'Ton anniversaire (JJ/MM)',
     usage: '<JJ/MM>',
-    async execute(message, args) {
-      const m = /^(\d{1,2})[/.-](\d{1,2})$/.exec(args[0] ?? '');
+    async executer(message, parametres) {
+      const m = /^(\d{1,2})[/.-](\d{1,2})$/.exec(parametres[0] ?? '');
       if (!m) {
-        const row = get<BirthdayRow>('SELECT * FROM birthdays WHERE guild_id = ? AND user_id = ?', message.guildId, message.author.id);
-        await message.reply({ embeds: [ok(message.guild, row ? `Ton anniversaire : **${row.day} ${MONTHS_FR[row.month - 1]}**.` : 'Aucun anniversaire enregistré. Écris par exemple `=anniv 14/09`.')], allowedMentions: { repliedUser: false } });
+        const rangee = lire<LigneAnniversaire>('SELECT * FROM anniversaires WHERE serveur_id = ? AND utilisateur_id = ?', message.guildId, message.author.id);
+        await message.reply({ embeds: [ok(message.guild, rangee ? `Ton anniversaire : **${rangee.jour} ${MOIS[rangee.mois - 1]}**.` : 'Aucun anniversaire enregistré. Écris par exemple `=anniv 14/09`.')], allowedMentions: { repliedUser: false } });
         return;
       }
-      const day = Number(m[1]);
-      const month = Number(m[2]);
-      if (!isValidBirthday(day, month)) throw new UserError('Cette date n’existe pas.');
-      run('INSERT INTO birthdays (guild_id, user_id, day, month) VALUES (?, ?, ?, ?) ON CONFLICT(guild_id, user_id) DO UPDATE SET day = excluded.day, month = excluded.month', message.guildId, message.author.id, day, month);
-      await message.reply({ embeds: [ok(message.guild, `🎂 Anniversaire enregistré : **${day} ${MONTHS_FR[month - 1]}**.`)], allowedMentions: { repliedUser: false } });
+      const jour = Number(m[1]);
+      const mois = Number(m[2]);
+      if (!anniversaireValide(jour, mois)) throw new ErreurUtilisateur('Cette date n’existe pas.');
+      executer('INSERT INTO anniversaires (serveur_id, utilisateur_id, jour, mois) VALUES (?, ?, ?, ?) ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET jour = excluded.jour, mois = excluded.mois', message.guildId, message.author.id, jour, mois);
+      await message.reply({ embeds: [ok(message.guild, `🎂 Anniversaire enregistré : **${jour} ${MOIS[mois - 1]}**.`)], allowedMentions: { repliedUser: false } });
     },
   },
 ];
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'birthdays',
   section: 'community',
-  title: 'Anniversaires',
+  titre: 'Anniversaires',
   emoji: '🎂',
   moduleId: 'birthdays',
-  order: 3,
+  ordre: 3,
   description: 'Le bot souhaite les anniversaires à l’heure choisie (fuseau du serveur) et peut donner un rôle pour la journée.\n-# Variables : `{mention}` `{user}` `{server}`',
-  fields: [
-    { kind: 'channel', key: 'channel', label: 'Salon des anniversaires', get: (c) => c.birthdays.channelId, set: (c, v) => void (c.birthdays.channelId = v) },
-    { kind: 'role', key: 'role', label: 'Rôle du jour', assignable: true, get: (c) => c.birthdays.roleId, set: (c, v) => void (c.birthdays.roleId = v) },
-    { kind: 'text', key: 'message', label: 'Message', long: true, maxLength: 1500, required: true, get: (c) => c.birthdays.message, set: (c, v) => void (c.birthdays.message = v) },
-    { kind: 'number', key: 'hour', label: 'Heure d’annonce', min: 0, max: 23, unit: 'h', get: (c) => c.birthdays.hour, set: (c, v) => void (c.birthdays.hour = v) },
+  champs: [
+    { kind: 'channel', cle: 'channel', libelle: 'Salon des anniversaires', get: (c) => c.anniversaires.channelId, set: (c, v) => void (c.anniversaires.channelId = v) },
+    { kind: 'role', cle: 'role', libelle: 'Rôle du jour', attribuable: true, get: (c) => c.anniversaires.roleId, set: (c, v) => void (c.anniversaires.roleId = v) },
+    { kind: 'text', cle: 'message', libelle: 'Message', long: true, maxLength: 1500, required: true, get: (c) => c.anniversaires.message, set: (c, v) => void (c.anniversaires.message = v) },
+    { kind: 'number', cle: 'hour', libelle: 'Heure d’annonce', min: 0, max: 23, unit: 'h', get: (c) => c.anniversaires.hour, set: (c, v) => void (c.anniversaires.hour = v) },
   ],
 };
 
-export const birthdaysModule: BotModule = {
+export const moduleAnniversaires: ModuleBot = {
   id: 'birthdays',
-  name: 'Anniversaires',
+  nom: 'Anniversaires',
   emoji: '🎂',
   description: 'Annonces d’anniversaire, rôle du jour et badge',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [birthday],
-  prefixCommands,
-  setupPages: [setupPage],
-  tasks: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [commandeAnniversaire],
+  commandesPrefixe,
+  pagesReglage: [pageReglage],
+  taches: [
     {
-      name: 'birthdays',
-      intervalMs: 10 * 60_000,
-      runOnStart: true,
-      async run(client: Client<true>) {
-        for (const guild of client.guilds.cache.values()) {
-          if (isModuleEnabled(guild.id, 'birthdays')) await processGuild(guild);
+      nom: 'birthdays',
+      intervalleMs: 10 * 60_000,
+      auDemarrage: true,
+      async executer(client: Client<true>) {
+        for (const serveur of client.guilds.cache.values()) {
+          if (moduleActif(serveur.id, 'birthdays')) await traiterServeur(serveur);
         }
       },
     },
@@ -203,18 +203,18 @@ export const birthdaysModule: BotModule = {
   tests: [
     {
       id: 'announce',
-      label: 'Annonce d’anniversaire',
+      libelle: 'Annonce d’anniversaire',
       emoji: '🎂',
       description: 'Voir le message avec ton nom',
-      async run(interaction) {
-        const cfg = getConfig(interaction.guildId).birthdays;
-        const channel = resolveTextChannel(interaction.guild, cfg.channelId);
-        if (!channel) return '⚠️ Aucun salon d’anniversaires utilisable.';
-        await channel.send({
-          embeds: [new EmbedBuilder().setColor(colorFor(interaction.guild)).setTitle('🎂 ANNIVERSAIRE ! (test)').setDescription(renderTemplate(cfg.message, { member: interaction.member, guild: interaction.guild }))],
+      async executer(interaction) {
+        const reglages = lireConfig(interaction.guildId).anniversaires;
+        const salon = resoudreSalonTexte(interaction.guild, reglages.channelId);
+        if (!salon) return '⚠️ Aucun salon d’anniversaires utilisable.';
+        await salon.send({
+          embeds: [new EmbedBuilder().setColor(couleurPour(interaction.guild)).setTitle('🎂 ANNIVERSAIRE ! (test)').setDescription(remplirModele(reglages.message, { membre: interaction.member, serveur: interaction.guild }))],
           allowedMentions: { parse: [] },
         });
-        return `✅ Annonce de test postée dans <#${channel.id}>.`;
+        return `✅ Annonce de test postée dans <#${salon.id}>.`;
       },
     },
   ],

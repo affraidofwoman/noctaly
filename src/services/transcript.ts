@@ -1,67 +1,67 @@
 import type { Collection, Guild, GuildTextBasedChannel, Message } from 'discord.js';
-import { brandFor, toHex } from '../core/brand';
+import { enseigneDe, enHexa } from '../core/brand';
 
-export function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+export function echapperHtml(texte: string): string {
+  return texte.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /** Récupère tout l'historique d'un salon (du plus ancien au plus récent), plafonné. */
-export async function fetchAllMessages(channel: GuildTextBasedChannel, max = 5000): Promise<Message[]> {
-  const collected: Message[] = [];
-  let before: string | undefined;
-  while (collected.length < max) {
-    const batch: Collection<string, Message> | null = await channel.messages.fetch({ limit: 100, before }).catch(() => null);
-    if (!batch || batch.size === 0) break;
-    collected.push(...batch.values());
-    before = batch.last()!.id;
-    if (batch.size < 100) break;
+export async function recupererMessages(salon: GuildTextBasedChannel, max = 5000): Promise<Message[]> {
+  const recuperes: Message[] = [];
+  let avant: string | undefined;
+  while (recuperes.length < max) {
+    const lot: Collection<string, Message> | null = await salon.messages.fetch({ limit: 100, before: avant }).catch(() => null);
+    if (!lot || lot.size === 0) break;
+    recuperes.push(...lot.values());
+    avant = lot.last()!.id;
+    if (lot.size < 100) break;
   }
-  return collected.reverse();
+  return recuperes.reverse();
 }
 
 /** Remplace mentions et émojis Discord par du HTML lisible (le texte est déjà échappé). */
-function renderContent(escaped: string, guild: Guild): string {
-  return escaped
+function rendreContenu(echappe: string, serveur: Guild): string {
+  return echappe
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
-    .replace(/&lt;a?:(\w{2,32}):(\d{15,25})&gt;/g, (_m, name: string, id: string) => `<img class="emo" src="https://cdn.discordapp.com/emojis/${id}.webp?size=44&amp;animated=true" alt=":${name}:" title=":${name}:" loading="lazy"/>`)
+    .replace(/&lt;a?:(\w{2,32}):(\d{15,25})&gt;/g, (_m, nom: string, id: string) => `<img class="emo" src="https://cdn.discordapp.com/emojis/${id}.webp?size=44&amp;animated=true" alt=":${nom}:" title=":${nom}:" loading="lazy"/>`)
     .replace(/&lt;@!?(\d{15,25})&gt;/g, (_m, id: string) => {
-      const member = guild.members.cache.get(id);
-      const name = member?.displayName ?? guild.client.users.cache.get(id)?.username ?? id;
-      return `<span class="mention">@${escapeHtml(name)}</span>`;
+      const membre = serveur.members.cache.get(id);
+      const nom = membre?.displayName ?? serveur.client.users.cache.get(id)?.username ?? id;
+      return `<span class="mention">@${echapperHtml(nom)}</span>`;
     })
     .replace(/&lt;@&amp;(\d{15,25})&gt;/g, (_m, id: string) => {
-      const role = guild.roles.cache.get(id);
+      const role = serveur.roles.cache.get(id);
       if (!role) return '<span class="mention">@rôle</span>';
-      const color = role.hexColor !== '#000000' ? role.hexColor : '#a68cff';
-      return `<span class="mention role" style="color:${color};background:${color}22;border:1px solid ${color}55">@${escapeHtml(role.name)}</span>`;
+      const couleur = role.hexColor !== '#000000' ? role.hexColor : '#a68cff';
+      return `<span class="mention role" style="color:${couleur};background:${couleur}22;border:1px solid ${couleur}55">@${echapperHtml(role.name)}</span>`;
     })
-    .replace(/&lt;#(\d{15,25})&gt;/g, (_m, id: string) => `<span class="mention salon">#${escapeHtml(guild.channels.cache.get(id)?.name ?? 'salon')}</span>`)
+    .replace(/&lt;#(\d{15,25})&gt;/g, (_m, id: string) => `<span class="mention salon">#${echapperHtml(serveur.channels.cache.get(id)?.name ?? 'salon')}</span>`)
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
 }
 
-function renderMessage(m: Message, guild: Guild): string {
-  const time = new Date(m.createdTimestamp).toLocaleString('fr-FR');
-  const author = escapeHtml(m.member?.displayName ?? m.author.globalName ?? m.author.username);
-  const avatar = escapeHtml(m.author.displayAvatarURL({ size: 64 }));
+function rendreMessage(m: Message, serveur: Guild): string {
+  const heure = new Date(m.createdTimestamp).toLocaleString('fr-FR');
+  const auteur = echapperHtml(m.member?.displayName ?? m.author.globalName ?? m.author.username);
+  const avatar = echapperHtml(m.author.displayAvatarURL({ size: 64 }));
   const bot = m.author.bot ? '<span class="tag-bot">BOT</span>' : '';
-  const texts: string[] = [];
-  if (m.content) texts.push(renderContent(escapeHtml(m.content), guild));
+  const textes: string[] = [];
+  if (m.content) textes.push(rendreContenu(echapperHtml(m.content), serveur));
   for (const embed of m.embeds) {
-    const parts = [embed.title ? `<b>${escapeHtml(embed.title)}</b>` : '', embed.description ? renderContent(escapeHtml(embed.description), guild) : ''];
-    for (const f of embed.fields) parts.push(`<b>${escapeHtml(f.name)}</b><br/>${renderContent(escapeHtml(f.value), guild)}`);
-    const color = embed.hexColor ?? '#7b5cff';
-    texts.push(`<div class="embed" style="border-left-color:${color}">${parts.filter(Boolean).join('<br/>')}</div>`);
+    const parties = [embed.title ? `<b>${echapperHtml(embed.title)}</b>` : '', embed.description ? rendreContenu(echapperHtml(embed.description), serveur) : ''];
+    for (const f of embed.fields) parties.push(`<b>${echapperHtml(f.name)}</b><br/>${rendreContenu(echapperHtml(f.value), serveur)}`);
+    const couleur = embed.hexColor ?? '#7b5cff';
+    textes.push(`<div class="embed" style="border-left-color:${couleur}">${parties.filter(Boolean).join('<br/>')}</div>`);
   }
   const attachments = [...m.attachments.values()]
     .map((a) => {
-      const url = escapeHtml(a.url);
-      const name = escapeHtml(a.name || 'fichier');
+      const url = echapperHtml(a.url);
+      const nom = echapperHtml(a.name || 'fichier');
       return /\.(png|jpe?g|gif|webp)$/i.test(a.name || '')
-        ? `<a class="att-img" href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${name}" loading="lazy"/></a>`
-        : `<a class="att-file" href="${url}" target="_blank" rel="noopener">📎 ${name}</a>`;
+        ? `<a class="att-img" href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${nom}" loading="lazy"/></a>`
+        : `<a class="att-file" href="${url}" target="_blank" rel="noopener">📎 ${nom}</a>`;
     })
     .join('');
-  return `<div class="msg"><img class="avatar" src="${avatar}" alt="" loading="lazy"/><div class="corps"><div class="tete"><span class="auteur">${author}</span>${bot}<span class="heure">${time}</span></div>${texts.map((t) => `<div class="texte">${t}</div>`).join('')}${attachments ? `<div class="pjs">${attachments}</div>` : ''}</div></div>`;
+  return `<div class="msg"><img class="avatar" src="${avatar}" alt="" loading="lazy"/><div class="corps"><div class="tete"><span class="auteur">${auteur}</span>${bot}<span class="heure">${heure}</span></div>${textes.map((t) => `<div class="texte">${t}</div>`).join('')}${attachments ? `<div class="pjs">${attachments}</div>` : ''}</div></div>`;
 }
 
 function style(accent: string): string {
@@ -97,29 +97,29 @@ body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#14122b 0%,var
 `;
 }
 
-export interface TranscriptOptions {
-  title?: string;
-  subtitle?: string;
+export interface OptionsTranscript {
+  titre?: string;
+  sousTitre?: string;
 }
 
 /** Transcript HTML autonome, aux couleurs de l'enseigne (repris du bot Airline). */
-export function buildTranscriptHtml(channel: GuildTextBasedChannel, messages: Message[], options: TranscriptOptions = {}): string {
-  const guild = channel.guild;
-  const brand = brandFor(guild.id);
-  const accent = toHex(brand.color);
-  const name = escapeHtml(brand.key ? brand.name : guild.name);
-  const logo = brand.logo ?? guild.iconURL({ size: 64 });
-  const body = messages.length ? messages.map((m) => renderMessage(m, guild)).join('\n') : '<div class="vide">Aucun message.</div>';
-  const title = escapeHtml(options.title ?? `Transcript — ${channel.name}`);
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>${title}</title><style>${style(accent)}</style></head><body>
+export function construireTranscript(salon: GuildTextBasedChannel, messages: Message[], options: OptionsTranscript = {}): string {
+  const serveur = salon.guild;
+  const enseigne = enseigneDe(serveur.id);
+  const accent = enHexa(enseigne.couleur);
+  const nom = echapperHtml(enseigne.cle ? enseigne.nom : serveur.name);
+  const logo = enseigne.logo ?? serveur.iconURL({ size: 64 });
+  const corps = messages.length ? messages.map((m) => rendreMessage(m, serveur)).join('\n') : '<div class="vide">Aucun message.</div>';
+  const titre = echapperHtml(options.titre ?? `Transcript — ${salon.name}`);
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>${titre}</title><style>${style(accent)}</style></head><body>
 <div class="wrap">
   <div class="entete">
-    <div class="marque">${logo ? `<img class="logo" src="${escapeHtml(logo)}" alt=""/>` : ''}<div class="titre">${name}</div></div>
-    <div class="salon"># ${escapeHtml(channel.name)}</div>
+    <div class="marque">${logo ? `<img class="logo" src="${echapperHtml(logo)}" alt=""/>` : ''}<div class="titre">${nom}</div></div>
+    <div class="salon"># ${echapperHtml(salon.name)}</div>
     <div class="meta">${messages.length} message${messages.length > 1 ? 's' : ''} · transcript généré le ${new Date().toLocaleString('fr-FR')}</div>
-    ${options.subtitle ? `<div class="meta">${escapeHtml(options.subtitle)}</div>` : ''}
+    ${options.sousTitre ? `<div class="meta">${echapperHtml(options.sousTitre)}</div>` : ''}
   </div>
-  ${body}
+  ${corps}
 </div>
 </body></html>`;
 }

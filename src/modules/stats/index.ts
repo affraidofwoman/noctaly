@@ -1,78 +1,78 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { get } from '../../database/db';
-import { brandEmbed } from '../../core/embeds';
-import { getConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { isModuleEnabled } from '../../core/moduleManager';
-import { formatNumber } from '../../core/text';
-import { dayKey, formatDuration } from '../../core/time';
-import { on, type BotModule, type SlashCommand } from '../../core/types';
-import { bumpDaily, bumpUser } from '../../services/stats';
-import { onVoiceTime } from '../../services/voice';
+import { lire } from '../../database/db';
+import { embedEnseigne } from '../../core/embeds';
+import { lireConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { moduleActif } from '../../core/moduleManager';
+import { formaterNombre } from '../../core/text';
+import { cleJour, formaterDuree } from '../../core/time';
+import { sur, type ModuleBot, type CommandeSlash } from '../../core/types';
+import { COLONNES_JOUR, incrementerJour, incrementerMembre } from '../../services/stats';
+import { surTempsVocal } from '../../services/voice';
 
-onVoiceTime((credit) => {
-  if (!isModuleEnabled(credit.guildId, 'stats') || !getConfig(credit.guildId).stats.trackVoice) return;
-  bumpDaily(credit.guildId, 'voice_seconds', credit.seconds);
-  bumpUser(credit.guildId, credit.userId, 'voice_seconds', credit.seconds);
+surTempsVocal((credit) => {
+  if (!moduleActif(credit.serveurId, 'stats') || !lireConfig(credit.serveurId).statistiques.suivreVocal) return;
+  incrementerJour(credit.serveurId, 'secondes_vocal', credit.secondes);
+  incrementerMembre(credit.serveurId, credit.utilisateurId, 'secondes_vocal', credit.secondes);
 });
 
-function sumDaily(guildId: string, column: string, sinceDay: string | null): number {
-  const row = sinceDay
-    ? get<{ n: number }>(`SELECT COALESCE(SUM(${column}), 0) AS n FROM stats_daily WHERE guild_id = ? AND day >= ?`, guildId, sinceDay)
-    : get<{ n: number }>(`SELECT COALESCE(SUM(${column}), 0) AS n FROM stats_daily WHERE guild_id = ?`, guildId);
-  return row?.n ?? 0;
+function sommeJours(serveurId: string, colonne: (typeof COLONNES_JOUR)[number], depuisJour: string | null): number {
+  const rangee = depuisJour
+    ? lire<{ n: number }>(`SELECT COALESCE(SUM(${colonne}), 0) AS n FROM statistiques_jour WHERE serveur_id = ? AND jour >= ?`, serveurId, depuisJour)
+    : lire<{ n: number }>(`SELECT COALESCE(SUM(${colonne}), 0) AS n FROM statistiques_jour WHERE serveur_id = ?`, serveurId);
+  return rangee?.n ?? 0;
 }
 
-const count = (sql: string, ...params: string[]) => get<{ n: number }>(sql, ...params)?.n ?? 0;
+const nombre = (requete: string, ...parametres: string[]) => lire<{ n: number }>(requete, ...parametres)?.n ?? 0;
 
-const stats: SlashCommand = {
-  category: 'general',
-  cooldownSeconds: 10,
-  data: new SlashCommandBuilder().setName('stats').setDescription('Les statistiques du serveur'),
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const tz = getConfig(guild.id).general.timezone;
-    const today = dayKey(Date.now(), tz);
-    const week = dayKey(Date.now() - 6 * 86_400_000, tz);
-    const bots = guild.members.cache.filter((m) => m.user.bot).size;
-    const inVoice = guild.voiceStates.cache.filter((v) => !!v.channelId && !v.member?.user.bot).size;
-    const embed = brandEmbed(guild)
-      .setTitle(`📈 Statistiques — ${guild.name}`)
-      .setThumbnail(guild.iconURL({ size: 256 }))
+const statistiques: CommandeSlash = {
+  categorie: 'general',
+  delaiSecondes: 10,
+  donnees: new SlashCommandBuilder().setName('stats').setDescription('Les statistiques du serveur'),
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const fuseau = lireConfig(serveur.id).general.fuseau;
+    const aujourdhui = cleJour(Date.now(), fuseau);
+    const semaine = cleJour(Date.now() - 6 * 86_400_000, fuseau);
+    const bots = serveur.members.cache.filter((m) => m.user.bot).size;
+    const enVocal = serveur.voiceStates.cache.filter((v) => !!v.channelId && !v.member?.user.bot).size;
+    const embed = embedEnseigne(serveur)
+      .setTitle(`📈 Statistiques — ${serveur.name}`)
+      .setThumbnail(serveur.iconURL({ size: 256 }))
       .addFields(
-        { name: '👥 Membres', value: `${formatNumber(guild.memberCount - bots)}\n-# +${sumDaily(guild.id, 'joins', week)} / -${sumDaily(guild.id, 'leaves', week)} sur 7 j`, inline: true },
-        { name: '🤖 Bots', value: formatNumber(bots), inline: true },
-        { name: '💬 Messages', value: `${formatNumber(sumDaily(guild.id, 'messages', today))} aujourd’hui\n-# ${formatNumber(sumDaily(guild.id, 'messages', week))} sur 7 j · ${formatNumber(sumDaily(guild.id, 'messages', null))} au total`, inline: true },
-        { name: '🎙️ Vocal', value: `${inVoice} en ce moment\n-# ${formatDuration(sumDaily(guild.id, 'voice_seconds', week) * 1000) || '0 s'} sur 7 j`, inline: true },
-        { name: '🎫 Tickets', value: `${count("SELECT COUNT(*) AS n FROM tickets WHERE guild_id = ? AND status = 'open'", guild.id)} ouverts\n-# ${count('SELECT COUNT(*) AS n FROM tickets WHERE guild_id = ?', guild.id)} au total`, inline: true },
-        { name: '🎉 Giveaways', value: `${count("SELECT COUNT(*) AS n FROM giveaways WHERE guild_id = ? AND status = 'running'", guild.id)} en cours\n-# ${count('SELECT COUNT(*) AS n FROM giveaways WHERE guild_id = ?', guild.id)} au total`, inline: true },
-        { name: '⭐ XP', value: `${formatNumber(count('SELECT COALESCE(SUM(xp), 0) AS n FROM xp WHERE guild_id = ?', guild.id))} XP\n-# ${count('SELECT COUNT(*) AS n FROM xp WHERE guild_id = ? AND xp > 0', guild.id)} membres classés`, inline: true },
-        { name: '🔴 Twitch', value: `${count('SELECT COUNT(*) AS n FROM twitch_channels WHERE guild_id = ? AND live_stream_id IS NOT NULL', guild.id)} en live\n-# ${count('SELECT COUNT(*) AS n FROM twitch_channels WHERE guild_id = ?', guild.id)} chaîne(s) suivie(s)`, inline: true },
-        { name: '⌨️ Commandes', value: `${formatNumber(sumDaily(guild.id, 'commands', today))} aujourd’hui\n-# ${formatNumber(sumDaily(guild.id, 'commands', week))} sur 7 j`, inline: true },
+        { name: '👥 Membres', value: `${formaterNombre(serveur.memberCount - bots)}\n-# +${sommeJours(serveur.id, 'arrivees', semaine)} / -${sommeJours(serveur.id, 'departs', semaine)} sur 7 j`, inline: true },
+        { name: '🤖 Bots', value: formaterNombre(bots), inline: true },
+        { name: '💬 Messages', value: `${formaterNombre(sommeJours(serveur.id, 'messages', aujourdhui))} aujourd’hui\n-# ${formaterNombre(sommeJours(serveur.id, 'messages', semaine))} sur 7 j · ${formaterNombre(sommeJours(serveur.id, 'messages', null))} au total`, inline: true },
+        { name: '🎙️ Vocal', value: `${enVocal} en ce moment\n-# ${formaterDuree(sommeJours(serveur.id, 'secondes_vocal', semaine) * 1000) || '0 s'} sur 7 j`, inline: true },
+        { name: '🎫 Tickets', value: `${nombre("SELECT COUNT(*) AS n FROM tickets WHERE serveur_id = ? AND statut = 'open'", serveur.id)} ouverts\n-# ${nombre('SELECT COUNT(*) AS n FROM tickets WHERE serveur_id = ?', serveur.id)} au total`, inline: true },
+        { name: '🎉 Giveaways', value: `${nombre("SELECT COUNT(*) AS n FROM tirages WHERE serveur_id = ? AND statut = 'running'", serveur.id)} en cours\n-# ${nombre('SELECT COUNT(*) AS n FROM tirages WHERE serveur_id = ?', serveur.id)} au total`, inline: true },
+        { name: '⭐ XP', value: `${formaterNombre(nombre('SELECT COALESCE(SUM(xp), 0) AS n FROM xp WHERE serveur_id = ?', serveur.id))} XP\n-# ${nombre('SELECT COUNT(*) AS n FROM xp WHERE serveur_id = ? AND xp > 0', serveur.id)} membres classés`, inline: true },
+        { name: '🔴 Twitch', value: `${nombre('SELECT COUNT(*) AS n FROM chaines_twitch WHERE serveur_id = ? AND live_id IS NOT NULL', serveur.id)} en live\n-# ${nombre('SELECT COUNT(*) AS n FROM chaines_twitch WHERE serveur_id = ?', serveur.id)} chaîne(s) suivie(s)`, inline: true },
+        { name: '⌨️ Commandes', value: `${formaterNombre(sommeJours(serveur.id, 'commandes', aujourdhui))} aujourd’hui\n-# ${formaterNombre(sommeJours(serveur.id, 'commandes', semaine))} sur 7 j`, inline: true },
       );
-    await reply(interaction, { embeds: [embed] });
+    await repondre(interaction, { embeds: [embed] });
   },
 };
 
-export const statsModule: BotModule = {
+export const moduleStatistiques: ModuleBot = {
   id: 'stats',
-  name: 'Statistiques',
+  nom: 'Statistiques',
   emoji: '📈',
   description: 'Messages, vocal, arrivées et activité du serveur',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [stats],
-  events: [
-    on('messageCreate', (message) => {
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [statistiques],
+  evenements: [
+    sur('messageCreate', (message) => {
       if (!message.inGuild() || message.author.bot) return;
-      bumpDaily(message.guildId, 'messages');
-      bumpUser(message.guildId, message.author.id, 'messages');
+      incrementerJour(message.guildId, 'messages');
+      incrementerMembre(message.guildId, message.author.id, 'messages');
     }, 250),
-    on('guildMemberAdd', (member) => {
-      if (!member.user.bot) bumpDaily(member.guild.id, 'joins');
+    sur('guildMemberAdd', (membre) => {
+      if (!membre.user.bot) incrementerJour(membre.guild.id, 'arrivees');
     }, 250),
-    on('guildMemberRemove', (member) => {
-      if (!member.user?.bot) bumpDaily(member.guild.id, 'leaves');
+    sur('guildMemberRemove', (membre) => {
+      if (!membre.user?.bot) incrementerJour(membre.guild.id, 'departs');
     }, 250),
   ],
 };

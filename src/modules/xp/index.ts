@@ -1,141 +1,141 @@
 import { randomInt } from 'node:crypto';
 import { ChannelType, SlashCommandBuilder, type Guild, type GuildMember, type Message, type User } from 'discord.js';
-import { emojiFor } from '../../core/brand';
-import { brandEmbed, info, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { getConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { journal, resolveTextChannel } from '../../core/logService';
-import { isModuleEnabled } from '../../core/moduleManager';
-import { linesToPages, paginate } from '../../core/pagination';
-import { assignableRoles } from '../../core/permissions';
-import type { SetupPage } from '../../core/setup';
-import { formatNumber, medal, progressBar } from '../../core/text';
-import { renderTemplate } from '../../core/variables';
-import { on, PermLevel, type BotModule, type PrefixCommand, type SlashCommand } from '../../core/types';
-import { grantBadge } from '../../services/badges';
-import { onVoiceTime } from '../../services/voice';
-import { addXp, getXp, leaderboard, levelFromXp, levelRoles, rankOf, removeLevelRole, setLevelRole, setXp, totalXpForLevel } from '../../services/xp';
+import { emojiPour } from '../../core/brand';
+import { embedEnseigne, info, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { lireConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { journal, resoudreSalonTexte } from '../../core/logService';
+import { moduleActif } from '../../core/moduleManager';
+import { lignesEnPages, paginer } from '../../core/pagination';
+import { rolesAttribuables } from '../../core/permissions';
+import type { PageReglage } from '../../core/setup';
+import { formaterNombre, medaille, barreProgression } from '../../core/text';
+import { remplirModele } from '../../core/variables';
+import { sur, Niveau, type ModuleBot, type CommandePrefixe, type CommandeSlash } from '../../core/types';
+import { donnerBadge } from '../../services/badges';
+import { surTempsVocal } from '../../services/voice';
+import { ajouterXp, lireXp, classement, niveauDepuisXp, rolesNiveau, rangDe, retirerRoleNiveau, poserRoleNiveau, poserXp, xpTotalePourNiveau } from '../../services/xp';
 
-const cooldowns = new Map<string, number>();
+const delais = new Map<string, number>();
 
 /** Rôles de niveau : empilés ou seulement le plus haut atteint. */
-export async function syncLevelRoles(member: GuildMember, level: number): Promise<void> {
-  const rewards = levelRoles(member.guild.id);
-  if (!rewards.length) return;
-  const stack = getConfig(member.guild.id).xp.stackRoles;
-  const earned = rewards.filter((r) => r.level <= level);
-  const target = stack ? earned : earned.filter((r) => r.level === Math.max(...earned.map((e) => e.level), -1));
-  const targetIds = new Set(target.map((r) => r.role_id));
-  const toAdd = assignableRoles(member.guild, [...targetIds]).filter((r) => !member.roles.cache.has(r.id));
-  const toRemove = assignableRoles(member.guild, rewards.map((r) => r.role_id)).filter((r) => !targetIds.has(r.id) && member.roles.cache.has(r.id));
-  if (toAdd.length) await member.roles.add(toAdd, `Niveau ${level}`).catch(() => undefined);
-  if (toRemove.length) await member.roles.remove(toRemove, `Niveau ${level}`).catch(() => undefined);
-  if (toAdd.length) {
-    void journal(member.guild, 'autorole', { title: 'Rôle de niveau', tone: 'ok', lines: [`**Membre** : <@${member.id}>`, `**Niveau** : ${level}`, `**Rôles** : ${toAdd.map((r) => `<@&${r.id}>`).join(' ')}`] });
+export async function synchroniserRolesNiveau(membre: GuildMember, niveau: number): Promise<void> {
+  const recompenses = rolesNiveau(membre.guild.id);
+  if (!recompenses.length) return;
+  const cumuler = lireConfig(membre.guild.id).xp.cumulerRoles;
+  const obtenus = recompenses.filter((r) => r.niveau <= niveau);
+  const cible = cumuler ? obtenus : obtenus.filter((r) => r.niveau === Math.max(...obtenus.map((e) => e.niveau), -1));
+  const ciblesIds = new Set(cible.map((r) => r.role_id));
+  const aAjouter = rolesAttribuables(membre.guild, [...ciblesIds]).filter((r) => !membre.roles.cache.has(r.id));
+  const aRetirer = rolesAttribuables(membre.guild, recompenses.map((r) => r.role_id)).filter((r) => !ciblesIds.has(r.id) && membre.roles.cache.has(r.id));
+  if (aAjouter.length) await membre.roles.add(aAjouter, `Niveau ${niveau}`).catch(() => undefined);
+  if (aRetirer.length) await membre.roles.remove(aRetirer, `Niveau ${niveau}`).catch(() => undefined);
+  if (aAjouter.length) {
+    void journal(membre.guild, 'autorole', { titre: 'Rôle de niveau', ton: 'ok', lignes: [`**Membre** : <@${membre.id}>`, `**Niveau** : ${niveau}`, `**Rôles** : ${aAjouter.map((r) => `<@&${r.id}>`).join(' ')}`] });
   }
 }
 
-async function announceLevel(member: GuildMember, level: number, source: Message | null): Promise<void> {
-  const cfg = getConfig(member.guild.id).xp;
-  if (level >= 10) grantBadge(member.guild.id, member.id, 'actif');
-  await syncLevelRoles(member, level);
-  if (cfg.announce === 'off') return;
-  const text = renderTemplate(cfg.levelUpMessage, { member, guild: member.guild, extra: { level } });
-  const embed = brandEmbed(member.guild).setDescription(`${emojiFor(member.guild.id, 'niveau')} ${text}`).setThumbnail(member.user.displayAvatarURL({ size: 128 }));
-  if (cfg.announce === 'dm') {
-    await member.send({ embeds: [embed] }).catch(() => undefined);
+async function annoncerNiveau(membre: GuildMember, niveau: number, source: Message | null): Promise<void> {
+  const reglages = lireConfig(membre.guild.id).xp;
+  if (niveau >= 10) donnerBadge(membre.guild.id, membre.id, 'actif');
+  await synchroniserRolesNiveau(membre, niveau);
+  if (reglages.annonce === 'off') return;
+  const texte = remplirModele(reglages.messageNiveau, { membre, serveur: membre.guild, extra: { level: niveau } });
+  const embed = embedEnseigne(membre.guild).setDescription(`${emojiPour(membre.guild.id, 'niveau')} ${texte}`).setThumbnail(membre.user.displayAvatarURL({ size: 128 }));
+  if (reglages.annonce === 'dm') {
+    await membre.send({ embeds: [embed] }).catch(() => undefined);
     return;
   }
-  const channel = cfg.announce === 'channel' ? resolveTextChannel(member.guild, cfg.announceChannelId) : source?.channel;
-  if (channel && 'send' in channel) await channel.send({ content: `<@${member.id}>`, embeds: [embed], allowedMentions: { users: [member.id] } }).catch(() => undefined);
+  const salon = reglages.annonce === 'channel' ? resoudreSalonTexte(membre.guild, reglages.salonAnnonceId) : source?.channel;
+  if (salon && 'send' in salon) await salon.send({ content: `<@${membre.id}>`, embeds: [embed], allowedMentions: { users: [membre.id] } }).catch(() => undefined);
 }
 
-async function onMessage(message: Message): Promise<void> {
+async function surMessage(message: Message): Promise<void> {
   if (!message.inGuild() || message.author.bot || !message.member) return;
-  const cfg = getConfig(message.guildId).xp;
-  if (cfg.noXpChannels.includes(message.channelId) || (message.channel.isThread() && message.channel.parentId && cfg.noXpChannels.includes(message.channel.parentId))) return;
-  if (message.member.roles.cache.some((r) => cfg.noXpRoles.includes(r.id))) return;
-  const key = `${message.guildId}:${message.author.id}`;
-  const now = Date.now();
-  if ((cooldowns.get(key) ?? 0) > now) return;
-  cooldowns.set(key, now + cfg.cooldownSeconds * 1000);
-  if (cooldowns.size > 20_000) for (const [k, v] of cooldowns) if (v < now) cooldowns.delete(k);
-  const gain = randomInt(Math.min(cfg.min, cfg.max), Math.max(cfg.min, cfg.max) + 1);
-  const { oldLevel, newLevel } = addXp(message.guildId, message.author.id, gain, true);
-  if (newLevel > oldLevel) await announceLevel(message.member, newLevel, message);
+  const reglages = lireConfig(message.guildId).xp;
+  if (reglages.salonsSansXp.includes(message.channelId) || (message.channel.isThread() && message.channel.parentId && reglages.salonsSansXp.includes(message.channel.parentId))) return;
+  if (message.member.roles.cache.some((r) => reglages.rolesSansXp.includes(r.id))) return;
+  const cle = `${message.guildId}:${message.author.id}`;
+  const maintenant = Date.now();
+  if ((delais.get(cle) ?? 0) > maintenant) return;
+  delais.set(cle, maintenant + reglages.delaiSecondes * 1000);
+  if (delais.size > 20_000) for (const [k, v] of delais) if (v < maintenant) delais.delete(k);
+  const gain = randomInt(Math.min(reglages.min, reglages.max), Math.max(reglages.min, reglages.max) + 1);
+  const { ancienNiveau, nouveauNiveau } = ajouterXp(message.guildId, message.author.id, gain, true);
+  if (nouveauNiveau > ancienNiveau) await annoncerNiveau(message.member, nouveauNiveau, message);
 }
 
-onVoiceTime((credit, client) => {
-  if (credit.idle || !isModuleEnabled(credit.guildId, 'xp')) return;
-  const perMinute = getConfig(credit.guildId).xp.voiceXpPerMinute;
-  if (perMinute <= 0) return;
-  const gain = Math.floor((credit.seconds / 60) * perMinute);
+surTempsVocal((credit, client) => {
+  if (credit.inactif || !moduleActif(credit.serveurId, 'xp')) return;
+  const parMinute = lireConfig(credit.serveurId).xp.xpVocalParMinute;
+  if (parMinute <= 0) return;
+  const gain = Math.floor((credit.secondes / 60) * parMinute);
   if (gain <= 0) return;
-  const { oldLevel, newLevel } = addXp(credit.guildId, credit.userId, gain);
-  if (newLevel > oldLevel) {
-    const member = client.guilds.cache.get(credit.guildId)?.members.cache.get(credit.userId);
-    if (member) void announceLevel(member, newLevel, null);
+  const { ancienNiveau, nouveauNiveau } = ajouterXp(credit.serveurId, credit.utilisateurId, gain);
+  if (nouveauNiveau > ancienNiveau) {
+    const membre = client.guilds.cache.get(credit.serveurId)?.members.cache.get(credit.utilisateurId);
+    if (membre) void annoncerNiveau(membre, nouveauNiveau, null);
   }
 });
 
-function rankEmbed(guild: Guild, user: User) {
-  const row = getXp(guild.id, user.id);
-  const progress = levelFromXp(row.xp);
-  const rank = rankOf(guild.id, user.id);
-  return brandEmbed(guild)
-    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ size: 64 }) })
-    .setTitle(`⭐ NIVEAU DE ${user.displayName.toUpperCase()}`)
-    .setThumbnail(user.displayAvatarURL({ size: 256 }))
+function embedRang(serveur: Guild, utilisateur: User) {
+  const rangee = lireXp(serveur.id, utilisateur.id);
+  const progression = niveauDepuisXp(rangee.xp);
+  const rang = rangDe(serveur.id, utilisateur.id);
+  return embedEnseigne(serveur)
+    .setAuthor({ name: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) })
+    .setTitle(`⭐ NIVEAU DE ${utilisateur.displayName.toUpperCase()}`)
+    .setThumbnail(utilisateur.displayAvatarURL({ size: 256 }))
     .setDescription(
       [
-        `## Niveau ${progress.level}`,
-        `**XP :** ${formatNumber(progress.current)} / ${formatNumber(progress.needed)}`,
-        progressBar(progress.current / progress.needed, 16),
+        `## Niveau ${progression.niveau}`,
+        `**XP :** ${formaterNombre(progression.actuel)} / ${formaterNombre(progression.requis)}`,
+        barreProgression(progression.actuel / progression.requis, 16),
         '',
-        `• XP totale — **${formatNumber(row.xp)}**`,
-        `• Classement — **${rank ? `#${rank}` : '—'}**`,
+        `• XP totale — **${formaterNombre(rangee.xp)}**`,
+        `• Classement — **${rang ? `#${rang}` : '—'}**`,
       ].join('\n'),
     );
 }
 
-function leaderboardPages(guild: Guild) {
-  const rows = leaderboard(guild.id, 200);
-  const lines = rows.map((r, i) => `${medal(i + 1)} <@${r.user_id}> — Niveau **${r.level}** · ${formatNumber(r.xp)} XP`);
-  if (!lines.length) lines.push('*Personne n’a encore d’XP.*');
-  return linesToPages(lines, 10, (content, page, total) => brandEmbed(guild).setTitle('🏆 CLASSEMENT').setDescription(content).setFooter({ text: `Page ${page}/${total}` }));
+function pagesClassement(serveur: Guild) {
+  const rangees = classement(serveur.id, 200);
+  const lignes = rangees.map((r, i) => `${medaille(i + 1)} <@${r.utilisateur_id}> — Niveau **${r.niveau}** · ${formaterNombre(r.xp)} XP`);
+  if (!lignes.length) lignes.push('*Personne n’a encore d’XP.*');
+  return lignesEnPages(lignes, 10, (contenu, page, total) => embedEnseigne(serveur).setTitle('🏆 CLASSEMENT').setDescription(contenu).setFooter({ text: `Page ${page}/${total}` }));
 }
 
-const userOpt = (o: import('discord.js').SlashCommandUserOption) => o.setName('membre').setDescription('Qui (toi par défaut)');
+const optionMembre = (o: import('discord.js').SlashCommandUserOption) => o.setName('membre').setDescription('Qui (toi par défaut)');
 
-const rank: SlashCommand = {
-  category: 'community',
-  data: new SlashCommandBuilder().setName('rank').setDescription('Ton niveau').addUserOption(userOpt),
-  async execute(i) {
-    await reply(i, { embeds: [rankEmbed(i.guild, i.options.getUser('membre') ?? i.user)] });
+const rang: CommandeSlash = {
+  categorie: 'community',
+  donnees: new SlashCommandBuilder().setName('rank').setDescription('Ton niveau').addUserOption(optionMembre),
+  async executer(i) {
+    await repondre(i, { embeds: [embedRang(i.guild, i.options.getUser('membre') ?? i.user)] });
   },
 };
 
-const level: SlashCommand = {
-  category: 'community',
-  data: new SlashCommandBuilder().setName('level').setDescription('Le niveau d’un membre').addUserOption(userOpt),
-  async execute(i) {
-    await reply(i, { embeds: [rankEmbed(i.guild, i.options.getUser('membre') ?? i.user)] });
+const niveau: CommandeSlash = {
+  categorie: 'community',
+  donnees: new SlashCommandBuilder().setName('level').setDescription('Le niveau d’un membre').addUserOption(optionMembre),
+  async executer(i) {
+    await repondre(i, { embeds: [embedRang(i.guild, i.options.getUser('membre') ?? i.user)] });
   },
 };
 
-const leaderboardCmd: SlashCommand = {
-  category: 'community',
-  data: new SlashCommandBuilder().setName('leaderboard').setDescription('Le classement XP'),
-  async execute(i) {
-    await paginate(i, leaderboardPages(i.guild));
+const commandeClassement: CommandeSlash = {
+  categorie: 'community',
+  donnees: new SlashCommandBuilder().setName('leaderboard').setDescription('Le classement XP'),
+  async executer(i) {
+    await paginer(i, pagesClassement(i.guild));
   },
 };
 
-const xpAdmin: SlashCommand = {
-  category: 'community',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder()
+const commandeXp: CommandeSlash = {
+  categorie: 'community',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder()
     .setName('xp')
     .setDescription('Gérer l’XP et les rôles de niveau')
     .addSubcommand((s) =>
@@ -162,109 +162,109 @@ const xpAdmin: SlashCommand = {
     )
     .addSubcommand((s) => s.setName('role-retirer').setDescription('Retirer une récompense de niveau').addRoleOption((o) => o.setName('role').setDescription('Rôle').setRequired(true)))
     .addSubcommand((s) => s.setName('roles').setDescription('Les rôles de niveau')),
-  async execute(i) {
-    const sub = i.options.getSubcommand();
-    const guild = i.guild;
-    if (sub === 'roles') {
-      const rows = levelRoles(guild.id);
-      return reply(i, { embeds: [info(guild, rows.map((r) => `Niveau **${r.level}** → <@&${r.role_id}>`).join('\n') || 'Aucun rôle de niveau.', { titre: 'Rôles de niveau', sujet: '🏆' })], ephemeral: true });
+  async executer(i) {
+    const sousCommande = i.options.getSubcommand();
+    const serveur = i.guild;
+    if (sousCommande === 'roles') {
+      const rangees = rolesNiveau(serveur.id);
+      return repondre(i, { embeds: [info(serveur, rangees.map((r) => `Niveau **${r.niveau}** → <@&${r.role_id}>`).join('\n') || 'Aucun rôle de niveau.', { titre: 'Rôles de niveau', sujet: '🏆' })], ephemeral: true });
     }
-    if (sub === 'role-ajouter') {
+    if (sousCommande === 'role-ajouter') {
       const role = i.options.getRole('role', true);
-      if (!assignableRoles(guild, [role.id]).length) throw new UserError('Je ne peux pas attribuer ce rôle (il est au-dessus du mien ou géré par une intégration).');
-      setLevelRole(guild.id, i.options.getInteger('niveau', true), role.id);
-      return reply(i, { embeds: [ok(guild, `Niveau **${i.options.getInteger('niveau', true)}** → <@&${role.id}>`)], ephemeral: true });
+      if (!rolesAttribuables(serveur, [role.id]).length) throw new ErreurUtilisateur('Je ne peux pas attribuer ce rôle (il est au-dessus du mien ou géré par une intégration).');
+      poserRoleNiveau(serveur.id, i.options.getInteger('niveau', true), role.id);
+      return repondre(i, { embeds: [ok(serveur, `Niveau **${i.options.getInteger('niveau', true)}** → <@&${role.id}>`)], ephemeral: true });
     }
-    if (sub === 'role-retirer') {
-      const n = removeLevelRole(guild.id, i.options.getRole('role', true).id);
-      return reply(i, { embeds: [n ? ok(guild, 'Récompense retirée.') : info(guild, 'Ce rôle n’était pas une récompense de niveau.')], ephemeral: true });
+    if (sousCommande === 'role-retirer') {
+      const n = retirerRoleNiveau(serveur.id, i.options.getRole('role', true).id);
+      return repondre(i, { embeds: [n ? ok(serveur, 'Récompense retirée.') : info(serveur, 'Ce rôle n’était pas une récompense de niveau.')], ephemeral: true });
     }
-    const user = i.options.getUser('membre', true);
-    let newLevel: number;
-    if (sub === 'donner') newLevel = addXp(guild.id, user.id, i.options.getInteger('quantite', true)).newLevel;
-    else if (sub === 'niveau') newLevel = setXp(guild.id, user.id, totalXpForLevel(i.options.getInteger('niveau', true)));
-    else newLevel = setXp(guild.id, user.id, 0);
-    const member = await guild.members.fetch(user.id).catch(() => null);
-    if (member) await syncLevelRoles(member, newLevel);
-    return reply(i, { embeds: [ok(guild, `<@${user.id}> est maintenant niveau **${newLevel}** (${formatNumber(getXp(guild.id, user.id).xp)} XP).`)], ephemeral: true });
+    const utilisateur = i.options.getUser('membre', true);
+    let nouveauNiveau: number;
+    if (sousCommande === 'donner') nouveauNiveau = ajouterXp(serveur.id, utilisateur.id, i.options.getInteger('quantite', true)).nouveauNiveau;
+    else if (sousCommande === 'niveau') nouveauNiveau = poserXp(serveur.id, utilisateur.id, xpTotalePourNiveau(i.options.getInteger('niveau', true)));
+    else nouveauNiveau = poserXp(serveur.id, utilisateur.id, 0);
+    const membre = await serveur.members.fetch(utilisateur.id).catch(() => null);
+    if (membre) await synchroniserRolesNiveau(membre, nouveauNiveau);
+    return repondre(i, { embeds: [ok(serveur, `<@${utilisateur.id}> est maintenant niveau **${nouveauNiveau}** (${formaterNombre(lireXp(serveur.id, utilisateur.id).xp)} XP).`)], ephemeral: true });
   },
 };
 
-const prefixCommands: PrefixCommand[] = [
+const commandesPrefixe: CommandePrefixe[] = [
   {
-    name: 'rank',
-    aliases: ['level', 'niveau'],
-    domain: 'general',
-    category: 'community',
+    nom: 'rank',
+    alias: ['level', 'niveau'],
+    domaine: 'general',
+    categorie: 'community',
     description: 'Ton niveau',
     usage: '[membre]',
-    async execute(message, args) {
-      const id = args[0]?.replace(/\D/g, '');
-      const user = id ? await message.client.users.fetch(id).catch(() => message.author) : message.author;
-      await message.reply({ embeds: [rankEmbed(message.guild, user)], allowedMentions: { repliedUser: false } });
+    async executer(message, parametres) {
+      const id = parametres[0]?.replace(/\D/g, '');
+      const utilisateur = id ? await message.client.users.fetch(id).catch(() => message.author) : message.author;
+      await message.reply({ embeds: [embedRang(message.guild, utilisateur)], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'top',
-    aliases: ['leaderboard', 'lb'],
-    domain: 'general',
-    category: 'community',
+    nom: 'top',
+    alias: ['leaderboard', 'lb'],
+    domaine: 'general',
+    categorie: 'community',
     description: 'Le classement XP',
-    async execute(message) {
-      await message.reply({ embeds: [leaderboardPages(message.guild)[0]!], allowedMentions: { repliedUser: false } });
+    async executer(message) {
+      await message.reply({ embeds: [pagesClassement(message.guild)[0]!], allowedMentions: { repliedUser: false } });
     },
   },
 ];
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'xp',
   section: 'community',
-  title: 'XP & niveaux',
+  titre: 'XP & niveaux',
   emoji: '⭐',
   moduleId: 'xp',
-  order: 1,
+  ordre: 1,
   description: 'Gain d’XP par message (avec cooldown) et en vocal (à plusieurs, non sourd).\n-# Rôles de niveau : `/xp role-ajouter`. Variables du message : `{mention}` `{user}` `{level}`',
-  fields: [
+  champs: [
     {
       kind: 'choice',
-      key: 'announce',
-      label: 'Annonce des niveaux',
+      cle: 'announce',
+      libelle: 'Annonce des niveaux',
       options: [
         { value: 'same', label: 'Dans le salon du message', emoji: '💬' },
         { value: 'channel', label: 'Dans un salon dédié', emoji: '📢' },
         { value: 'dm', label: 'En message privé', emoji: '✉️' },
         { value: 'off', label: 'Aucune annonce', emoji: '🔕' },
       ],
-      get: (c) => c.xp.announce,
-      set: (c, v) => void (c.xp.announce = v as 'off' | 'same' | 'channel' | 'dm'),
+      get: (c) => c.xp.annonce,
+      set: (c, v) => void (c.xp.annonce = v as 'off' | 'same' | 'channel' | 'dm'),
     },
-    { kind: 'channel', key: 'channel', label: 'Salon des annonces de niveau', get: (c) => c.xp.announceChannelId, set: (c, v) => void (c.xp.announceChannelId = v) },
+    { kind: 'channel', cle: 'channel', libelle: 'Salon des annonces de niveau', get: (c) => c.xp.salonAnnonceId, set: (c, v) => void (c.xp.salonAnnonceId = v) },
     {
       kind: 'channels',
-      key: 'noxp',
-      label: 'Salons sans XP',
+      cle: 'noxp',
+      libelle: 'Salons sans XP',
       channelTypes: [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement, ChannelType.GuildForum],
-      get: (c) => c.xp.noXpChannels,
-      set: (c, v) => void (c.xp.noXpChannels = v),
+      get: (c) => c.xp.salonsSansXp,
+      set: (c, v) => void (c.xp.salonsSansXp = v),
     },
-    { kind: 'toggle', key: 'stack', label: 'Cumuler les rôles de niveau', get: (c) => c.xp.stackRoles, set: (c, v) => void (c.xp.stackRoles = v) },
-    { kind: 'text', key: 'message', label: 'Message de niveau', long: true, maxLength: 500, required: true, get: (c) => c.xp.levelUpMessage, set: (c, v) => void (c.xp.levelUpMessage = v) },
-    { kind: 'number', key: 'min', label: 'XP min par message', min: 1, max: 500, get: (c) => c.xp.min, set: (c, v) => void (c.xp.min = v) },
-    { kind: 'number', key: 'max', label: 'XP max par message', min: 1, max: 1000, get: (c) => c.xp.max, set: (c, v) => void (c.xp.max = v) },
-    { kind: 'number', key: 'cooldown', label: 'Cooldown entre deux gains', min: 0, max: 3600, unit: 's', get: (c) => c.xp.cooldownSeconds, set: (c, v) => void (c.xp.cooldownSeconds = v) },
-    { kind: 'number', key: 'voice', label: 'XP par minute de vocal', min: 0, max: 100, get: (c) => c.xp.voiceXpPerMinute, set: (c, v) => void (c.xp.voiceXpPerMinute = v) },
+    { kind: 'toggle', cle: 'stack', libelle: 'Cumuler les rôles de niveau', get: (c) => c.xp.cumulerRoles, set: (c, v) => void (c.xp.cumulerRoles = v) },
+    { kind: 'text', cle: 'message', libelle: 'Message de niveau', long: true, maxLength: 500, required: true, get: (c) => c.xp.messageNiveau, set: (c, v) => void (c.xp.messageNiveau = v) },
+    { kind: 'number', cle: 'min', libelle: 'XP min par message', min: 1, max: 500, get: (c) => c.xp.min, set: (c, v) => void (c.xp.min = v) },
+    { kind: 'number', cle: 'max', libelle: 'XP max par message', min: 1, max: 1000, get: (c) => c.xp.max, set: (c, v) => void (c.xp.max = v) },
+    { kind: 'number', cle: 'cooldown', libelle: 'Cooldown entre deux gains', min: 0, max: 3600, unit: 's', get: (c) => c.xp.delaiSecondes, set: (c, v) => void (c.xp.delaiSecondes = v) },
+    { kind: 'number', cle: 'voice', libelle: 'XP par minute de vocal', min: 0, max: 100, get: (c) => c.xp.xpVocalParMinute, set: (c, v) => void (c.xp.xpVocalParMinute = v) },
   ],
 };
 
-export const xpModule: BotModule = {
+export const moduleNiveaux: ModuleBot = {
   id: 'xp',
-  name: 'XP & niveaux',
+  nom: 'XP & niveaux',
   emoji: '⭐',
   description: 'XP messages et vocal, niveaux, rôles de niveau, classement',
-  toggleable: true,
-  defaultEnabled: false,
-  commands: [rank, level, leaderboardCmd, xpAdmin],
-  prefixCommands,
-  setupPages: [setupPage],
-  events: [on('messageCreate', (m) => onMessage(m), 150)],
+  desactivable: true,
+  actifParDefaut: false,
+  commandes: [rang, niveau, commandeClassement, commandeXp],
+  commandesPrefixe,
+  pagesReglage: [pageReglage],
+  evenements: [sur('messageCreate', (m) => surMessage(m), 150)],
 };

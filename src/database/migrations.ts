@@ -1,7 +1,7 @@
 export interface Migration {
   version: number;
-  name: string;
-  sql: string;
+  nom: string;
+  requete: string;
 }
 
 /**
@@ -11,541 +11,531 @@ export interface Migration {
 export const migrations: Migration[] = [
   {
     version: 1,
-    name: 'schema initial',
-    sql: `
-CREATE TABLE guilds (
-  guild_id TEXT PRIMARY KEY,
-  joined_at INTEGER NOT NULL,
-  left_at INTEGER
+    nom: 'schema initial',
+    requete: `
+CREATE TABLE serveurs (
+  serveur_id TEXT PRIMARY KEY,
+  arrive_le INTEGER NOT NULL,
+  parti_le INTEGER
 );
 
-CREATE TABLE guild_settings (
-  guild_id TEXT PRIMARY KEY,
-  data TEXT NOT NULL DEFAULT '{}',
-  updated_at INTEGER NOT NULL
+CREATE TABLE reglages_serveurs (
+  serveur_id TEXT PRIMARY KEY,
+  donnees TEXT NOT NULL DEFAULT '{}',
+  modifie_le INTEGER NOT NULL
 );
 
-CREATE TABLE guild_modules (
-  guild_id TEXT NOT NULL,
+CREATE TABLE modules_serveurs (
+  serveur_id TEXT NOT NULL,
   module TEXT NOT NULL,
-  enabled INTEGER NOT NULL,
-  PRIMARY KEY (guild_id, module)
+  actif INTEGER NOT NULL,
+  PRIMARY KEY (serveur_id, module)
 );
 
-CREATE TABLE users (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  first_seen INTEGER NOT NULL,
+CREATE TABLE membres (
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  vu_le INTEGER NOT NULL,
   messages INTEGER NOT NULL DEFAULT 0,
-  voice_seconds INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (guild_id, user_id)
+  secondes_vocal INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serveur_id, utilisateur_id)
 );
 
-CREATE TABLE warnings (
+CREATE TABLE avertissements (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  moderator_id TEXT NOT NULL,
-  reason TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  active INTEGER NOT NULL DEFAULT 1
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  moderateur_id TEXT NOT NULL,
+  raison TEXT NOT NULL,
+  cree_le INTEGER NOT NULL,
+  actif INTEGER NOT NULL DEFAULT 1
 );
-CREATE INDEX idx_warnings_user ON warnings (guild_id, user_id, active);
+CREATE INDEX idx_warnings_user ON avertissements (serveur_id, utilisateur_id, actif);
 
-CREATE TABLE logs (
+CREATE TABLE journaux (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  category TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  categorie TEXT NOT NULL,
   type TEXT NOT NULL,
-  user_id TEXT,
-  actor_id TEXT,
-  data TEXT NOT NULL DEFAULT '{}',
-  created_at INTEGER NOT NULL
+  utilisateur_id TEXT,
+  acteur_id TEXT,
+  donnees TEXT NOT NULL DEFAULT '{}',
+  cree_le INTEGER NOT NULL
 );
-CREATE INDEX idx_logs_guild ON logs (guild_id, created_at);
+CREATE INDEX idx_logs_guild ON journaux (serveur_id, cree_le);
 
 CREATE TABLE tickets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  number INTEGER NOT NULL,
-  channel_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  category TEXT NOT NULL,
-  subject TEXT,
-  status TEXT NOT NULL DEFAULT 'open',
-  claimed_by TEXT,
-  created_at INTEGER NOT NULL,
-  closed_at INTEGER,
-  closed_by TEXT
+  serveur_id TEXT NOT NULL,
+  numero INTEGER NOT NULL,
+  salon_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  categorie TEXT NOT NULL,
+  sujet TEXT,
+  statut TEXT NOT NULL DEFAULT 'open',
+  pris_par TEXT,
+  cree_le INTEGER NOT NULL,
+  ferme_le INTEGER,
+  ferme_par TEXT
 );
-CREATE UNIQUE INDEX idx_tickets_channel ON tickets (channel_id);
-CREATE INDEX idx_tickets_user ON tickets (guild_id, user_id, status);
+CREATE UNIQUE INDEX idx_tickets_channel ON tickets (salon_id);
+CREATE INDEX idx_tickets_user ON tickets (serveur_id, utilisateur_id, statut);
 
-CREATE TABLE ticket_messages (
+CREATE TABLE messages_tickets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
   message_id TEXT NOT NULL,
-  author_id TEXT NOT NULL,
-  author_tag TEXT NOT NULL,
-  content TEXT NOT NULL,
-  attachments TEXT NOT NULL DEFAULT '[]',
-  created_at INTEGER NOT NULL
+  auteur_id TEXT NOT NULL,
+  auteur_pseudo TEXT NOT NULL,
+  contenu TEXT NOT NULL,
+  pieces_jointes TEXT NOT NULL DEFAULT '[]',
+  cree_le INTEGER NOT NULL
 );
-CREATE INDEX idx_ticket_messages ON ticket_messages (ticket_id, created_at);
+CREATE INDEX idx_ticket_messages ON messages_tickets (ticket_id, cree_le);
 
-CREATE TABLE giveaways (
+CREATE TABLE tirages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  channel_id TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  salon_id TEXT NOT NULL,
   message_id TEXT,
-  host_id TEXT NOT NULL,
-  prize TEXT NOT NULL,
-  winners_count INTEGER NOT NULL,
-  ends_at INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'running',
-  paused_remaining INTEGER,
-  requirements TEXT NOT NULL DEFAULT '{}',
-  winners TEXT NOT NULL DEFAULT '[]',
-  created_at INTEGER NOT NULL
+  organisateur_id TEXT NOT NULL,
+  lot TEXT NOT NULL,
+  nombre_gagnants INTEGER NOT NULL,
+  fin_le INTEGER NOT NULL,
+  statut TEXT NOT NULL DEFAULT 'running',
+  restant_pause INTEGER,
+  conditions TEXT NOT NULL DEFAULT '{}',
+  gagnants TEXT NOT NULL DEFAULT '[]',
+  cree_le INTEGER NOT NULL
 );
-CREATE INDEX idx_giveaways_status ON giveaways (status, ends_at);
+CREATE INDEX idx_giveaways_status ON tirages (statut, fin_le);
 
-CREATE TABLE giveaway_entries (
-  giveaway_id INTEGER NOT NULL REFERENCES giveaways(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL,
-  entered_at INTEGER NOT NULL,
-  PRIMARY KEY (giveaway_id, user_id)
+CREATE TABLE participations_tirages (
+  tirage_id INTEGER NOT NULL REFERENCES tirages(id) ON DELETE CASCADE,
+  utilisateur_id TEXT NOT NULL,
+  inscrit_le INTEGER NOT NULL,
+  PRIMARY KEY (tirage_id, utilisateur_id)
 );
 
 CREATE TABLE xp (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
   xp INTEGER NOT NULL DEFAULT 0,
-  level INTEGER NOT NULL DEFAULT 0,
-  last_message_at INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (guild_id, user_id)
+  niveau INTEGER NOT NULL DEFAULT 0,
+  dernier_message_le INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serveur_id, utilisateur_id)
 );
-CREATE INDEX idx_xp_rank ON xp (guild_id, xp DESC);
+CREATE INDEX idx_xp_rank ON xp (serveur_id, xp DESC);
 
-CREATE TABLE levels (
-  guild_id TEXT NOT NULL,
-  level INTEGER NOT NULL,
+CREATE TABLE roles_niveaux (
+  serveur_id TEXT NOT NULL,
+  niveau INTEGER NOT NULL,
   role_id TEXT NOT NULL,
-  PRIMARY KEY (guild_id, level, role_id)
+  PRIMARY KEY (serveur_id, niveau, role_id)
 );
 
 CREATE TABLE badges (
-  guild_id TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
   badge_id TEXT NOT NULL,
-  name TEXT NOT NULL,
+  nom TEXT NOT NULL,
   emoji TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  PRIMARY KEY (guild_id, badge_id)
+  PRIMARY KEY (serveur_id, badge_id)
 );
 
-CREATE TABLE user_badges (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+CREATE TABLE badges_membres (
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
   badge_id TEXT NOT NULL,
-  granted_at INTEGER NOT NULL,
-  granted_by TEXT,
-  PRIMARY KEY (guild_id, user_id, badge_id)
+  donne_le INTEGER NOT NULL,
+  donne_par TEXT,
+  PRIMARY KEY (serveur_id, utilisateur_id, badge_id)
 );
 
-CREATE TABLE birthdays (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  day INTEGER NOT NULL,
-  month INTEGER NOT NULL,
-  last_announced_year INTEGER,
-  role_given_at INTEGER,
-  PRIMARY KEY (guild_id, user_id)
+CREATE TABLE anniversaires (
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  jour INTEGER NOT NULL,
+  mois INTEGER NOT NULL,
+  annee_annoncee INTEGER,
+  role_donne_le INTEGER,
+  PRIMARY KEY (serveur_id, utilisateur_id)
 );
 
-CREATE TABLE reminders (
+CREATE TABLE rappels (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT,
-  channel_id TEXT,
-  user_id TEXT NOT NULL,
-  content TEXT NOT NULL,
-  remind_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  sent INTEGER NOT NULL DEFAULT 0
+  serveur_id TEXT,
+  salon_id TEXT,
+  utilisateur_id TEXT NOT NULL,
+  contenu TEXT NOT NULL,
+  rappel_le INTEGER NOT NULL,
+  cree_le INTEGER NOT NULL,
+  envoye INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX idx_reminders_due ON reminders (sent, remind_at);
+CREATE INDEX idx_reminders_due ON rappels (envoye, rappel_le);
 
-CREATE TABLE events (
+CREATE TABLE evenements (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  channel_id TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  salon_id TEXT NOT NULL,
   message_id TEXT,
-  creator_id TEXT NOT NULL,
-  name TEXT NOT NULL,
+  createur_id TEXT NOT NULL,
+  nom TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  game TEXT,
+  jeu TEXT,
   image TEXT,
-  starts_at INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'scheduled',
-  reminded INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  debut_le INTEGER NOT NULL,
+  statut TEXT NOT NULL DEFAULT 'scheduled',
+  rappele INTEGER NOT NULL DEFAULT 0,
+  cree_le INTEGER NOT NULL
 );
-CREATE INDEX idx_events_status ON events (status, starts_at);
+CREATE INDEX idx_events_status ON evenements (statut, debut_le);
 
-CREATE TABLE event_rsvps (
-  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  updated_at INTEGER NOT NULL,
-  PRIMARY KEY (event_id, user_id)
+CREATE TABLE reponses_evenements (
+  evenement_id INTEGER NOT NULL REFERENCES evenements(id) ON DELETE CASCADE,
+  utilisateur_id TEXT NOT NULL,
+  statut TEXT NOT NULL,
+  modifie_le INTEGER NOT NULL,
+  PRIMARY KEY (evenement_id, utilisateur_id)
 );
 
-CREATE TABLE polls (
+CREATE TABLE sondages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  channel_id TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  salon_id TEXT NOT NULL,
   message_id TEXT,
-  author_id TEXT NOT NULL,
+  auteur_id TEXT NOT NULL,
   question TEXT NOT NULL,
-  choices TEXT NOT NULL,
+  propositions TEXT NOT NULL,
   multiple INTEGER NOT NULL DEFAULT 0,
-  ends_at INTEGER,
-  status TEXT NOT NULL DEFAULT 'open',
-  created_at INTEGER NOT NULL
+  fin_le INTEGER,
+  statut TEXT NOT NULL DEFAULT 'open',
+  cree_le INTEGER NOT NULL
 );
-CREATE INDEX idx_polls_status ON polls (status, ends_at);
+CREATE INDEX idx_polls_status ON sondages (statut, fin_le);
 
-CREATE TABLE poll_votes (
-  poll_id INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL,
-  choice INTEGER NOT NULL,
-  PRIMARY KEY (poll_id, user_id, choice)
+CREATE TABLE votes_sondages (
+  sondage_id INTEGER NOT NULL REFERENCES sondages(id) ON DELETE CASCADE,
+  utilisateur_id TEXT NOT NULL,
+  choix INTEGER NOT NULL,
+  PRIMARY KEY (sondage_id, utilisateur_id, choix)
 );
 
 CREATE TABLE suggestions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  number INTEGER NOT NULL,
-  channel_id TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  numero INTEGER NOT NULL,
+  salon_id TEXT NOT NULL,
   message_id TEXT,
-  author_id TEXT NOT NULL,
-  content TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
+  auteur_id TEXT NOT NULL,
+  contenu TEXT NOT NULL,
+  statut TEXT NOT NULL DEFAULT 'pending',
   staff_id TEXT,
-  staff_reason TEXT,
-  created_at INTEGER NOT NULL
+  raison_staff TEXT,
+  cree_le INTEGER NOT NULL
 );
 
-CREATE TABLE suggestion_votes (
+CREATE TABLE votes_suggestions (
   suggestion_id INTEGER NOT NULL REFERENCES suggestions(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
   vote INTEGER NOT NULL,
-  PRIMARY KEY (suggestion_id, user_id)
+  PRIMARY KEY (suggestion_id, utilisateur_id)
 );
 
-CREATE TABLE custom_commands (
-  guild_id TEXT NOT NULL,
-  name TEXT NOT NULL,
+CREATE TABLE commandes_perso (
+  serveur_id TEXT NOT NULL,
+  nom TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  response TEXT NOT NULL,
-  as_embed INTEGER NOT NULL DEFAULT 0,
-  discord_command_id TEXT,
-  uses INTEGER NOT NULL DEFAULT 0,
-  created_by TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (guild_id, name)
+  reponse TEXT NOT NULL,
+  en_embed INTEGER NOT NULL DEFAULT 0,
+  commande_discord_id TEXT,
+  utilisations INTEGER NOT NULL DEFAULT 0,
+  cree_par TEXT NOT NULL,
+  cree_le INTEGER NOT NULL,
+  PRIMARY KEY (serveur_id, nom)
 );
 
-CREATE TABLE auto_responses (
+CREATE TABLE reponses_auto (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  trigger TEXT NOT NULL,
-  match_type TEXT NOT NULL DEFAULT 'contains',
-  response TEXT NOT NULL,
-  created_by TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  serveur_id TEXT NOT NULL,
+  declencheur TEXT NOT NULL,
+  correspondance TEXT NOT NULL DEFAULT 'contains',
+  reponse TEXT NOT NULL,
+  cree_par TEXT NOT NULL,
+  cree_le INTEGER NOT NULL
 );
-CREATE INDEX idx_auto_responses ON auto_responses (guild_id);
+CREATE INDEX idx_auto_responses ON reponses_auto (serveur_id);
 
-CREATE TABLE reaction_roles (
+CREATE TABLE panneaux_roles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  channel_id TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  salon_id TEXT NOT NULL,
   message_id TEXT,
-  title TEXT NOT NULL,
+  titre TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   type TEXT NOT NULL DEFAULT 'button',
   mode TEXT NOT NULL DEFAULT 'toggle',
-  kind TEXT NOT NULL DEFAULT 'general',
-  created_at INTEGER NOT NULL
+  genre TEXT NOT NULL DEFAULT 'general',
+  cree_le INTEGER NOT NULL
 );
-CREATE INDEX idx_reaction_roles_message ON reaction_roles (message_id);
+CREATE INDEX idx_reaction_roles_message ON panneaux_roles (message_id);
 
-CREATE TABLE reaction_role_entries (
-  panel_id INTEGER NOT NULL REFERENCES reaction_roles(id) ON DELETE CASCADE,
+CREATE TABLE roles_panneaux (
+  panneau_id INTEGER NOT NULL REFERENCES panneaux_roles(id) ON DELETE CASCADE,
   role_id TEXT NOT NULL,
   emoji TEXT,
-  label TEXT NOT NULL,
+  libelle TEXT NOT NULL,
   position INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (panel_id, role_id)
+  PRIMARY KEY (panneau_id, role_id)
 );
 
-CREATE TABLE twitch_channels (
+CREATE TABLE chaines_twitch (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  login TEXT NOT NULL,
-  broadcaster_id TEXT,
-  display_name TEXT,
-  channel_id TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  pseudo TEXT NOT NULL,
+  diffuseur_id TEXT,
+  nom_affiche TEXT,
+  salon_id TEXT NOT NULL,
   role_id TEXT,
   message TEXT,
-  color TEXT,
-  show_image INTEGER NOT NULL DEFAULT 1,
-  notify_end INTEGER NOT NULL DEFAULT 1,
-  notify_changes INTEGER NOT NULL DEFAULT 1,
-  notify_clips INTEGER NOT NULL DEFAULT 0,
-  notify_events INTEGER NOT NULL DEFAULT 0,
-  live_stream_id TEXT,
-  live_message_id TEXT,
-  live_started_at INTEGER,
-  live_last_seen INTEGER,
-  profile_image TEXT,
-  last_title TEXT,
-  last_game TEXT,
-  last_viewers INTEGER,
-  peak_viewers INTEGER,
-  last_clip_at INTEGER,
-  created_at INTEGER NOT NULL,
-  UNIQUE (guild_id, login)
+  couleur TEXT,
+  afficher_image INTEGER NOT NULL DEFAULT 1,
+  notifier_fin INTEGER NOT NULL DEFAULT 1,
+  notifier_changements INTEGER NOT NULL DEFAULT 1,
+  notifier_clips INTEGER NOT NULL DEFAULT 0,
+  notifier_evenements INTEGER NOT NULL DEFAULT 0,
+  live_id TEXT,
+  message_live_id TEXT,
+  live_debut_le INTEGER,
+  live_vu_le INTEGER,
+  image_profil TEXT,
+  dernier_titre TEXT,
+  dernier_jeu TEXT,
+  derniers_spectateurs INTEGER,
+  pic_spectateurs INTEGER,
+  dernier_clip_le INTEGER,
+  cree_le INTEGER NOT NULL,
+  UNIQUE (serveur_id, pseudo)
 );
 
-CREATE TABLE invites (
-  guild_id TEXT NOT NULL,
-  invited_id TEXT NOT NULL,
-  inviter_id TEXT,
+CREATE TABLE invitations (
+  serveur_id TEXT NOT NULL,
+  invite_id TEXT NOT NULL,
+  parrain_id TEXT,
   code TEXT,
-  joined_at INTEGER NOT NULL,
-  left_at INTEGER,
-  fake INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (guild_id, invited_id)
+  arrive_le INTEGER NOT NULL,
+  parti_le INTEGER,
+  faux INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serveur_id, invite_id)
 );
-CREATE INDEX idx_invites_inviter ON invites (guild_id, inviter_id);
+CREATE INDEX idx_invites_inviter ON invitations (serveur_id, parrain_id);
 
-CREATE TABLE economy (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  balance INTEGER NOT NULL DEFAULT 0,
-  total_earned INTEGER NOT NULL DEFAULT 0,
-  last_daily INTEGER NOT NULL DEFAULT 0,
-  daily_streak INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (guild_id, user_id)
+CREATE TABLE economie (
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  solde INTEGER NOT NULL DEFAULT 0,
+  total_gagne INTEGER NOT NULL DEFAULT 0,
+  dernier_quotidien INTEGER NOT NULL DEFAULT 0,
+  serie_quotidien INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serveur_id, utilisateur_id)
 );
 
-CREATE TABLE shop_items (
+CREATE TABLE articles_boutique (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  name TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  nom TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   emoji TEXT NOT NULL DEFAULT '🎁',
-  price INTEGER NOT NULL,
+  prix INTEGER NOT NULL,
   type TEXT NOT NULL,
-  value TEXT,
+  valeur TEXT,
   stock INTEGER,
-  created_at INTEGER NOT NULL
+  cree_le INTEGER NOT NULL
 );
 
-CREATE TABLE inventory (
+CREATE TABLE inventaire (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  item_id INTEGER NOT NULL,
-  item_name TEXT NOT NULL,
-  price INTEGER NOT NULL,
-  bought_at INTEGER NOT NULL
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  article_id INTEGER NOT NULL,
+  article_nom TEXT NOT NULL,
+  prix INTEGER NOT NULL,
+  achete_le INTEGER NOT NULL
 );
 
-CREATE TABLE quests (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  day TEXT NOT NULL,
-  quest_id TEXT NOT NULL,
-  progress INTEGER NOT NULL DEFAULT 0,
-  completed INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (guild_id, user_id, day, quest_id)
+CREATE TABLE quetes (
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  jour TEXT NOT NULL,
+  quete_id TEXT NOT NULL,
+  progression INTEGER NOT NULL DEFAULT 0,
+  terminee INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serveur_id, utilisateur_id, jour, quete_id)
 );
 
-CREATE TABLE streaks (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  current INTEGER NOT NULL DEFAULT 0,
-  best INTEGER NOT NULL DEFAULT 0,
-  last_day TEXT,
-  PRIMARY KEY (guild_id, user_id)
+CREATE TABLE series (
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  actuelle INTEGER NOT NULL DEFAULT 0,
+  record INTEGER NOT NULL DEFAULT 0,
+  dernier_jour TEXT,
+  PRIMARY KEY (serveur_id, utilisateur_id)
 );
 
-CREATE TABLE forms (
+CREATE TABLE formulaires (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  title TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  nom TEXT NOT NULL,
+  titre TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   questions TEXT NOT NULL,
-  channel_id TEXT,
-  created_at INTEGER NOT NULL,
-  UNIQUE (guild_id, name)
+  salon_id TEXT,
+  cree_le INTEGER NOT NULL,
+  UNIQUE (serveur_id, nom)
 );
 
-CREATE TABLE form_submissions (
+CREATE TABLE reponses_formulaires (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  form_name TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  answers TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  handled_by TEXT,
-  created_at INTEGER NOT NULL
+  serveur_id TEXT NOT NULL,
+  formulaire TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  reponses TEXT NOT NULL,
+  statut TEXT NOT NULL DEFAULT 'pending',
+  traite_par TEXT,
+  cree_le INTEGER NOT NULL
 );
 
 CREATE TABLE afk (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  reason TEXT NOT NULL,
-  since INTEGER NOT NULL,
-  PRIMARY KEY (guild_id, user_id)
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  raison TEXT NOT NULL,
+  depuis INTEGER NOT NULL,
+  PRIMARY KEY (serveur_id, utilisateur_id)
 );
 
 CREATE TABLE boosts (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  count INTEGER NOT NULL DEFAULT 0,
-  first_boost_at INTEGER NOT NULL,
-  last_boost_at INTEGER NOT NULL,
-  PRIMARY KEY (guild_id, user_id)
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  nombre INTEGER NOT NULL DEFAULT 0,
+  premier_boost_le INTEGER NOT NULL,
+  dernier_boost_le INTEGER NOT NULL,
+  PRIMARY KEY (serveur_id, utilisateur_id)
 );
 
-CREATE TABLE contests (
+CREATE TABLE concours (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  channel_id TEXT NOT NULL,
+  serveur_id TEXT NOT NULL,
+  salon_id TEXT NOT NULL,
   message_id TEXT,
-  name TEXT NOT NULL,
+  nom TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'submissions',
-  submit_ends_at INTEGER NOT NULL,
-  vote_ends_at INTEGER NOT NULL,
-  jury_role_id TEXT,
-  reward_coins INTEGER NOT NULL DEFAULT 0,
-  reward_xp INTEGER NOT NULL DEFAULT 0,
-  reward_role_id TEXT,
-  created_by TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  statut TEXT NOT NULL DEFAULT 'submissions',
+  fin_participations_le INTEGER NOT NULL,
+  fin_votes_le INTEGER NOT NULL,
+  role_jury_id TEXT,
+  recompense_pieces INTEGER NOT NULL DEFAULT 0,
+  recompense_xp INTEGER NOT NULL DEFAULT 0,
+  recompense_role_id TEXT,
+  cree_par TEXT NOT NULL,
+  cree_le INTEGER NOT NULL
 );
-CREATE INDEX idx_contests_status ON contests (status);
+CREATE INDEX idx_contests_status ON concours (statut);
 
-CREATE TABLE contest_entries (
+CREATE TABLE participations_concours (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  contest_id INTEGER NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL,
-  content TEXT NOT NULL,
+  concours_id INTEGER NOT NULL REFERENCES concours(id) ON DELETE CASCADE,
+  utilisateur_id TEXT NOT NULL,
+  contenu TEXT NOT NULL,
   message_id TEXT,
-  created_at INTEGER NOT NULL,
-  UNIQUE (contest_id, user_id)
+  cree_le INTEGER NOT NULL,
+  UNIQUE (concours_id, utilisateur_id)
 );
 
-CREATE TABLE contest_votes (
-  entry_id INTEGER NOT NULL REFERENCES contest_entries(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL,
+CREATE TABLE votes_concours (
+  participation_id INTEGER NOT NULL REFERENCES participations_concours(id) ON DELETE CASCADE,
+  utilisateur_id TEXT NOT NULL,
   score INTEGER NOT NULL,
   jury INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (entry_id, user_id)
+  PRIMARY KEY (participation_id, utilisateur_id)
 );
 
-CREATE TABLE stats_daily (
-  guild_id TEXT NOT NULL,
-  day TEXT NOT NULL,
+CREATE TABLE statistiques_jour (
+  serveur_id TEXT NOT NULL,
+  jour TEXT NOT NULL,
   messages INTEGER NOT NULL DEFAULT 0,
-  joins INTEGER NOT NULL DEFAULT 0,
-  leaves INTEGER NOT NULL DEFAULT 0,
-  voice_seconds INTEGER NOT NULL DEFAULT 0,
-  commands INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (guild_id, day)
+  arrivees INTEGER NOT NULL DEFAULT 0,
+  departs INTEGER NOT NULL DEFAULT 0,
+  secondes_vocal INTEGER NOT NULL DEFAULT 0,
+  commandes INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serveur_id, jour)
 );
 
-CREATE TABLE voice_sessions (
-  guild_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  channel_id TEXT NOT NULL,
-  started_at INTEGER NOT NULL,
-  PRIMARY KEY (guild_id, user_id)
+CREATE TABLE sessions_vocales (
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  salon_id TEXT NOT NULL,
+  debut_le INTEGER NOT NULL,
+  PRIMARY KEY (serveur_id, utilisateur_id)
 );
 
-CREATE TABLE lockdowns (
+CREATE TABLE verrouillages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  scope TEXT NOT NULL,
-  target_id TEXT NOT NULL,
-  snapshot TEXT NOT NULL,
-  reason TEXT,
-  created_by TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  active INTEGER NOT NULL DEFAULT 1
+  serveur_id TEXT NOT NULL,
+  portee TEXT NOT NULL,
+  cible_id TEXT NOT NULL,
+  instantane TEXT NOT NULL,
+  raison TEXT,
+  cree_par TEXT NOT NULL,
+  cree_le INTEGER NOT NULL,
+  actif INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE whitelists (
-  scope TEXT NOT NULL,
-  list TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  added_by TEXT,
-  added_at INTEGER NOT NULL,
-  PRIMARY KEY (scope, list, user_id)
+  portee TEXT NOT NULL,
+  liste TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  ajoute_par TEXT,
+  ajoute_le INTEGER NOT NULL,
+  PRIMARY KEY (portee, liste, utilisateur_id)
 );
-CREATE INDEX idx_whitelists_user ON whitelists (user_id);
+CREATE INDEX idx_whitelists_user ON whitelists (utilisateur_id);
 
-CREATE TABLE streamers (
-  key TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  color INTEGER,
-  footer TEXT,
+CREATE TABLE enseignes (
+  cle TEXT PRIMARY KEY,
+  nom TEXT NOT NULL,
+  couleur INTEGER,
+  pied TEXT,
   logo TEXT,
-  background TEXT,
-  twitch_login TEXT,
-  links TEXT NOT NULL DEFAULT '{}',
+  fond TEXT,
+  pseudo_twitch TEXT,
+  liens TEXT NOT NULL DEFAULT '{}',
   emojis TEXT NOT NULL DEFAULT '{}',
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  cree_le INTEGER NOT NULL,
+  modifie_le INTEGER NOT NULL
 );
 
-CREATE TABLE streamer_guilds (
-  guild_id TEXT PRIMARY KEY,
-  streamer_key TEXT NOT NULL REFERENCES streamers(key) ON DELETE CASCADE
+CREATE TABLE serveurs_enseignes (
+  serveur_id TEXT PRIMARY KEY,
+  enseigne_cle TEXT NOT NULL REFERENCES enseignes(cle) ON DELETE CASCADE
 );
 
-CREATE TABLE blacklist (
-  scope TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  reason TEXT NOT NULL,
-  added_by TEXT NOT NULL,
-  added_at INTEGER NOT NULL,
-  PRIMARY KEY (scope, user_id)
+CREATE TABLE liste_noire (
+  portee TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  raison TEXT NOT NULL,
+  ajoute_par TEXT NOT NULL,
+  ajoute_le INTEGER NOT NULL,
+  PRIMARY KEY (portee, utilisateur_id)
 );
 
-CREATE TABLE panels (
-  guild_id TEXT NOT NULL,
-  key TEXT NOT NULL,
-  channel_id TEXT NOT NULL,
-  message_id TEXT NOT NULL,
-  extra TEXT NOT NULL DEFAULT '{}',
-  updated_at INTEGER NOT NULL,
-  PRIMARY KEY (guild_id, key)
-);
-
-CREATE TABLE backups (
+CREATE TABLE sauvegardes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  guild_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  file TEXT NOT NULL,
-  size INTEGER NOT NULL,
-  created_by TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  serveur_id TEXT NOT NULL,
+  nom TEXT NOT NULL,
+  fichier TEXT NOT NULL,
+  taille INTEGER NOT NULL,
+  cree_par TEXT NOT NULL,
+  cree_le INTEGER NOT NULL
 );
 `,
   },

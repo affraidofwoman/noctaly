@@ -9,151 +9,151 @@ import {
   type GuildTextBasedChannel,
   type ModalSubmitInteraction,
 } from 'discord.js';
-import { all, get, parseJson, run } from '../../database/db';
-import { colorFor, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { getConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { journal, recordLog, resolveTextChannel } from '../../core/logService';
-import { hasLevel } from '../../core/permissions';
-import type { SetupPage } from '../../core/setup';
-import { neutralizeMentions, slugify, truncate } from '../../core/text';
-import { button, buildModal, row, type ModalField } from '../../core/ui';
-import { PermLevel, type BotModule, type SlashCommand } from '../../core/types';
+import { lireTout, lire, lireJson, executer } from '../../database/db';
+import { couleurPour, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { lireConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { journal, historiser, resoudreSalonTexte } from '../../core/logService';
+import { aNiveau } from '../../core/permissions';
+import type { PageReglage } from '../../core/setup';
+import { neutraliserMentions, identifiantDepuisTexte, tronquer } from '../../core/text';
+import { bouton, construireFormulaire, rangee, type ChampFenetre } from '../../core/ui';
+import { Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
 
 interface Question {
-  label: string;
+  libelle: string;
   long: boolean;
-  required: boolean;
+  obligatoire: boolean;
 }
 
-interface FormDef {
-  name: string;
-  title: string;
+interface DefinitionFormulaire {
+  nom: string;
+  titre: string;
   description: string;
   questions: Question[];
-  channelId: string | null;
-  builtin?: boolean;
+  salonId: string | null;
+  integre?: boolean;
 }
 
-interface FormRow {
+interface LigneFormulaire {
   id: number;
-  name: string;
-  title: string;
+  nom: string;
+  titre: string;
   description: string;
   questions: string;
-  channel_id: string | null;
+  salon_id: string | null;
 }
 
 /** Formulaires intégrés : partenariat et candidature staff. */
-function builtin(guild: Guild, name: string): FormDef | null {
-  const cfg = getConfig(guild.id);
-  if (name === 'partenariat') {
+function integre(serveur: Guild, nom: string): DefinitionFormulaire | null {
+  const reglages = lireConfig(serveur.id);
+  if (nom === 'partenariat') {
     return {
-      name,
-      title: '🤝 Candidature partenariat',
+      nom,
+      titre: '🤝 Candidature partenariat',
       description: 'Propose un partenariat avec la communauté.',
-      channelId: cfg.forms.partnershipChannelId ?? cfg.general.staffChannelId,
-      builtin: true,
+      salonId: reglages.formulaires.salonPartenariatsId ?? reglages.general.salonStaffId,
+      integre: true,
       questions: [
-        { label: 'Ton nom / pseudo', long: false, required: true },
-        { label: 'Nom du serveur ou de la chaîne', long: false, required: true },
-        { label: 'Description', long: true, required: true },
-        { label: 'Lien (invitation, chaîne…)', long: false, required: true },
-        { label: 'Pourquoi un partenariat ?', long: true, required: true },
+        { libelle: 'Ton nom / pseudo', long: false, obligatoire: true },
+        { libelle: 'Nom du serveur ou de la chaîne', long: false, obligatoire: true },
+        { libelle: 'Description', long: true, obligatoire: true },
+        { libelle: 'Lien (invitation, chaîne…)', long: false, obligatoire: true },
+        { libelle: 'Pourquoi un partenariat ?', long: true, obligatoire: true },
       ],
     };
   }
-  if (name === 'staff') {
+  if (nom === 'staff') {
     return {
-      name,
-      title: '📋 Candidature staff',
+      nom,
+      titre: '📋 Candidature staff',
       description: 'Rejoindre l’équipe de modération.',
-      channelId: cfg.forms.staffApplyChannelId ?? cfg.general.staffChannelId,
-      builtin: true,
+      salonId: reglages.formulaires.salonCandidaturesId ?? reglages.general.salonStaffId,
+      integre: true,
       questions: [
-        { label: 'Âge', long: false, required: true },
-        { label: 'Disponibilités', long: true, required: true },
-        { label: 'Expérience de modération', long: true, required: true },
-        { label: 'Motivation', long: true, required: true },
+        { libelle: 'Âge', long: false, obligatoire: true },
+        { libelle: 'Disponibilités', long: true, obligatoire: true },
+        { libelle: 'Expérience de modération', long: true, obligatoire: true },
+        { libelle: 'Motivation', long: true, obligatoire: true },
       ],
     };
   }
   return null;
 }
 
-function getForm(guild: Guild, name: string): FormDef | null {
-  const b = builtin(guild, name);
+function lireFormulaire(serveur: Guild, nom: string): DefinitionFormulaire | null {
+  const b = integre(serveur, nom);
   if (b) return b;
-  const r = get<FormRow>('SELECT * FROM forms WHERE guild_id = ? AND name = ?', guild.id, name);
-  return r ? { name: r.name, title: r.title, description: r.description, questions: parseJson<Question[]>(r.questions, []), channelId: r.channel_id } : null;
+  const r = lire<LigneFormulaire>('SELECT * FROM formulaires WHERE serveur_id = ? AND nom = ?', serveur.id, nom);
+  return r ? { nom: r.nom, titre: r.titre, description: r.description, questions: lireJson<Question[]>(r.questions, []), salonId: r.salon_id } : null;
 }
 
-function formModal(form: FormDef) {
-  const fields: ModalField[] = form.questions.slice(0, 5).map((q, i) => ({ id: `q${i}`, label: q.label, long: q.long, required: q.required, maxLength: q.long ? 1500 : 200 }));
-  return buildModal(`form:submit:${form.name}`, form.title, fields);
+function fenetreFormulaire(formulaire: DefinitionFormulaire) {
+  const champs: ChampFenetre[] = formulaire.questions.slice(0, 5).map((q, i) => ({ id: `q${i}`, libelle: q.libelle, long: q.long, obligatoire: q.obligatoire, longueurMax: q.long ? 1500 : 200 }));
+  return construireFormulaire(`form:submit:${formulaire.nom}`, formulaire.titre, champs);
 }
 
 /** Questions en texte : une par ligne, « * » à la fin pour une réponse longue, « ? » au début pour facultative. */
-export function parseQuestions(input: string): Question[] {
-  return input
+export function lireQuestions(saisie: string): Question[] {
+  return saisie
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
     .slice(0, 5)
     .map((l) => {
-      const optional = l.startsWith('?');
+      const facultatif = l.startsWith('?');
       const long = l.endsWith('*');
-      return { label: l.replace(/^\?/, '').replace(/\*$/, '').trim().slice(0, 45), long, required: !optional };
+      return { libelle: l.replace(/^\?/, '').replace(/\*$/, '').trim().slice(0, 45), long, obligatoire: !facultatif };
     })
-    .filter((q) => q.label.length > 0);
+    .filter((q) => q.libelle.length > 0);
 }
 
-async function submit(interaction: ModalSubmitInteraction<'cached'>, form: FormDef) {
-  const guild = interaction.guild;
-  const channel = resolveTextChannel(guild, form.channelId ?? getConfig(guild.id).general.staffChannelId);
-  if (!channel) throw new UserError('Ce formulaire n’a pas de salon de réception. Préviens le staff.');
-  const answers = form.questions.slice(0, 5).map((q, i) => ({ q: q.label, a: neutralizeMentions(interaction.fields.getTextInputValue(`q${i}`).trim()) }));
-  const r = run('INSERT INTO form_submissions (guild_id, form_name, user_id, answers, created_at) VALUES (?, ?, ?, ?, ?)', guild.id, form.name, interaction.user.id, JSON.stringify(answers), Date.now());
+async function soumettre(interaction: ModalSubmitInteraction<'cached'>, formulaire: DefinitionFormulaire) {
+  const serveur = interaction.guild;
+  const salon = resoudreSalonTexte(serveur, formulaire.salonId ?? lireConfig(serveur.id).general.salonStaffId);
+  if (!salon) throw new ErreurUtilisateur('Ce formulaire n’a pas de salon de réception. Préviens le staff.');
+  const answers = formulaire.questions.slice(0, 5).map((q, i) => ({ q: q.libelle, a: neutraliserMentions(interaction.fields.getTextInputValue(`q${i}`).trim()) }));
+  const r = executer('INSERT INTO reponses_formulaires (serveur_id, formulaire, utilisateur_id, reponses, cree_le) VALUES (?, ?, ?, ?, ?)', serveur.id, formulaire.nom, interaction.user.id, JSON.stringify(answers), Date.now());
   const embed = new EmbedBuilder()
-    .setColor(colorFor(guild, 'info'))
+    .setColor(couleurPour(serveur, 'info'))
     .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 64 }) })
-    .setTitle(`${form.title} — #${r.lastInsertRowid}`)
+    .setTitle(`${formulaire.titre} — #${r.lastInsertRowid}`)
     .setDescription(`<@${interaction.user.id}> \`${interaction.user.id}\``)
-    .addFields(answers.map((x) => ({ name: truncate(x.q, 256), value: truncate(x.a || '—', 1024), inline: false })))
+    .addFields(answers.map((x) => ({ name: tronquer(x.q, 256), value: tronquer(x.a || '—', 1024), inline: false })))
     .setTimestamp();
-  await channel.send({
+  await salon.send({
     embeds: [embed],
-    components: [row(button(`form:ok:${r.lastInsertRowid}`, 'Accepter', ButtonStyle.Success, '✅'), button(`form:no:${r.lastInsertRowid}`, 'Refuser', ButtonStyle.Danger, '❌'))],
+    components: [rangee(bouton(`form:ok:${r.lastInsertRowid}`, 'Accepter', ButtonStyle.Success, '✅'), bouton(`form:no:${r.lastInsertRowid}`, 'Refuser', ButtonStyle.Danger, '❌'))],
     allowedMentions: { parse: [] },
   });
-  recordLog(guild.id, 'community', `form-${form.name}`, interaction.user.id, interaction.user.id, { id: r.lastInsertRowid });
-  void journal(guild, 'community', { title: 'Formulaire reçu', tone: 'info', lines: [`**${form.title}** de <@${interaction.user.id}>`] });
-  await interaction.reply({ embeds: [ok(guild, 'Merci ! Ta réponse a bien été envoyée au staff. Tu recevras un message privé quand elle sera traitée.')], flags: MessageFlags.Ephemeral });
+  historiser(serveur.id, 'community', `form-${formulaire.nom}`, interaction.user.id, interaction.user.id, { id: r.lastInsertRowid });
+  void journal(serveur, 'community', { titre: 'Formulaire reçu', ton: 'info', lignes: [`**${formulaire.titre}** de <@${interaction.user.id}>`] });
+  await interaction.reply({ embeds: [ok(serveur, 'Merci ! Ta réponse a bien été envoyée au staff. Tu recevras un message privé quand elle sera traitée.')], flags: MessageFlags.Ephemeral });
 }
 
-const partner: SlashCommand = {
-  category: 'community',
-  cooldownSeconds: 60,
-  data: new SlashCommandBuilder().setName('partner').setDescription('Proposer un partenariat'),
-  async execute(interaction) {
-    await interaction.showModal(formModal(builtin(interaction.guild, 'partenariat')!));
+const partenariat: CommandeSlash = {
+  categorie: 'community',
+  delaiSecondes: 60,
+  donnees: new SlashCommandBuilder().setName('partner').setDescription('Proposer un partenariat'),
+  async executer(interaction) {
+    await interaction.showModal(fenetreFormulaire(integre(interaction.guild, 'partenariat')!));
   },
 };
 
-const staffapply: SlashCommand = {
-  category: 'community',
-  cooldownSeconds: 60,
-  data: new SlashCommandBuilder().setName('staffapply').setDescription('Candidater pour le staff'),
-  async execute(interaction) {
-    await interaction.showModal(formModal(builtin(interaction.guild, 'staff')!));
+const candidatureStaff: CommandeSlash = {
+  categorie: 'community',
+  delaiSecondes: 60,
+  donnees: new SlashCommandBuilder().setName('staffapply').setDescription('Candidater pour le staff'),
+  async executer(interaction) {
+    await interaction.showModal(fenetreFormulaire(integre(interaction.guild, 'staff')!));
   },
 };
 
-const formCommand: SlashCommand = {
-  category: 'admin',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder()
+const commandeFormulaire: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder()
     .setName('form')
     .setDescription('Formulaires personnalisés')
     .addSubcommand((s) =>
@@ -177,120 +177,120 @@ const formCommand: SlashCommand = {
         .addStringOption((o) => o.setName('formulaire').setDescription('Le formulaire').setRequired(true).setAutocomplete(true)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('Les formulaires')),
-  async autocomplete(interaction) {
-    const rows = all<FormRow>('SELECT * FROM forms WHERE guild_id = ? ORDER BY name', interaction.guildId);
-    const options = [{ name: '🤝 Partenariat (intégré)', value: 'partenariat' }, { name: '📋 Candidature staff (intégré)', value: 'staff' }, ...rows.map((r) => ({ name: truncate(r.title, 100), value: r.name }))];
-    const focused = String(interaction.options.getFocused()).toLowerCase();
-    await interaction.respond(options.filter((o) => o.name.toLowerCase().includes(focused)).slice(0, 25));
+  async autocompletion(interaction) {
+    const rangees = lireTout<LigneFormulaire>('SELECT * FROM formulaires WHERE serveur_id = ? ORDER BY nom', interaction.guildId);
+    const options = [{ name: '🤝 Partenariat (intégré)', value: 'partenariat' }, { name: '📋 Candidature staff (intégré)', value: 'staff' }, ...rangees.map((r) => ({ name: tronquer(r.titre, 100), value: r.nom }))];
+    const saisie = String(interaction.options.getFocused()).toLowerCase();
+    await interaction.respond(options.filter((o) => o.name.toLowerCase().includes(saisie)).slice(0, 25));
   },
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const sub = interaction.options.getSubcommand();
-    if (sub === 'list') {
-      const rows = all<FormRow>('SELECT * FROM forms WHERE guild_id = ? ORDER BY name', guild.id);
-      const lines = ['🤝 **Partenariat** — intégré (`/partner`)', '📋 **Candidature staff** — intégré (`/staffapply`)', ...rows.map((r) => `📝 **${r.title}** \`${r.name}\` — ${parseJson<Question[]>(r.questions, []).length} question(s) → <#${r.channel_id}>`)];
-      return reply(interaction, { embeds: [new EmbedBuilder().setColor(colorFor(guild)).setTitle('📝 Formulaires').setDescription(lines.join('\n'))], ephemeral: true });
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const sousCommande = interaction.options.getSubcommand();
+    if (sousCommande === 'list') {
+      const rangees = lireTout<LigneFormulaire>('SELECT * FROM formulaires WHERE serveur_id = ? ORDER BY nom', serveur.id);
+      const lignes = ['🤝 **Partenariat** — intégré (`/partner`)', '📋 **Candidature staff** — intégré (`/staffapply`)', ...rangees.map((r) => `📝 **${r.titre}** \`${r.nom}\` — ${lireJson<Question[]>(r.questions, []).length} question(s) → <#${r.salon_id}>`)];
+      return repondre(interaction, { embeds: [new EmbedBuilder().setColor(couleurPour(serveur)).setTitle('📝 Formulaires').setDescription(lignes.join('\n'))], ephemeral: true });
     }
-    if (sub === 'create') {
-      const title = interaction.options.getString('titre', true);
-      const channel = interaction.options.getChannel('salon', true);
+    if (sousCommande === 'create') {
+      const titre = interaction.options.getString('titre', true);
+      const salon = interaction.options.getChannel('salon', true);
       return interaction.showModal(
-        buildModal(`form:create:${channel.id}`, `Questions — ${title}`.slice(0, 45), [
-          { id: 'title', label: 'Titre', value: title, maxLength: 45 },
-          { id: 'description', label: 'Description du formulaire', required: false, maxLength: 300 },
-          { id: 'questions', label: 'Questions (une par ligne, 5 max)', long: true, maxLength: 400, placeholder: 'Âge\nDisponibilités*\n?Lien vers ton portfolio\n(* = réponse longue, ? = facultative)' },
+        construireFormulaire(`form:create:${salon.id}`, `Questions — ${titre}`.slice(0, 45), [
+          { id: 'title', libelle: 'Titre', valeur: titre, longueurMax: 45 },
+          { id: 'description', libelle: 'Description du formulaire', obligatoire: false, longueurMax: 300 },
+          { id: 'questions', libelle: 'Questions (une par ligne, 5 max)', long: true, longueurMax: 400, indication: 'Âge\nDisponibilités*\n?Lien vers ton portfolio\n(* = réponse longue, ? = facultative)' },
         ]),
       );
     }
-    const name = interaction.options.getString('formulaire', true);
-    if (sub === 'delete') {
-      if (builtin(guild, name)) throw new UserError('Les formulaires intégrés se désactivent en coupant le module.');
-      const r = run('DELETE FROM forms WHERE guild_id = ? AND name = ?', guild.id, name);
-      return reply(interaction, { embeds: [ok(guild, r.changes ? 'Formulaire supprimé.' : 'Introuvable.')], ephemeral: true });
+    const nom = interaction.options.getString('formulaire', true);
+    if (sousCommande === 'delete') {
+      if (integre(serveur, nom)) throw new ErreurUtilisateur('Les formulaires intégrés se désactivent en coupant le module.');
+      const r = executer('DELETE FROM formulaires WHERE serveur_id = ? AND nom = ?', serveur.id, nom);
+      return repondre(interaction, { embeds: [ok(serveur, r.changes ? 'Formulaire supprimé.' : 'Introuvable.')], ephemeral: true });
     }
-    const form = getForm(guild, name);
-    if (!form) throw new UserError('Formulaire introuvable.');
-    const channel = (interaction.options.getChannel('salon') ?? interaction.channel) as GuildTextBasedChannel | null;
-    if (!channel) return;
-    const sent = await channel.send({
-      embeds: [new EmbedBuilder().setColor(colorFor(guild)).setTitle(form.title).setDescription(form.description || 'Clique sur le bouton pour remplir le formulaire.')],
-      components: [row(button(`form:open:${form.name}`, 'Remplir le formulaire', ButtonStyle.Primary, '📝'))],
+    const formulaire = lireFormulaire(serveur, nom);
+    if (!formulaire) throw new ErreurUtilisateur('Formulaire introuvable.');
+    const salon = (interaction.options.getChannel('salon') ?? interaction.channel) as GuildTextBasedChannel | null;
+    if (!salon) return;
+    const envoye = await salon.send({
+      embeds: [new EmbedBuilder().setColor(couleurPour(serveur)).setTitle(formulaire.titre).setDescription(formulaire.description || 'Clique sur le bouton pour remplir le formulaire.')],
+      components: [rangee(bouton(`form:open:${formulaire.nom}`, 'Remplir le formulaire', ButtonStyle.Primary, '📝'))],
     });
-    return reply(interaction, { embeds: [ok(guild, `Bouton posté : ${sent.url}`)], ephemeral: true });
+    return repondre(interaction, { embeds: [ok(serveur, `Bouton posté : ${envoye.url}`)], ephemeral: true });
   },
 };
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'forms',
   section: 'community',
-  title: 'Formulaires',
+  titre: 'Formulaires',
   emoji: '📝',
   moduleId: 'forms',
-  order: 15,
+  ordre: 15,
   description: 'Où arrivent les candidatures intégrées (`/partner`, `/staffapply`). Les formulaires personnalisés se créent avec `/form create`.',
-  fields: [
-    { kind: 'channel', key: 'partner', label: 'Salon des partenariats', get: (c) => c.forms.partnershipChannelId, set: (c, v) => void (c.forms.partnershipChannelId = v) },
-    { kind: 'channel', key: 'staff', label: 'Salon des candidatures staff', get: (c) => c.forms.staffApplyChannelId, set: (c, v) => void (c.forms.staffApplyChannelId = v) },
+  champs: [
+    { kind: 'channel', cle: 'partner', libelle: 'Salon des partenariats', get: (c) => c.formulaires.salonPartenariatsId, set: (c, v) => void (c.formulaires.salonPartenariatsId = v) },
+    { kind: 'channel', cle: 'staff', libelle: 'Salon des candidatures staff', get: (c) => c.formulaires.salonCandidaturesId, set: (c, v) => void (c.formulaires.salonCandidaturesId = v) },
   ],
 };
 
-export const formsModule: BotModule = {
+export const moduleFormulaires: ModuleBot = {
   id: 'forms',
-  name: 'Formulaires',
+  nom: 'Formulaires',
   emoji: '📝',
   description: 'Partenariats, candidatures staff et formulaires personnalisés',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [partner, staffapply, formCommand],
-  setupPages: [setupPage],
-  components: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [partenariat, candidatureStaff, commandeFormulaire],
+  pagesReglage: [pageReglage],
+  composants: [
     {
-      prefix: 'form',
-      async button(interaction: ButtonInteraction<'cached'>, [action, arg]) {
+      prefixe: 'form',
+      async bouton(interaction: ButtonInteraction<'cached'>, [action, argument]) {
         if (action === 'open') {
-          const form = getForm(interaction.guild, arg ?? '');
-          if (!form) throw new UserError('Ce formulaire n’existe plus.');
-          return interaction.showModal(formModal(form));
+          const formulaire = lireFormulaire(interaction.guild, argument ?? '');
+          if (!formulaire) throw new ErreurUtilisateur('Ce formulaire n’existe plus.');
+          return interaction.showModal(fenetreFormulaire(formulaire));
         }
-        if (!hasLevel(interaction.member, PermLevel.STAFF)) throw new UserError('Réservé au staff.');
-        const sub = get<{ id: number; user_id: string; form_name: string; status: string }>('SELECT id, user_id, form_name, status FROM form_submissions WHERE id = ? AND guild_id = ?', Number(arg), interaction.guildId);
-        if (!sub) throw new UserError('Réponse introuvable.');
-        if (sub.status !== 'pending') throw new UserError('Cette réponse a déjà été traitée.');
-        const accepted = action === 'ok';
-        run('UPDATE form_submissions SET status = ?, handled_by = ? WHERE id = ?', accepted ? 'accepted' : 'denied', interaction.user.id, sub.id);
-        const form = getForm(interaction.guild, sub.form_name);
-        const user = await interaction.client.users.fetch(sub.user_id).catch(() => null);
-        await user
-          ?.send({ embeds: [new EmbedBuilder().setColor(colorFor(interaction.guild, accepted ? 'success' : 'error')).setDescription(`${accepted ? '✅' : '❌'} Ta réponse au formulaire **${form?.title ?? sub.form_name}** sur **${interaction.guild.name}** a été **${accepted ? 'acceptée' : 'refusée'}**.${accepted ? '\nLe staff va te recontacter.' : ''}`)] })
+        if (!aNiveau(interaction.member, Niveau.STAFF)) throw new ErreurUtilisateur('Réservé au staff.');
+        const sousCommande = lire<{ id: number; utilisateur_id: string; formulaire: string; statut: string }>('SELECT id, utilisateur_id, formulaire, statut FROM reponses_formulaires WHERE id = ? AND serveur_id = ?', Number(argument), interaction.guildId);
+        if (!sousCommande) throw new ErreurUtilisateur('Réponse introuvable.');
+        if (sousCommande.statut !== 'pending') throw new ErreurUtilisateur('Cette réponse a déjà été traitée.');
+        const accepte = action === 'ok';
+        executer('UPDATE reponses_formulaires SET statut = ?, traite_par = ? WHERE id = ?', accepte ? 'accepted' : 'denied', interaction.user.id, sousCommande.id);
+        const formulaire = lireFormulaire(interaction.guild, sousCommande.formulaire);
+        const utilisateur = await interaction.client.users.fetch(sousCommande.utilisateur_id).catch(() => null);
+        await utilisateur
+          ?.send({ embeds: [new EmbedBuilder().setColor(couleurPour(interaction.guild, accepte ? 'success' : 'error')).setDescription(`${accepte ? '✅' : '❌'} Ta réponse au formulaire **${formulaire?.titre ?? sousCommande.formulaire}** sur **${interaction.guild.name}** a été **${accepte ? 'acceptée' : 'refusée'}**.${accepte ? '\nLe staff va te recontacter.' : ''}`)] })
           .catch(() => undefined);
-        const embed = EmbedBuilder.from(interaction.message.embeds[0]!).setColor(colorFor(interaction.guild, accepted ? 'success' : 'error')).setFooter({ text: `${accepted ? 'Acceptée' : 'Refusée'} par ${interaction.user.tag}` });
+        const embed = EmbedBuilder.from(interaction.message.embeds[0]!).setColor(couleurPour(interaction.guild, accepte ? 'success' : 'error')).setFooter({ text: `${accepte ? 'Acceptée' : 'Refusée'} par ${interaction.user.tag}` });
         await interaction.update({ embeds: [embed], components: [] });
       },
-      async modal(interaction: ModalSubmitInteraction<'cached'>, [action, arg]) {
+      async fenetre(interaction: ModalSubmitInteraction<'cached'>, [action, argument]) {
         if (action === 'submit') {
-          const form = getForm(interaction.guild, arg ?? '');
-          if (!form) throw new UserError('Ce formulaire n’existe plus.');
-          return submit(interaction, form);
+          const formulaire = lireFormulaire(interaction.guild, argument ?? '');
+          if (!formulaire) throw new ErreurUtilisateur('Ce formulaire n’existe plus.');
+          return soumettre(interaction, formulaire);
         }
         if (action === 'create') {
-          if (!hasLevel(interaction.member, PermLevel.ADMIN)) throw new UserError('Réservé aux admins.');
-          const title = interaction.fields.getTextInputValue('title').trim();
-          const questions = parseQuestions(interaction.fields.getTextInputValue('questions'));
-          if (!questions.length) throw new UserError('Ajoute au moins une question.');
-          const name = slugify(title, 40);
-          if (builtin(interaction.guild, name)) throw new UserError('Ce nom est réservé.');
-          run(
-            `INSERT INTO forms (guild_id, name, title, description, questions, channel_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(guild_id, name) DO UPDATE SET title = excluded.title, description = excluded.description, questions = excluded.questions, channel_id = excluded.channel_id`,
+          if (!aNiveau(interaction.member, Niveau.ADMIN)) throw new ErreurUtilisateur('Réservé aux admins.');
+          const titre = interaction.fields.getTextInputValue('title').trim();
+          const questions = lireQuestions(interaction.fields.getTextInputValue('questions'));
+          if (!questions.length) throw new ErreurUtilisateur('Ajoute au moins une question.');
+          const nom = identifiantDepuisTexte(titre, 40);
+          if (integre(interaction.guild, nom)) throw new ErreurUtilisateur('Ce nom est réservé.');
+          executer(
+            `INSERT INTO formulaires (serveur_id, nom, titre, description, questions, salon_id, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(serveur_id, nom) DO UPDATE SET titre = excluded.titre, description = excluded.description, questions = excluded.questions, salon_id = excluded.salon_id`,
             interaction.guildId,
-            name,
-            title,
+            nom,
+            titre,
             interaction.fields.getTextInputValue('description').trim(),
             JSON.stringify(questions),
-            arg,
+            argument,
             Date.now(),
           );
-          await interaction.reply({ embeds: [ok(interaction.guild, `Formulaire **${title}** enregistré (\`${name}\`, ${questions.length} question(s)).\nPoste son bouton avec \`/form panel\`.`)], flags: MessageFlags.Ephemeral });
+          await interaction.reply({ embeds: [ok(interaction.guild, `Formulaire **${titre}** enregistré (\`${nom}\`, ${questions.length} question(s)).\nPoste son bouton avec \`/form panel\`.`)], flags: MessageFlags.Ephemeral });
         }
       },
     },

@@ -1,255 +1,255 @@
-import { get, run } from '../database/db';
-import { env } from './env';
-import type { LogType } from './logService';
-import { THEMES, type ThemeColors, type ThemeId } from './themes';
-import type { PrefixDomain } from './types';
+import { lire, executer } from '../database/db';
+import { environnement } from './env';
+import type { TypeJournal } from './logService';
+import { THEMES, type CouleursTheme, type ThemeId } from './themes';
+import type { DomainePrefixe } from './types';
 
-export type AutoModAction = 'delete' | 'warn' | 'timeout';
+export type ActionAutomod = 'delete' | 'warn' | 'timeout';
 
-export type TicketButtonStyle = 'Primary' | 'Secondary' | 'Success' | 'Danger';
+export type StyleBoutonTicket = 'Primary' | 'Secondary' | 'Success' | 'Danger';
 
-export interface TicketCategory {
+export interface MotifTicket {
   /** Identifiant stable, aussi utilisé comme préfixe du salon (ex : support-pseudo). */
   id: string;
-  label: string;
+  libelle: string;
   emoji: string;
   description: string;
-  style: TicketButtonStyle;
+  style: StyleBoutonTicket;
   /** Rôles qui voient ce type de ticket et sont mentionnés à l'ouverture. */
   roles: string[];
 }
 
-export interface WarnAutoAction {
-  warns: number;
+export interface ActionAutoAvertissement {
+  avertissements: number;
   action: 'timeout' | 'kick' | 'ban';
-  durationMinutes: number;
+  dureeMinutes: number;
 }
 
-export interface QuestDefinition {
+export interface DefinitionQuete {
   id: string;
-  label: string;
+  libelle: string;
   type: 'messages' | 'voice_minutes' | 'giveaways' | 'daily';
-  target: number;
-  rewardXp: number;
-  rewardCoins: number;
+  cible: number;
+  recompenseXp: number;
+  recompensePieces: number;
 }
 
-export interface GuildConfig {
+export interface ConfigServeur {
   general: {
-    timezone: string;
+    fuseau: string;
     /** "brand" = couleurs de l'enseigne du streamer. */
     theme: ThemeId | 'brand';
-    colors: ThemeColors;
+    colors: CouleursTheme;
     footer: string;
-    staffChannelId: string | null;
-    statusRotation: boolean;
+    salonStaffId: string | null;
+    rotationStatut: boolean;
   };
-  prefixes: Record<PrefixDomain, string>;
-  commands: {
+  prefixes: Record<DomainePrefixe, string>;
+  commandes: {
     /** Salons où les commandes à préfixe marchent (vide = partout). */
-    allowedChannels: string[];
+    salonsAutorises: string[];
     /** Supprimer le message de commande après exécution. */
-    deleteTrigger: boolean;
+    effacerCommande: boolean;
   };
   permissions: {
     streamer: string[];
     admin: string[];
-    moderator: string[];
+    moderateur: string[];
     staff: string[];
     support: string[];
     member: string[];
   };
-  welcome: {
+  bienvenue: {
     channelId: string | null;
     message: string;
-    useEmbed: boolean;
+    utiliserEmbed: boolean;
     title: string;
-    imageMode: 'none' | 'card' | 'url';
-    imageUrl: string;
-    dmEnabled: boolean;
-    dmMessage: string;
-    counterChannelId: string | null;
-    counterFormat: string;
+    modeImage: 'none' | 'card' | 'url';
+    urlImage: string;
+    mpActif: boolean;
+    messageMp: string;
+    salonCompteurId: string | null;
+    formatCompteur: string;
   };
-  leave: {
+  depart: {
     channelId: string | null;
     message: string;
-    useEmbed: boolean;
+    utiliserEmbed: boolean;
   };
-  autorole: {
-    memberRoles: string[];
-    botRoles: string[];
-    delaySeconds: number;
+  rolesAuto: {
+    rolesMembres: string[];
+    rolesBots: string[];
+    delaiSecondes: number;
   };
-  logs: {
+  journaux: {
     /** Salon utilisé pour les types sans salon dédié. */
-    fallbackChannelId: string | null;
-    channels: Partial<Record<LogType, string>>;
-    disabled: LogType[];
-    ignoredChannels: string[];
+    salonSecoursId: string | null;
+    channels: Partial<Record<TypeJournal, string>>;
+    disabled: TypeJournal[];
+    salonsIgnores: string[];
   };
   tickets: {
-    panelChannelId: string | null;
-    parentCategoryId: string | null;
+    salonPanneauId: string | null;
+    categorieParenteId: string | null;
     /** Rôles qui voient tous les tickets (en plus des rôles par catégorie). */
-    staffRoles: string[];
-    maxOpenPerUser: number;
-    categories: TicketCategory[];
-    panelTitle: string;
-    panelIntro: string;
-    panelFooter: string;
+    rolesStaff: string[];
+    ouvertsMaxParMembre: number;
+    categories: MotifTicket[];
+    titrePanneau: string;
+    introPanneau: string;
+    piedPanneau: string;
     /** buttons = un bouton par motif (Airline v1) ; v2 = sections avec bouton ; menu = un bouton puis « Quel est le sujet ? ». */
-    panelStyle: 'buttons' | 'v2' | 'menu';
-    welcomeTitle: string;
-    welcomeMessage: string;
-    welcomeFooter: string;
+    stylePanneau: 'buttons' | 'v2' | 'menu';
+    titreBienvenue: string;
+    messageBienvenue: string;
+    piedBienvenue: string;
     /** delete = transcript puis suppression (comme Airline) ; archive = salon verrouillé, suppression manuelle. */
-    closeMode: 'delete' | 'archive';
-    transcriptToUser: boolean;
+    modeFermeture: 'delete' | 'archive';
+    transcriptAuMembre: boolean;
     counter: number;
   };
-  giveaways: {
-    defaultChannelId: string | null;
-    pingRoleId: string | null;
-    dmWinners: boolean;
-    logParticipations: boolean;
+  tirages: {
+    salonDefautId: string | null;
+    roleMentionId: string | null;
+    mpGagnants: boolean;
+    journaliserParticipations: boolean;
   };
   twitch: {
-    defaultChannelId: string | null;
-    defaultRoleId: string | null;
-    liveMessage: string;
-    endMessage: string;
+    salonDefautId: string | null;
+    roleDefautId: string | null;
+    messageLive: string;
+    messageFin: string;
     color: string;
   };
-  music: {
-    djRoles: string[];
-    defaultVolume: number;
+  musique: {
+    rolesDj: string[];
+    volumeParDefaut: number;
     maxQueue: number;
-    leaveOnEmptyMinutes: number;
-    announceNowPlaying: boolean;
+    quitterSiVideMinutes: number;
+    annoncerLecture: boolean;
   };
   moderation: {
-    dmOnAction: boolean;
+    mpSanction: boolean;
     /** Phrase ajoutée aux messages privés de sanction (comment contester). */
-    contactText: string;
-    autoActions: WarnAutoAction[];
-    defaultTimeoutMinutes: number;
+    texteContact: string;
+    actionsAuto: ActionAutoAvertissement[];
+    minutesTimeoutDefaut: number;
     /** Supprimer les messages des dernières X heures lors d'un ban (0 à 168). */
-    banDeleteHours: number;
+    heuresEffaceesBan: number;
   };
   automod: {
     spam: { enabled: boolean; messages: number; seconds: number };
-    duplicates: { enabled: boolean; count: number };
-    links: { enabled: boolean; whitelist: string[] };
+    repetitions: { enabled: boolean; count: number };
+    liens: { enabled: boolean; whitelist: string[] };
     invites: { enabled: boolean };
-    badWords: { enabled: boolean; words: string[] };
+    motsInterdits: { enabled: boolean; mots: string[] };
     mentions: { enabled: boolean; max: number };
-    caps: { enabled: boolean; percent: number; minLength: number };
-    action: AutoModAction;
-    timeoutMinutes: number;
-    ignoreStaff: boolean;
-    whitelistUsers: string[];
-    whitelistRoles: string[];
-    whitelistChannels: string[];
+    majuscules: { enabled: boolean; percent: number; minLength: number };
+    action: ActionAutomod;
+    minutesTimeout: number;
+    ignorerStaff: boolean;
+    membresExemptes: string[];
+    rolesExemptes: string[];
+    salonsExemptes: string[];
   };
   xp: {
     min: number;
     max: number;
-    cooldownSeconds: number;
-    voiceXpPerMinute: number;
-    announce: 'off' | 'same' | 'channel' | 'dm';
-    announceChannelId: string | null;
-    levelUpMessage: string;
-    noXpChannels: string[];
-    noXpRoles: string[];
-    stackRoles: boolean;
+    delaiSecondes: number;
+    xpVocalParMinute: number;
+    annonce: 'off' | 'same' | 'channel' | 'dm';
+    salonAnnonceId: string | null;
+    messageNiveau: string;
+    salonsSansXp: string[];
+    rolesSansXp: string[];
+    cumulerRoles: boolean;
   };
-  seniority: {
-    tiers: { days: number; roleId: string }[];
+  anciennete: {
+    paliers: { days: number; roleId: string }[];
     stack: boolean;
   };
   suggestions: {
     channelId: string | null;
-    createThread: boolean;
+    creerFil: boolean;
     counter: number;
   };
-  birthdays: {
+  anniversaires: {
     channelId: string | null;
     roleId: string | null;
     message: string;
     hour: number;
   };
-  reminders: {
-    maxPerUser: number;
+  rappels: {
+    maxParMembre: number;
   };
-  announcements: {
-    defaultChannelId: string | null;
+  annonces: {
+    salonDefautId: string | null;
   };
-  customcommands: {
-    prefix: string;
+  commandesPerso: {
+    prefixe: string;
   };
-  invites: {
+  invitations: {
     channelId: string | null;
-    fakeAccountDays: number;
+    joursCompteFaux: number;
   };
   boosts: {
     channelId: string | null;
     message: string;
-    boosterRoleId: string | null;
-    rewards: { count: number; roleId: string | null; badgeId: string | null; coins: number }[];
+    roleBoosterId: string | null;
+    recompenses: { count: number; roleId: string | null; badgeId: string | null; pieces: number }[];
   };
-  events: {
-    defaultChannelId: string | null;
-    pingRoleId: string | null;
-    reminderMinutes: number;
+  evenements: {
+    salonDefautId: string | null;
+    roleMentionId: string | null;
+    rappelMinutes: number;
   };
-  games: {
-    eightBall: boolean;
-    coinflip: boolean;
-    dice: boolean;
-    rps: boolean;
+  jeux: {
+    bouleMagique: boolean;
+    pileOuFace: boolean;
+    des: boolean;
+    pierreFeuilleCiseaux: boolean;
   };
-  economy: {
-    currencyName: string;
-    currencyEmoji: string;
-    dailyAmount: number;
-    streakBonus: number;
-    perMessage: number;
-    messageCooldownSeconds: number;
+  economie: {
+    nomMonnaie: string;
+    emojiMonnaie: string;
+    montantQuotidien: number;
+    bonusSerie: number;
+    parMessage: number;
+    delaiMessageSecondes: number;
   };
-  quests: {
-    list: QuestDefinition[];
-    streakMilestones: { days: number; coins: number; xp: number }[];
-    announce: boolean;
+  quetes: {
+    list: DefinitionQuete[];
+    paliersSerie: { days: number; pieces: number; xp: number }[];
+    annonce: boolean;
   };
-  profiles: {
-    autoBadges: boolean;
+  profils: {
+    badgesAuto: boolean;
   };
-  rules: {
+  reglement: {
     channelId: string | null;
     title: string;
     sections: { title: string; content: string }[];
-    acceptRoleId: string | null;
-    removeRoleId: string | null;
+    roleAcceptationId: string | null;
+    roleRetireId: string | null;
   };
   verification: {
     channelId: string | null;
-    verifiedRoleId: string | null;
-    unverifiedRoleId: string | null;
+    roleVerifieId: string | null;
+    roleNonVerifieId: string | null;
     method: 'button' | 'captcha';
-    minAccountAgeDays: number;
+    ageCompteMinJours: number;
   };
   antiraid: {
-    joinThreshold: number;
-    joinWindowSeconds: number;
-    minAccountAgeDays: number;
-    suspiciousAction: 'none' | 'timeout' | 'kick';
-    autoLockdown: boolean;
-    mentionThreshold: number;
-    alertChannelId: string | null;
+    seuilArrivees: number;
+    fenetreArriveesSecondes: number;
+    ageCompteMinJours: number;
+    actionSuspects: 'none' | 'timeout' | 'kick';
+    verrouillageAuto: boolean;
+    seuilMentions: number;
+    salonAlerteId: string | null;
   };
   antinuke: {
-    windowSeconds: number;
+    fenetreSecondes: number;
     thresholds: {
       channelDelete: number;
       channelCreate: number;
@@ -257,42 +257,42 @@ export interface GuildConfig {
       roleCreate: number;
       ban: number;
       kick: number;
-      webhookCreate: number;
+      creationWebhook: number;
     };
     action: 'alert' | 'strip' | 'kick' | 'ban';
-    trustedUsers: string[];
+    membresDeConfiance: string[];
   };
-  reports: {
+  signalements: {
     channelId: string | null;
     mode: 'channel' | 'ticket';
   };
-  feedback: {
+  avis: {
     channelId: string | null;
   };
-  forms: {
-    partnershipChannelId: string | null;
-    staffApplyChannelId: string | null;
+  formulaires: {
+    salonPartenariatsId: string | null;
+    salonCandidaturesId: string | null;
   };
-  stats: {
-    trackVoice: boolean;
+  statistiques: {
+    suivreVocal: boolean;
   };
-  contests: {
-    defaultChannelId: string | null;
+  concours: {
+    salonDefautId: string | null;
   };
-  setup: {
-    completedAt: number | null;
+  assistant: {
+    termineLe: number | null;
   };
 }
 
-export const DEFAULT_TICKET_CATEGORIES: TicketCategory[] = [
-  { id: 'support', label: 'Support', emoji: '🎫', description: 'Une question ou un souci ? On t’aide.', style: 'Primary', roles: [] },
-  { id: 'sanction', label: 'Sanction', emoji: '🛡️', description: 'Sanctionné et tu penses que c’est injuste ? Explique-toi ici.', style: 'Danger', roles: [] },
-  { id: 'partenariat', label: 'Partenariat', emoji: '🤝', description: 'Proposer un partenariat ou une collaboration.', style: 'Success', roles: [] },
-  { id: 'giveaway', label: 'Giveaway', emoji: '🎁', description: 'Réclamer un gain de giveaway.', style: 'Success', roles: [] },
-  { id: 'autre', label: 'Autre', emoji: '📢', description: 'Tout le reste. Si tu hésites, prends celui-là.', style: 'Secondary', roles: [] },
+export const MOTIFS_TICKETS_DEFAUT: MotifTicket[] = [
+  { id: 'support', libelle: 'Support', emoji: '🎫', description: 'Une question ou un souci ? On t’aide.', style: 'Primary', roles: [] },
+  { id: 'sanction', libelle: 'Sanction', emoji: '🛡️', description: 'Sanctionné et tu penses que c’est injuste ? Explique-toi ici.', style: 'Danger', roles: [] },
+  { id: 'partenariat', libelle: 'Partenariat', emoji: '🤝', description: 'Proposer un partenariat ou une collaboration.', style: 'Success', roles: [] },
+  { id: 'giveaway', libelle: 'Giveaway', emoji: '🎁', description: 'Réclamer un gain de giveaway.', style: 'Success', roles: [] },
+  { id: 'autre', libelle: 'Autre', emoji: '📢', description: 'Tout le reste. Si tu hésites, prends celui-là.', style: 'Secondary', roles: [] },
 ];
 
-export const DEFAULT_PREFIXES: Record<PrefixDomain, string> = {
+export const PREFIXES_DEFAUT: Record<DomainePrefixe, string> = {
   sanction: '+',
   salon: '&',
   general: '=',
@@ -300,147 +300,147 @@ export const DEFAULT_PREFIXES: Record<PrefixDomain, string> = {
   music: 'm!',
 };
 
-export function defaultConfig(): GuildConfig {
+export function configParDefaut(): ConfigServeur {
   return {
     general: {
-      timezone: env.defaultTimezone,
+      fuseau: environnement.fuseauParDefaut,
       theme: 'brand',
       colors: { ...THEMES.twitch.colors },
       footer: '',
-      staffChannelId: null,
-      statusRotation: true,
+      salonStaffId: null,
+      rotationStatut: true,
     },
-    prefixes: { ...DEFAULT_PREFIXES },
-    commands: { allowedChannels: [], deleteTrigger: false },
-    permissions: { streamer: [], admin: [], moderator: [], staff: [], support: [], member: [] },
-    welcome: {
+    prefixes: { ...PREFIXES_DEFAUT },
+    commandes: { salonsAutorises: [], effacerCommande: false },
+    permissions: { streamer: [], admin: [], moderateur: [], staff: [], support: [], member: [] },
+    bienvenue: {
       channelId: null,
       message: '🎉 Bienvenue {mention} !\n\nTu es maintenant membre de **{server}**.\n\nNous sommes désormais **{membercount} membres** !',
-      useEmbed: true,
+      utiliserEmbed: true,
       title: '👋 BIENVENUE',
-      imageMode: 'card',
-      imageUrl: '',
-      dmEnabled: false,
-      dmMessage: 'Bienvenue sur **{server}**, {username} ! Pense à lire le règlement 📜',
-      counterChannelId: null,
-      counterFormat: '👥 Membres : {membercount}',
+      modeImage: 'card',
+      urlImage: '',
+      mpActif: false,
+      messageMp: 'Bienvenue sur **{server}**, {username} ! Pense à lire le règlement 📜',
+      salonCompteurId: null,
+      formatCompteur: '👥 Membres : {membercount}',
     },
-    leave: {
+    depart: {
       channelId: null,
       message: '👋 **{username}** a quitté le serveur.\nNous sommes maintenant **{membercount} membres**.',
-      useEmbed: true,
+      utiliserEmbed: true,
     },
-    autorole: { memberRoles: [], botRoles: [], delaySeconds: 0 },
-    logs: { fallbackChannelId: null, channels: {}, disabled: [], ignoredChannels: [] },
+    rolesAuto: { rolesMembres: [], rolesBots: [], delaiSecondes: 0 },
+    journaux: { salonSecoursId: null, channels: {}, disabled: [], salonsIgnores: [] },
     tickets: {
-      panelChannelId: null,
-      parentCategoryId: null,
-      staffRoles: [],
-      maxOpenPerUser: 2,
-      categories: DEFAULT_TICKET_CATEGORIES.map((c) => ({ ...c, roles: [] })),
-      panelTitle: '🎫 Support {brand}',
-      panelIntro: 'Une question, un souci, une demande ? Choisis le motif, on prend le relais.',
-      panelFooter: 'Support • {brand} • un ticket par demande',
-      panelStyle: 'buttons',
-      welcomeTitle: '🎫 Ticket ouvert',
-      welcomeMessage: 'Bienvenue {mention}.\n\nExplique ta demande ici, le plus clairement possible — ça nous fait gagner du temps à tous les deux.\nLe staff te répond dès qu’il passe.',
-      welcomeFooter: 'Ferme le ticket une fois réglé — tu recevras la conversation en MP.',
-      closeMode: 'delete',
-      transcriptToUser: true,
+      salonPanneauId: null,
+      categorieParenteId: null,
+      rolesStaff: [],
+      ouvertsMaxParMembre: 2,
+      categories: MOTIFS_TICKETS_DEFAUT.map((c) => ({ ...c, roles: [] })),
+      titrePanneau: '🎫 Support {brand}',
+      introPanneau: 'Une question, un souci, une demande ? Choisis le motif, on prend le relais.',
+      piedPanneau: 'Support • {brand} • un ticket par demande',
+      stylePanneau: 'buttons',
+      titreBienvenue: '🎫 Ticket ouvert',
+      messageBienvenue: 'Bienvenue {mention}.\n\nExplique ta demande ici, le plus clairement possible — ça nous fait gagner du temps à tous les deux.\nLe staff te répond dès qu’il passe.',
+      piedBienvenue: 'Ferme le ticket une fois réglé — tu recevras la conversation en MP.',
+      modeFermeture: 'delete',
+      transcriptAuMembre: true,
       counter: 0,
     },
-    giveaways: { defaultChannelId: null, pingRoleId: null, dmWinners: true, logParticipations: false },
+    tirages: { salonDefautId: null, roleMentionId: null, mpGagnants: true, journaliserParticipations: false },
     twitch: {
-      defaultChannelId: null,
-      defaultRoleId: null,
-      liveMessage: '🔴 **{streamer}** est en LIVE ! {role}',
-      endMessage: '⚫ Le live de **{streamer}** est terminé. Merci à tous d\'être passés !',
+      salonDefautId: null,
+      roleDefautId: null,
+      messageLive: '🔴 **{streamer}** est en LIVE ! {role}',
+      messageFin: '⚫ Le live de **{streamer}** est terminé. Merci à tous d\'être passés !',
       color: '#9146FF',
     },
-    music: { djRoles: [], defaultVolume: 60, maxQueue: 200, leaveOnEmptyMinutes: 2, announceNowPlaying: true },
+    musique: { rolesDj: [], volumeParDefaut: 60, maxQueue: 200, quitterSiVideMinutes: 2, annoncerLecture: true },
     moderation: {
-      dmOnAction: true,
-      contactText: 'Si tu souhaites discuter de ta sanction, ouvre un ticket sur le serveur.',
-      banDeleteHours: 0,
-      autoActions: [
-        { warns: 3, action: 'timeout', durationMinutes: 60 },
-        { warns: 5, action: 'kick', durationMinutes: 0 },
-        { warns: 7, action: 'ban', durationMinutes: 0 },
+      mpSanction: true,
+      texteContact: 'Si tu souhaites discuter de ta sanction, ouvre un ticket sur le serveur.',
+      heuresEffaceesBan: 0,
+      actionsAuto: [
+        { avertissements: 3, action: 'timeout', dureeMinutes: 60 },
+        { avertissements: 5, action: 'kick', dureeMinutes: 0 },
+        { avertissements: 7, action: 'ban', dureeMinutes: 0 },
       ],
-      defaultTimeoutMinutes: 10,
+      minutesTimeoutDefaut: 10,
     },
     automod: {
       spam: { enabled: true, messages: 6, seconds: 5 },
-      duplicates: { enabled: true, count: 4 },
-      links: {
+      repetitions: { enabled: true, count: 4 },
+      liens: {
         enabled: false,
         whitelist: ['youtube.com', 'youtu.be', 'twitch.tv', 'twitter.com', 'x.com', 'instagram.com', 'tiktok.com', 'discord.com', 'tenor.com', 'giphy.com'],
       },
       invites: { enabled: true },
-      badWords: { enabled: false, words: [] },
+      motsInterdits: { enabled: false, mots: [] },
       mentions: { enabled: true, max: 6 },
-      caps: { enabled: false, percent: 75, minLength: 12 },
+      majuscules: { enabled: false, percent: 75, minLength: 12 },
       action: 'delete',
-      timeoutMinutes: 5,
-      ignoreStaff: true,
-      whitelistUsers: [],
-      whitelistRoles: [],
-      whitelistChannels: [],
+      minutesTimeout: 5,
+      ignorerStaff: true,
+      membresExemptes: [],
+      rolesExemptes: [],
+      salonsExemptes: [],
     },
     xp: {
       min: 15,
       max: 25,
-      cooldownSeconds: 60,
-      voiceXpPerMinute: 2,
-      announce: 'same',
-      announceChannelId: null,
-      levelUpMessage: '🎉 Bravo {mention}, tu passes **niveau {level}** !',
-      noXpChannels: [],
-      noXpRoles: [],
-      stackRoles: true,
+      delaiSecondes: 60,
+      xpVocalParMinute: 2,
+      annonce: 'same',
+      salonAnnonceId: null,
+      messageNiveau: '🎉 Bravo {mention}, tu passes **niveau {level}** !',
+      salonsSansXp: [],
+      rolesSansXp: [],
+      cumulerRoles: true,
     },
-    seniority: { tiers: [], stack: false },
-    suggestions: { channelId: null, createThread: false, counter: 0 },
-    birthdays: {
+    anciennete: { paliers: [], stack: false },
+    suggestions: { channelId: null, creerFil: false, counter: 0 },
+    anniversaires: {
       channelId: null,
       roleId: null,
       message: '🎂 Joyeux anniversaire {mention} ! 🎉\n\nToute la communauté te souhaite une excellente journée !',
       hour: 9,
     },
-    reminders: { maxPerUser: 25 },
-    announcements: { defaultChannelId: null },
-    customcommands: { prefix: '!' },
-    invites: { channelId: null, fakeAccountDays: 7 },
+    rappels: { maxParMembre: 25 },
+    annonces: { salonDefautId: null },
+    commandesPerso: { prefixe: '!' },
+    invitations: { channelId: null, joursCompteFaux: 7 },
     boosts: {
       channelId: null,
       message: '🚀 Merci {mention} pour le boost ! Le serveur compte maintenant **{boosts} boosts** 💜',
-      boosterRoleId: null,
-      rewards: [],
+      roleBoosterId: null,
+      recompenses: [],
     },
-    events: { defaultChannelId: null, pingRoleId: null, reminderMinutes: 30 },
-    games: { eightBall: true, coinflip: true, dice: true, rps: true },
-    economy: {
-      currencyName: 'Coins',
-      currencyEmoji: '💰',
-      dailyAmount: 100,
-      streakBonus: 10,
-      perMessage: 1,
-      messageCooldownSeconds: 60,
+    evenements: { salonDefautId: null, roleMentionId: null, rappelMinutes: 30 },
+    jeux: { bouleMagique: true, pileOuFace: true, des: true, pierreFeuilleCiseaux: true },
+    economie: {
+      nomMonnaie: 'Coins',
+      emojiMonnaie: '💰',
+      montantQuotidien: 100,
+      bonusSerie: 10,
+      parMessage: 1,
+      delaiMessageSecondes: 60,
     },
-    quests: {
+    quetes: {
       list: [
-        { id: 'messages20', label: 'Envoyer 20 messages', type: 'messages', target: 20, rewardXp: 100, rewardCoins: 50 },
-        { id: 'voice30', label: 'Passer 30 minutes en vocal', type: 'voice_minutes', target: 30, rewardXp: 150, rewardCoins: 50 },
-        { id: 'daily', label: 'Récupérer ta récompense /daily', type: 'daily', target: 1, rewardXp: 50, rewardCoins: 0 },
+        { id: 'messages20', libelle: 'Envoyer 20 messages', type: 'messages', cible: 20, recompenseXp: 100, recompensePieces: 50 },
+        { id: 'voice30', libelle: 'Passer 30 minutes en vocal', type: 'voice_minutes', cible: 30, recompenseXp: 150, recompensePieces: 50 },
+        { id: 'daily', libelle: 'Récupérer ta récompense /daily', type: 'daily', cible: 1, recompenseXp: 50, recompensePieces: 0 },
       ],
-      streakMilestones: [
-        { days: 7, coins: 200, xp: 200 },
-        { days: 30, coins: 1000, xp: 1000 },
+      paliersSerie: [
+        { days: 7, pieces: 200, xp: 200 },
+        { days: 30, pieces: 1000, xp: 1000 },
       ],
-      announce: true,
+      annonce: true,
     },
-    profiles: { autoBadges: true },
-    rules: {
+    profils: { badgesAuto: true },
+    reglement: {
       channelId: null,
       title: '📜 RÈGLEMENT',
       sections: [
@@ -450,106 +450,106 @@ export function defaultConfig(): GuildConfig {
         { title: '🔞 Contenu', content: 'Aucun contenu NSFW, choquant ou illégal.' },
         { title: '🛡️ Staff', content: "Les décisions du staff doivent être respectées. En cas de désaccord, ouvre un ticket." },
       ],
-      acceptRoleId: null,
-      removeRoleId: null,
+      roleAcceptationId: null,
+      roleRetireId: null,
     },
     verification: {
       channelId: null,
-      verifiedRoleId: null,
-      unverifiedRoleId: null,
+      roleVerifieId: null,
+      roleNonVerifieId: null,
       method: 'button',
-      minAccountAgeDays: 0,
+      ageCompteMinJours: 0,
     },
     antiraid: {
-      joinThreshold: 10,
-      joinWindowSeconds: 15,
-      minAccountAgeDays: 3,
-      suspiciousAction: 'none',
-      autoLockdown: false,
-      mentionThreshold: 15,
-      alertChannelId: null,
+      seuilArrivees: 10,
+      fenetreArriveesSecondes: 15,
+      ageCompteMinJours: 3,
+      actionSuspects: 'none',
+      verrouillageAuto: false,
+      seuilMentions: 15,
+      salonAlerteId: null,
     },
     antinuke: {
-      windowSeconds: 30,
-      thresholds: { channelDelete: 3, channelCreate: 8, roleDelete: 3, roleCreate: 8, ban: 4, kick: 5, webhookCreate: 4 },
+      fenetreSecondes: 30,
+      thresholds: { channelDelete: 3, channelCreate: 8, roleDelete: 3, roleCreate: 8, ban: 4, kick: 5, creationWebhook: 4 },
       action: 'alert',
-      trustedUsers: [],
+      membresDeConfiance: [],
     },
-    reports: { channelId: null, mode: 'channel' },
-    feedback: { channelId: null },
-    forms: { partnershipChannelId: null, staffApplyChannelId: null },
-    stats: { trackVoice: true },
-    contests: { defaultChannelId: null },
-    setup: { completedAt: null },
+    signalements: { channelId: null, mode: 'channel' },
+    avis: { channelId: null },
+    formulaires: { salonPartenariatsId: null, salonCandidaturesId: null },
+    statistiques: { suivreVocal: true },
+    concours: { salonDefautId: null },
+    assistant: { termineLe: null },
   };
 }
 
-type Plain = Record<string, unknown>;
+type Simple = Record<string, unknown>;
 
-function isPlainObject(v: unknown): v is Plain {
+function estObjetSimple(v: unknown): v is Simple {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 /** Fusion profonde : les objets sont fusionnés, les tableaux et scalaires stockés remplacent les défauts. */
-export function deepMerge<T>(defaults: T, stored: unknown): T {
-  if (!isPlainObject(defaults) || !isPlainObject(stored)) {
-    if (stored === undefined) return defaults;
-    if (Array.isArray(defaults)) return (Array.isArray(stored) ? stored : defaults) as T;
-    if (defaults !== null && stored !== null && typeof defaults !== typeof stored) return defaults;
-    return stored as T;
+export function fusionProfonde<T>(defauts: T, stocke: unknown): T {
+  if (!estObjetSimple(defauts) || !estObjetSimple(stocke)) {
+    if (stocke === undefined) return defauts;
+    if (Array.isArray(defauts)) return (Array.isArray(stocke) ? stocke : defauts) as T;
+    if (defauts !== null && stocke !== null && typeof defauts !== typeof stocke) return defauts;
+    return stocke as T;
   }
-  const out: Plain = { ...defaults };
-  for (const [key, value] of Object.entries(stored)) {
-    if (!(key in defaults)) {
+  const sortie: Simple = { ...defauts };
+  for (const [cle, valeur] of Object.entries(stocke)) {
+    if (!(cle in defauts)) {
       // Clés libres (ex : overrides de logs) : on garde les objets ouverts
-      if (Object.keys(defaults).length === 0) out[key] = value;
+      if (Object.keys(defauts).length === 0) sortie[cle] = valeur;
       continue;
     }
-    out[key] = deepMerge((defaults as Plain)[key], value);
+    sortie[cle] = fusionProfonde((defauts as Simple)[cle], valeur);
   }
-  return out as T;
+  return sortie as T;
 }
 
-const cache = new Map<string, GuildConfig>();
+const cache = new Map<string, ConfigServeur>();
 
-export function getConfig(guildId: string): GuildConfig {
-  const cached = cache.get(guildId);
-  if (cached) return cached;
-  const row = get<{ data: string }>('SELECT data FROM guild_settings WHERE guild_id = ?', guildId);
-  let stored: unknown = {};
-  if (row) {
+export function lireConfig(serveurId: string): ConfigServeur {
+  const enCache = cache.get(serveurId);
+  if (enCache) return enCache;
+  const rangee = lire<{ donnees: string }>('SELECT donnees FROM reglages_serveurs WHERE serveur_id = ?', serveurId);
+  let stocke: unknown = {};
+  if (rangee) {
     try {
-      stored = JSON.parse(row.data);
+      stocke = JSON.parse(rangee.donnees);
     } catch {
-      stored = {};
+      stocke = {};
     }
   }
-  const config = deepMerge(defaultConfig(), stored);
-  cache.set(guildId, config);
+  const config = fusionProfonde(configParDefaut(), stocke);
+  cache.set(serveurId, config);
   return config;
 }
 
 /** Modifie la configuration d'un serveur via une fonction et la persiste. */
-export function updateConfig(guildId: string, mutate: (config: GuildConfig) => void): GuildConfig {
-  const draft = structuredClone(getConfig(guildId));
-  mutate(draft);
-  saveConfig(guildId, draft);
-  return draft;
+export function modifierConfig(serveurId: string, modifier: (config: ConfigServeur) => void): ConfigServeur {
+  const brouillon = structuredClone(lireConfig(serveurId));
+  modifier(brouillon);
+  enregistrerConfig(serveurId, brouillon);
+  return brouillon;
 }
 
-export function saveConfig(guildId: string, config: GuildConfig): void {
-  const normalized = deepMerge(defaultConfig(), config);
-  run(
-    `INSERT INTO guild_settings (guild_id, data, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(guild_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
-    guildId,
-    JSON.stringify(normalized),
+export function enregistrerConfig(serveurId: string, config: ConfigServeur): void {
+  const normalise = fusionProfonde(configParDefaut(), config);
+  executer(
+    `INSERT INTO reglages_serveurs (serveur_id, donnees, modifie_le) VALUES (?, ?, ?)
+     ON CONFLICT(serveur_id) DO UPDATE SET donnees = excluded.donnees, modifie_le = excluded.modifie_le`,
+    serveurId,
+    JSON.stringify(normalise),
     Date.now(),
   );
-  cache.set(guildId, normalized);
+  cache.set(serveurId, normalise);
 }
 
-export function resetConfigCache(guildId?: string): void {
-  if (guildId) cache.delete(guildId);
+export function viderCacheConfig(serveurId?: string): void {
+  if (serveurId) cache.delete(serveurId);
   else cache.clear();
 }

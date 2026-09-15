@@ -1,59 +1,59 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { getConfig } from '../../core/guildConfig';
-import type { SetupPage } from '../../core/setup';
-import { toHex } from '../../core/brand';
-import { buildModal } from '../../core/ui';
-import { PermLevel, type BotModule, type SlashCommand } from '../../core/types';
-import { newDraft, onBuilderButton, onBuilderModal, onBuilderSelect, storeDraft } from '../../services/embedBuilder';
+import { lireConfig } from '../../core/guildConfig';
+import type { PageReglage } from '../../core/setup';
+import { enHexa } from '../../core/brand';
+import { construireFormulaire } from '../../core/ui';
+import { Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
+import { nouveauBrouillon, surBoutonRedaction, surFenetreRedaction, surMenuRedaction, stockerBrouillon } from '../../services/embedBuilder';
 
-const announce: SlashCommand = {
-  category: 'customization',
-  level: PermLevel.STAFF,
-  data: new SlashCommandBuilder().setName('announce').setDescription('Rédiger une annonce avec aperçu'),
-  async execute(interaction) {
-    const draft = newDraft(interaction.guild, interaction.user.id, 'announce');
-    draft.channelId = getConfig(interaction.guildId).announcements.defaultChannelId;
-    storeDraft(draft);
-    const defaultButton = draft.buttons[0] ? `${draft.buttons[0].label} | ${draft.buttons[0].url}` : '';
+const annonce: CommandeSlash = {
+  categorie: 'customization',
+  niveau: Niveau.STAFF,
+  donnees: new SlashCommandBuilder().setName('announce').setDescription('Rédiger une annonce avec aperçu'),
+  async executer(interaction) {
+    const brouillon = nouveauBrouillon(interaction.guild, interaction.user.id, 'announce');
+    brouillon.salonId = lireConfig(interaction.guildId).annonces.salonDefautId;
+    stockerBrouillon(brouillon);
+    const boutonParDefaut = brouillon.boutons[0] ? `${brouillon.boutons[0].label} | ${brouillon.boutons[0].url}` : '';
     await interaction.showModal(
-      buildModal(`an:announcem:${draft.id}`, 'Nouvelle annonce', [
-        { id: 'title', label: 'Titre', value: '📢 NOUVELLE ANNONCE', maxLength: 256, placeholder: '🎮 STREAM CE SOIR !' },
-        { id: 'message', label: 'Message', long: true, maxLength: 4000, placeholder: 'Rendez-vous à 21h !' },
-        { id: 'image', label: 'Image (lien, facultatif)', required: false, maxLength: 500 },
-        { id: 'color', label: 'Couleur (facultatif)', required: false, value: toHex(draft.color), maxLength: 30 },
-        { id: 'button', label: 'Bouton « Texte | lien » (facultatif)', required: false, value: defaultButton, maxLength: 300 },
+      construireFormulaire(`an:announcem:${brouillon.id}`, 'Nouvelle annonce', [
+        { id: 'title', libelle: 'Titre', valeur: '📢 NOUVELLE ANNONCE', longueurMax: 256, indication: '🎮 STREAM CE SOIR !' },
+        { id: 'message', libelle: 'Message', long: true, longueurMax: 4000, indication: 'Rendez-vous à 21h !' },
+        { id: 'image', libelle: 'Image (lien, facultatif)', obligatoire: false, longueurMax: 500 },
+        { id: 'color', libelle: 'Couleur (facultatif)', obligatoire: false, valeur: enHexa(brouillon.couleur), longueurMax: 30 },
+        { id: 'button', libelle: 'Bouton « Texte | lien » (facultatif)', obligatoire: false, valeur: boutonParDefaut, longueurMax: 300 },
       ]),
     );
   },
 };
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'announcements',
   section: 'community',
-  title: 'Annonces',
+  titre: 'Annonces',
   emoji: '📣',
   moduleId: 'announcements',
-  order: 7,
+  ordre: 7,
   description: '`/announce` ouvre un formulaire, montre l’aperçu, puis publie (et diffuse automatiquement dans un salon d’annonces).',
-  fields: [{ kind: 'channel', key: 'channel', label: 'Salon des annonces par défaut', get: (c) => c.announcements.defaultChannelId, set: (c, v) => void (c.announcements.defaultChannelId = v) }],
+  champs: [{ kind: 'channel', cle: 'channel', libelle: 'Salon des annonces par défaut', get: (c) => c.annonces.salonDefautId, set: (c, v) => void (c.annonces.salonDefautId = v) }],
 };
 
-export const announcementsModule: BotModule = {
+export const moduleAnnonces: ModuleBot = {
   id: 'announcements',
-  name: 'Annonces',
+  nom: 'Annonces',
   emoji: '📣',
   description: 'Générateur d’annonces avec aperçu avant publication',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [announce],
-  setupPages: [setupPage],
-  components: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [annonce],
+  pagesReglage: [pageReglage],
+  composants: [
     {
-      prefix: 'an',
-      level: PermLevel.STAFF,
-      button: (i, args) => onBuilderButton(i, args),
-      select: (i, args) => onBuilderSelect(i, args),
-      modal: (i, args) => onBuilderModal(i, args),
+      prefixe: 'an',
+      niveau: Niveau.STAFF,
+      bouton: (i, parametres) => surBoutonRedaction(i, parametres),
+      menu: (i, parametres) => surMenuRedaction(i, parametres),
+      fenetre: (i, parametres) => surFenetreRedaction(i, parametres),
     },
   ],
 };

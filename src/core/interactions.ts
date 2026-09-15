@@ -6,70 +6,70 @@ import {
   type RepliableInteraction,
 } from 'discord.js';
 import { erreur, ok } from './embeds';
-import { describeDiscordError, GENERIC_ERROR, UserError } from './errors';
+import { decrireErreurDiscord, ERREUR_GENERIQUE, ErreurUtilisateur } from './errors';
 import { journal } from './logService';
-import { createLogger } from './logger';
+import { creerRegistre } from './logger';
 
-const log = createLogger('interaction');
+const registre = creerRegistre('interaction');
 
-type ReplyPayload = Omit<InteractionReplyOptions, 'flags'> & { ephemeral?: boolean };
+type ChargeReponse = Omit<InteractionReplyOptions, 'flags'> & { ephemeral?: boolean };
 
 /** Répond à une interaction quel que soit son état (déjà répondue, différée…). */
-export async function reply(interaction: RepliableInteraction, payload: ReplyPayload): Promise<void> {
-  const { ephemeral, ...rest } = payload;
+export async function repondre(interaction: RepliableInteraction, charge: ChargeReponse): Promise<void> {
+  const { ephemeral: prive, ...reste } = charge;
   try {
     if (interaction.deferred && !interaction.replied) {
-      await interaction.editReply(rest as InteractionEditReplyOptions);
+      await interaction.editReply(reste as InteractionEditReplyOptions);
     } else if (interaction.replied) {
-      await interaction.followUp({ ...rest, flags: ephemeral ? MessageFlags.Ephemeral : undefined });
+      await interaction.followUp({ ...reste, flags: prive ? MessageFlags.Ephemeral : undefined });
     } else {
-      await interaction.reply({ ...rest, flags: ephemeral ? MessageFlags.Ephemeral : undefined });
+      await interaction.reply({ ...reste, flags: prive ? MessageFlags.Ephemeral : undefined });
     }
-  } catch (err) {
-    const code = (err as { code?: number }).code;
+  } catch (echec) {
+    const code = (echec as { code?: number }).code;
     // 10062 : interaction expirée, 40060 : déjà acquittée → rien à faire
-    if (code !== 10062 && code !== 40060) log.warn('Réponse impossible', err);
+    if (code !== 10062 && code !== 40060) registre.avertir('Réponse impossible', echec);
   }
 }
 
-export function replyEmbed(interaction: RepliableInteraction, embed: EmbedBuilder, ephemeral = true): Promise<void> {
-  return reply(interaction, { embeds: [embed], components: [], ephemeral });
+export function repondreEmbed(interaction: RepliableInteraction, embed: EmbedBuilder, prive = true): Promise<void> {
+  return repondre(interaction, { embeds: [embed], components: [], ephemeral: prive });
 }
 
-export function replySuccess(interaction: RepliableInteraction, description: string, title?: string, ephemeral = true): Promise<void> {
-  return replyEmbed(interaction, ok(interaction.guild, description, title ? { titre: title } : undefined), ephemeral);
+export function repondreSucces(interaction: RepliableInteraction, description: string, titre?: string, prive = true): Promise<void> {
+  return repondreEmbed(interaction, ok(interaction.guild, description, titre ? { titre } : undefined), prive);
 }
 
-export function replyError(interaction: RepliableInteraction, description: string, title?: string): Promise<void> {
-  return replyEmbed(interaction, erreur(interaction.guild, description, title ? { titre: title } : undefined), true);
+export function repondreErreur(interaction: RepliableInteraction, description: string, titre?: string): Promise<void> {
+  return repondreEmbed(interaction, erreur(interaction.guild, description, titre ? { titre } : undefined), true);
 }
 
-export async function deferEphemeral(interaction: RepliableInteraction): Promise<void> {
+export async function differerPrive(interaction: RepliableInteraction): Promise<void> {
   if (!interaction.deferred && !interaction.replied) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   }
 }
 
 /** Transforme n'importe quelle erreur en message propre pour l'utilisateur. */
-export async function handleInteractionError(interaction: RepliableInteraction, err: unknown, scope: string): Promise<void> {
-  if (err instanceof UserError) {
-    await replyError(interaction, err.message);
+export async function traiterErreurInteraction(interaction: RepliableInteraction, echec: unknown, portee: string): Promise<void> {
+  if (echec instanceof ErreurUtilisateur) {
+    await repondreErreur(interaction, echec.message);
     return;
   }
-  const discordMessage = describeDiscordError(err);
-  if (discordMessage) {
-    log.warn(`[${scope}] ${discordMessage}`);
-    await replyError(interaction, discordMessage);
+  const messageDiscord = decrireErreurDiscord(echec);
+  if (messageDiscord) {
+    registre.avertir(`[${portee}] ${messageDiscord}`);
+    await repondreErreur(interaction, messageDiscord);
     return;
   }
-  log.error(`[${scope}] Erreur non gérée`, err);
+  registre.erreur(`[${portee}] Erreur non gérée`, echec);
   if (interaction.guild) {
     // Le détail technique va au staff (#sante-log), jamais au membre.
     void journal(interaction.guild, 'health', {
-      title: 'Erreur technique',
-      tone: 'alerte',
-      lines: [`**Où** : \`${scope}\``, `**Par** : <@${interaction.user.id}>`, `\`\`\`${String((err as Error)?.stack ?? err).slice(0, 1500)}\`\`\``],
+      titre: 'Erreur technique',
+      ton: 'alerte',
+      lignes: [`**Où** : \`${portee}\``, `**Par** : <@${interaction.user.id}>`, `\`\`\`${String((echec as Error)?.stack ?? echec).slice(0, 1500)}\`\`\``],
     });
   }
-  await replyError(interaction, `Une erreur est survenue.\n${GENERIC_ERROR}`);
+  await repondreErreur(interaction, `Une erreur est survenue.\n${ERREUR_GENERIQUE}`);
 }

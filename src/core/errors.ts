@@ -1,19 +1,19 @@
 /** Erreur destinée à l'utilisateur : son message est affiché tel quel. */
-export class UserError extends Error {
+export class ErreurUtilisateur extends Error {
   constructor(
     message: string,
-    public readonly title = '❌ Action impossible',
+    public readonly titre = '❌ Action impossible',
   ) {
     super(message);
     this.name = 'UserError';
   }
 }
 
-export const GENERIC_ERROR = "Le bot n'a pas pu effectuer cette action.";
+export const ERREUR_GENERIQUE = "Le bot n'a pas pu effectuer cette action.";
 
 /** Codes d'erreur Discord courants traduits en messages compréhensibles. */
-export function describeDiscordError(err: unknown): string | null {
-  const code = (err as { code?: number } | null)?.code;
+export function decrireErreurDiscord(echec: unknown): string | null {
+  const code = (echec as { code?: number } | null)?.code;
   switch (code) {
     case 50013:
       return "Je n'ai pas les permissions nécessaires (vérifie mes permissions et la position de mon rôle).";

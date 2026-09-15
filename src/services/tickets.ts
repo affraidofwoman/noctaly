@@ -10,85 +10,85 @@ import {
   type TextChannel,
   type User,
 } from 'discord.js';
-import { all, get, run } from '../database/db';
-import { brandName, colorFor } from '../core/embeds';
-import { UserError } from '../core/errors';
-import { getConfig, updateConfig, type TicketCategory } from '../core/guildConfig';
-import { journal, recordLog } from '../core/logService';
-import { createLogger } from '../core/logger';
-import { canBotManageRole, hasLevel } from '../core/permissions';
-import { slugify } from '../core/text';
-import { PermLevel } from '../core/types';
-import { listMembers } from '../core/whitelists';
-import { buildTranscriptHtml, fetchAllMessages } from './transcript';
+import { lireTout, lire, executer } from '../database/db';
+import { nomEnseigne, couleurPour } from '../core/embeds';
+import { ErreurUtilisateur } from '../core/errors';
+import { lireConfig, modifierConfig, type MotifTicket } from '../core/guildConfig';
+import { journal, historiser } from '../core/logService';
+import { creerRegistre } from '../core/logger';
+import { botPeutGererRole, aNiveau } from '../core/permissions';
+import { identifiantDepuisTexte } from '../core/text';
+import { Niveau } from '../core/types';
+import { membresListe } from '../core/whitelists';
+import { construireTranscript, recupererMessages } from './transcript';
 
-const log = createLogger('tickets');
+const registre = creerRegistre('tickets');
 
-export interface TicketRow {
+export interface LigneTicket {
   id: number;
-  guild_id: string;
-  number: number;
-  channel_id: string;
-  user_id: string;
-  category: string;
-  subject: string | null;
-  status: 'open' | 'closed' | 'deleted';
-  claimed_by: string | null;
-  created_at: number;
-  closed_at: number | null;
-  closed_by: string | null;
+  serveur_id: string;
+  numero: number;
+  salon_id: string;
+  utilisateur_id: string;
+  categorie: string;
+  sujet: string | null;
+  statut: 'open' | 'closed' | 'deleted';
+  pris_par: string | null;
+  cree_le: number;
+  ferme_le: number | null;
+  ferme_par: string | null;
 }
 
 /** Salons de tickets ouverts (pour enregistrer leurs messages sans requête par message). */
-export const ticketChannels = new Set<string>();
+export const salonsTickets = new Set<string>();
 
-export function loadTicketChannels(): void {
-  ticketChannels.clear();
-  for (const row of all<{ channel_id: string }>("SELECT channel_id FROM tickets WHERE status != 'deleted'")) ticketChannels.add(row.channel_id);
+export function chargerSalonsTickets(): void {
+  salonsTickets.clear();
+  for (const rangee of lireTout<{ salon_id: string }>("SELECT salon_id FROM tickets WHERE statut != 'deleted'")) salonsTickets.add(rangee.salon_id);
 }
 
-export function ticketByChannel(channelId: string): TicketRow | undefined {
-  return get<TicketRow>("SELECT * FROM tickets WHERE channel_id = ? AND status != 'deleted'", channelId);
+export function ticketDuSalon(salonId: string): LigneTicket | undefined {
+  return lire<LigneTicket>("SELECT * FROM tickets WHERE salon_id = ? AND statut != 'deleted'", salonId);
 }
 
-export function openTicketsOf(guildId: string, userId: string): TicketRow[] {
-  return all<TicketRow>("SELECT * FROM tickets WHERE guild_id = ? AND user_id = ? AND status = 'open'", guildId, userId);
+export function ticketsOuvertsDe(serveurId: string, utilisateurId: string): LigneTicket[] {
+  return lireTout<LigneTicket>("SELECT * FROM tickets WHERE serveur_id = ? AND utilisateur_id = ? AND statut = 'open'", serveurId, utilisateurId);
 }
 
-export function listTickets(guildId: string, status: 'open' | 'closed' | 'all' = 'open'): TicketRow[] {
-  return status === 'all'
-    ? all<TicketRow>("SELECT * FROM tickets WHERE guild_id = ? AND status != 'deleted' ORDER BY created_at DESC LIMIT 500", guildId)
-    : all<TicketRow>('SELECT * FROM tickets WHERE guild_id = ? AND status = ? ORDER BY created_at DESC LIMIT 500', guildId, status);
+export function listerTickets(serveurId: string, statut: 'open' | 'closed' | 'all' = 'open'): LigneTicket[] {
+  return statut === 'all'
+    ? lireTout<LigneTicket>("SELECT * FROM tickets WHERE serveur_id = ? AND statut != 'deleted' ORDER BY cree_le DESC LIMIT 500", serveurId)
+    : lireTout<LigneTicket>('SELECT * FROM tickets WHERE serveur_id = ? AND statut = ? ORDER BY cree_le DESC LIMIT 500', serveurId, statut);
 }
 
-export function ticketCount(guildId: string, userId: string): number {
-  return get<{ n: number }>('SELECT COUNT(*) AS n FROM tickets WHERE guild_id = ? AND user_id = ?', guildId, userId)?.n ?? 0;
+export function nombreTickets(serveurId: string, utilisateurId: string): number {
+  return lire<{ n: number }>('SELECT COUNT(*) AS n FROM tickets WHERE serveur_id = ? AND utilisateur_id = ?', serveurId, utilisateurId)?.n ?? 0;
 }
 
-export function categoryOf(guildId: string, id: string): TicketCategory {
-  const cats = getConfig(guildId).tickets.categories;
-  return cats.find((c) => c.id === id) ?? { id, label: id, emoji: '🎫', description: '', style: 'Secondary', roles: [] };
+export function motifDe(serveurId: string, id: string): MotifTicket {
+  const motifs = lireConfig(serveurId).tickets.categories;
+  return motifs.find((c) => c.id === id) ?? { id, libelle: id, emoji: '🎫', description: '', style: 'Secondary', roles: [] };
 }
 
 /** Rôles qui voient un ticket : ceux de la catégorie, sinon les rôles staff tickets, sinon les rôles d'accès du bot. */
-export function accessRoles(guild: Guild, category: TicketCategory): string[] {
-  const cfg = getConfig(guild.id);
-  const pick = (ids: string[]) => ids.filter((id) => guild.roles.cache.has(id));
-  const fromCategory = pick(category.roles);
-  const staff = pick(cfg.tickets.staffRoles);
-  if (fromCategory.length) return [...new Set([...fromCategory, ...staff])];
+export function rolesAcces(serveur: Guild, categorie: MotifTicket): string[] {
+  const reglages = lireConfig(serveur.id);
+  const choisir = (ids: string[]) => ids.filter((id) => serveur.roles.cache.has(id));
+  const depuisMotif = choisir(categorie.roles);
+  const staff = choisir(reglages.tickets.rolesStaff);
+  if (depuisMotif.length) return [...new Set([...depuisMotif, ...staff])];
   if (staff.length) return staff;
-  return pick([...cfg.permissions.support, ...cfg.permissions.staff, ...cfg.permissions.moderator, ...cfg.permissions.admin]);
+  return choisir([...reglages.permissions.support, ...reglages.permissions.staff, ...reglages.permissions.moderateur, ...reglages.permissions.admin]);
 }
 
 /** Staff d'un ticket : niveau Support+, ou porteur d'un rôle qui voit ce ticket. */
-export function isTicketStaff(member: GuildMember, ticket: TicketRow): boolean {
-  if (hasLevel(member, PermLevel.SUPPORT)) return true;
-  const roles = accessRoles(member.guild, categoryOf(member.guild.id, ticket.category));
-  return roles.some((r) => member.roles.cache.has(r));
+export function estStaffTicket(membre: GuildMember, ticket: LigneTicket): boolean {
+  if (aNiveau(membre, Niveau.SUPPORT)) return true;
+  const roles = rolesAcces(membre.guild, motifDe(membre.guild.id, ticket.categorie));
+  return roles.some((r) => membre.roles.cache.has(r));
 }
 
-const MEMBER_ALLOW = [
+const AUTORISATIONS_MEMBRE = [
   PermissionFlagsBits.ViewChannel,
   PermissionFlagsBits.SendMessages,
   PermissionFlagsBits.ReadMessageHistory,
@@ -96,188 +96,188 @@ const MEMBER_ALLOW = [
   PermissionFlagsBits.EmbedLinks,
 ];
 
-async function ticketParent(guild: Guild): Promise<CategoryChannel> {
-  const cfg = getConfig(guild.id).tickets;
-  const configured = cfg.parentCategoryId ? guild.channels.cache.get(cfg.parentCategoryId) : null;
-  const usable = (c: CategoryChannel | null | undefined) => c && c.type === ChannelType.GuildCategory && c.children.cache.size < 50;
-  if (usable(configured as CategoryChannel)) return configured as CategoryChannel;
-  const found = guild.channels.cache.find((c) => c.type === ChannelType.GuildCategory && c.name.toLowerCase().includes('ticket') && c.children.cache.size < 50) as
+async function categorieTickets(serveur: Guild): Promise<CategoryChannel> {
+  const reglages = lireConfig(serveur.id).tickets;
+  const configure = reglages.categorieParenteId ? serveur.channels.cache.get(reglages.categorieParenteId) : null;
+  const utilisable = (c: CategoryChannel | null | undefined) => c && c.type === ChannelType.GuildCategory && c.children.cache.size < 50;
+  if (utilisable(configure as CategoryChannel)) return configure as CategoryChannel;
+  const trouve = serveur.channels.cache.find((c) => c.type === ChannelType.GuildCategory && c.name.toLowerCase().includes('ticket') && c.children.cache.size < 50) as
     | CategoryChannel
     | undefined;
-  if (found) return found;
-  const created = await guild.channels.create({
+  if (trouve) return trouve;
+  const cree = await serveur.channels.create({
     name: '🎫 Tickets',
     type: ChannelType.GuildCategory,
-    permissionOverwrites: [{ id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }],
+    permissionOverwrites: [{ id: serveur.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }],
     reason: 'Catégorie des tickets',
   });
-  if (!cfg.parentCategoryId) updateConfig(guild.id, (c) => void (c.tickets.parentCategoryId = created.id));
-  return created;
+  if (!reglages.categorieParenteId) modifierConfig(serveur.id, (c) => void (c.tickets.categorieParenteId = cree.id));
+  return cree;
 }
 
-async function sortChannels(category: CategoryChannel): Promise<void> {
+async function trierSalons(categorie: CategoryChannel): Promise<void> {
   try {
-    const channels = [...category.children.cache.values()].filter((c) => c.type === ChannelType.GuildText).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-    if (channels.length < 2) return;
-    const base = Math.min(...channels.map((c) => c.rawPosition));
-    await category.guild.channels.setPositions(channels.map((c, i) => ({ channel: c.id, position: base + i })));
-  } catch (err) {
-    log.debug(`Tri des tickets impossible : ${(err as Error).message}`);
+    const salons = [...categorie.children.cache.values()].filter((c) => c.type === ChannelType.GuildText).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    if (salons.length < 2) return;
+    const base = Math.min(...salons.map((c) => c.rawPosition));
+    await categorie.guild.channels.setPositions(salons.map((c, i) => ({ channel: c.id, position: base + i })));
+  } catch (echec) {
+    registre.debogage(`Tri des tickets impossible : ${(echec as Error).message}`);
   }
 }
 
-export interface CreatedTicket {
-  channel: TextChannel;
-  ticket: TicketRow;
-  category: TicketCategory;
-  pingRoles: string[];
+export interface TicketCree {
+  salon: TextChannel;
+  ticket: LigneTicket;
+  categorie: MotifTicket;
+  rolesMentionnes: string[];
 }
 
-export async function createTicket(member: GuildMember, categoryId: string, subject: string | null = null): Promise<CreatedTicket> {
-  const guild = member.guild;
-  const cfg = getConfig(guild.id).tickets;
-  const category = cfg.categories.find((c) => c.id === categoryId);
-  if (!category) throw new UserError('Ce motif de ticket n’existe plus.');
-  const open = openTicketsOf(guild.id, member.id);
-  if (open.length >= cfg.maxOpenPerUser) {
-    throw new UserError(`Tu as déjà ${open.length} ticket(s) ouvert(s) : ${open.map((t) => `<#${t.channel_id}>`).join(', ')}`);
+export async function creerTicket(membre: GuildMember, categorieId: string, sujet: string | null = null): Promise<TicketCree> {
+  const serveur = membre.guild;
+  const reglages = lireConfig(serveur.id).tickets;
+  const categorie = reglages.categories.find((c) => c.id === categorieId);
+  if (!categorie) throw new ErreurUtilisateur('Ce motif de ticket n’existe plus.');
+  const ouvrir = ticketsOuvertsDe(serveur.id, membre.id);
+  if (ouvrir.length >= reglages.ouvertsMaxParMembre) {
+    throw new ErreurUtilisateur(`Tu as déjà ${ouvrir.length} ticket(s) ouvert(s) : ${ouvrir.map((t) => `<#${t.salon_id}>`).join(', ')}`);
   }
-  const me = guild.members.me;
-  if (!me?.permissions.has(PermissionFlagsBits.ManageChannels)) throw new UserError('Il me faut la permission « Gérer les salons » pour créer un ticket.');
+  const moi = serveur.members.me;
+  if (!moi?.permissions.has(PermissionFlagsBits.ManageChannels)) throw new ErreurUtilisateur('Il me faut la permission « Gérer les salons » pour créer un ticket.');
 
-  const parent = await ticketParent(guild);
-  const base = `${slugify(category.id, 20)}-${slugify(member.user.username, 60)}`;
-  const name = guild.channels.cache.some((c) => c.name === base) ? `${base}-${Math.random().toString(36).slice(2, 5)}` : base;
-  const roles = accessRoles(guild, category);
+  const parent = await categorieTickets(serveur);
+  const base = `${identifiantDepuisTexte(categorie.id, 20)}-${identifiantDepuisTexte(membre.user.username, 60)}`;
+  const nom = serveur.channels.cache.some((c) => c.name === base) ? `${base}-${Math.random().toString(36).slice(2, 5)}` : base;
+  const roles = rolesAcces(serveur, categorie);
 
-  const overwrites: OverwriteResolvable[] = [
-    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-    { id: member.id, allow: MEMBER_ALLOW },
-    { id: me.id, allow: [...MEMBER_ALLOW, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages] },
-    ...roles.map((id) => ({ id, allow: MEMBER_ALLOW })),
+  const permissionsSalon: OverwriteResolvable[] = [
+    { id: serveur.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: membre.id, allow: AUTORISATIONS_MEMBRE },
+    { id: moi.id, allow: [...AUTORISATIONS_MEMBRE, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages] },
+    ...roles.map((id) => ({ id, allow: AUTORISATIONS_MEMBRE })),
   ];
   // Whitelists support/staff par ID : elles voient aussi les tickets (plafonné pour rester sous la limite Discord).
-  const wlUsers = [...new Set([...listMembers('support', guild.id), ...listMembers('staff', guild.id)])].filter((id) => guild.members.cache.has(id) && id !== member.id).slice(0, 30);
-  for (const id of wlUsers) overwrites.push({ id, allow: MEMBER_ALLOW });
+  const membresWhitelists = [...new Set([...membresListe('support', serveur.id), ...membresListe('staff', serveur.id)])].filter((id) => serveur.members.cache.has(id) && id !== membre.id).slice(0, 30);
+  for (const id of membresWhitelists) permissionsSalon.push({ id, allow: AUTORISATIONS_MEMBRE });
 
-  const number = updateConfig(guild.id, (c) => void (c.tickets.counter += 1)).tickets.counter;
-  const channel = await guild.channels.create({
-    name,
+  const numero = modifierConfig(serveur.id, (c) => void (c.tickets.counter += 1)).tickets.counter;
+  const salon = await serveur.channels.create({
+    name: nom,
     type: ChannelType.GuildText,
     parent: parent.id,
-    topic: `Ticket #${number} ouvert par ${member.id} | catégorie : ${category.id}`,
-    permissionOverwrites: overwrites,
-    reason: `Ticket de ${member.user.tag}`,
+    topic: `Ticket #${numero} ouvert par ${membre.id} | catégorie : ${categorie.id}`,
+    permissionOverwrites: permissionsSalon,
+    reason: `Ticket de ${membre.user.tag}`,
   });
 
-  const r = run(
-    'INSERT INTO tickets (guild_id, number, channel_id, user_id, category, subject, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    guild.id,
-    number,
-    channel.id,
-    member.id,
-    category.id,
-    subject,
+  const r = executer(
+    'INSERT INTO tickets (serveur_id, numero, salon_id, utilisateur_id, categorie, sujet, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    serveur.id,
+    numero,
+    salon.id,
+    membre.id,
+    categorie.id,
+    sujet,
     Date.now(),
   );
-  ticketChannels.add(channel.id);
-  void sortChannels(parent);
+  salonsTickets.add(salon.id);
+  void trierSalons(parent);
 
-  const ticket = ticketByChannel(channel.id)!;
-  recordLog(guild.id, 'ticket', 'open', member.id, member.id, { ticketId: r.lastInsertRowid, category: category.id });
-  void journal(guild, 'ticket', {
-    title: 'Ticket ouvert',
-    tone: 'ok',
-    lines: [`**Ticket** : <#${channel.id}> \`#${channel.name}\``, `**Catégorie** : ${category.emoji} ${category.label}`, `**Ouvert par** : <@${member.id}>`],
-    by: member.user,
+  const ticket = ticketDuSalon(salon.id)!;
+  historiser(serveur.id, 'ticket', 'open', membre.id, membre.id, { ticketId: r.lastInsertRowid, category: categorie.id });
+  void journal(serveur, 'ticket', {
+    titre: 'Ticket ouvert',
+    ton: 'ok',
+    lignes: [`**Ticket** : <#${salon.id}> \`#${salon.name}\``, `**Catégorie** : ${categorie.emoji} ${categorie.libelle}`, `**Ouvert par** : <@${membre.id}>`],
+    par: membre.user,
   });
-  const pingRoles = category.roles.filter((id) => guild.roles.cache.has(id));
-  return { channel, ticket, category, pingRoles };
+  const rolesMentionnes = categorie.roles.filter((id) => serveur.roles.cache.has(id));
+  return { salon, ticket, categorie, rolesMentionnes };
 }
 
 /** Génère le transcript, l'envoie dans ticket-logs et en MP au créateur. */
-export async function archiveTranscript(guild: Guild, channel: TextChannel, ticket: TicketRow, closedBy: User): Promise<{ messages: number; dmSent: boolean }> {
-  const messages = await fetchAllMessages(channel);
-  const category = categoryOf(guild.id, ticket.category);
-  const html = buildTranscriptHtml(channel, messages, { subtitle: `${category.label} · ouvert par ${ticket.user_id}` });
-  const fileName = `transcript-${channel.name}.html`;
+export async function archiverTranscript(serveur: Guild, salon: TextChannel, ticket: LigneTicket, fermePar: User): Promise<{ messages: number; mpEnvoye: boolean }> {
+  const messages = await recupererMessages(salon);
+  const categorie = motifDe(serveur.id, ticket.categorie);
+  const html = construireTranscript(salon, messages, { sousTitre: `${categorie.libelle} · ouvert par ${ticket.utilisateur_id}` });
+  const nomFichier = `transcript-${salon.name}.html`;
 
-  await journal(guild, 'ticket', {
-    title: 'Ticket fermé',
-    tone: 'neutre',
-    lines: [`**#${channel.name}** · ${messages.length} message${messages.length > 1 ? 's' : ''} · transcript en pièce jointe`],
-    fields: [
-      { name: 'Ouvert par', value: `<@${ticket.user_id}>` },
-      { name: 'Fermé par', value: `<@${closedBy.id}>` },
-      { name: 'Motif', value: `${category.emoji} ${category.label}` },
-      { name: 'Pris en charge', value: ticket.claimed_by ? `<@${ticket.claimed_by}>` : '—' },
-      { name: 'Durée', value: `<t:${Math.floor(ticket.created_at / 1000)}:R>` },
+  await journal(serveur, 'ticket', {
+    titre: 'Ticket fermé',
+    ton: 'neutre',
+    lignes: [`**#${salon.name}** · ${messages.length} message${messages.length > 1 ? 's' : ''} · transcript en pièce jointe`],
+    champs: [
+      { name: 'Ouvert par', value: `<@${ticket.utilisateur_id}>` },
+      { name: 'Fermé par', value: `<@${fermePar.id}>` },
+      { name: 'Motif', value: `${categorie.emoji} ${categorie.libelle}` },
+      { name: 'Pris en charge', value: ticket.pris_par ? `<@${ticket.pris_par}>` : '—' },
+      { name: 'Durée', value: `<t:${Math.floor(ticket.cree_le / 1000)}:R>` },
     ],
-    files: [new AttachmentBuilder(Buffer.from(html, 'utf8'), { name: fileName })],
-    by: closedBy,
+    fichiers: [new AttachmentBuilder(Buffer.from(html, 'utf8'), { name: nomFichier })],
+    par: fermePar,
   });
 
-  let dmSent = false;
-  if (getConfig(guild.id).tickets.transcriptToUser) {
-    const creator = await guild.client.users.fetch(ticket.user_id).catch(() => null);
-    if (creator && !creator.bot) {
+  let mpEnvoye = false;
+  if (lireConfig(serveur.id).tickets.transcriptAuMembre) {
+    const createur = await serveur.client.users.fetch(ticket.utilisateur_id).catch(() => null);
+    if (createur && !createur.bot) {
       const embed = new EmbedBuilder()
-        .setColor(colorFor(guild))
+        .setColor(couleurPour(serveur))
         .setTitle('🎫 Ton ticket est fermé')
         .setDescription('Toute la conversation est dans le fichier joint — garde-le si tu en as besoin.')
-        .addFields({ name: 'Motif', value: category.label, inline: true }, { name: 'Salon', value: `\`${channel.name}\``, inline: true })
-        .setFooter({ text: `${brandName(guild)} · transcript du ticket` })
+        .addFields({ name: 'Motif', value: categorie.libelle, inline: true }, { name: 'Salon', value: `\`${salon.name}\``, inline: true })
+        .setFooter({ text: `${nomEnseigne(serveur)} · transcript du ticket` })
         .setTimestamp();
-      dmSent = await creator
-        .send({ embeds: [embed], files: [new AttachmentBuilder(Buffer.from(html, 'utf8'), { name: fileName })] })
+      mpEnvoye = await createur
+        .send({ embeds: [embed], files: [new AttachmentBuilder(Buffer.from(html, 'utf8'), { name: nomFichier })] })
         .then(() => true)
         .catch(() => false);
     }
   }
-  return { messages: messages.length, dmSent };
+  return { messages: messages.length, mpEnvoye };
 }
 
-export function markClosed(ticket: TicketRow, closedBy: string): void {
-  run("UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ? WHERE id = ?", Date.now(), closedBy, ticket.id);
-  recordLog(ticket.guild_id, 'ticket', 'close', ticket.user_id, closedBy, { ticketId: ticket.id });
+export function marquerFerme(ticket: LigneTicket, fermePar: string): void {
+  executer("UPDATE tickets SET statut = 'closed', ferme_le = ?, ferme_par = ? WHERE id = ?", Date.now(), fermePar, ticket.id);
+  historiser(ticket.serveur_id, 'ticket', 'close', ticket.utilisateur_id, fermePar, { ticketId: ticket.id });
 }
 
-export function markDeleted(channelId: string): void {
-  run("UPDATE tickets SET status = 'deleted', closed_at = COALESCE(closed_at, ?) WHERE channel_id = ?", Date.now(), channelId);
-  ticketChannels.delete(channelId);
+export function marquerSupprime(salonId: string): void {
+  executer("UPDATE tickets SET statut = 'deleted', ferme_le = COALESCE(ferme_le, ?) WHERE salon_id = ?", Date.now(), salonId);
+  salonsTickets.delete(salonId);
 }
 
-export function markReopened(ticket: TicketRow): void {
-  run("UPDATE tickets SET status = 'open', closed_at = NULL, closed_by = NULL WHERE id = ?", ticket.id);
-  recordLog(ticket.guild_id, 'ticket', 'reopen', ticket.user_id, null, { ticketId: ticket.id });
+export function marquerRouvert(ticket: LigneTicket): void {
+  executer("UPDATE tickets SET statut = 'open', ferme_le = NULL, ferme_par = NULL WHERE id = ?", ticket.id);
+  historiser(ticket.serveur_id, 'ticket', 'reopen', ticket.utilisateur_id, null, { ticketId: ticket.id });
 }
 
-export function markClaimed(ticket: TicketRow, staffId: string | null): void {
-  run('UPDATE tickets SET claimed_by = ? WHERE id = ?', staffId, ticket.id);
-  recordLog(ticket.guild_id, 'ticket', staffId ? 'claim' : 'unclaim', ticket.user_id, staffId, { ticketId: ticket.id });
+export function marquerPris(ticket: LigneTicket, staffId: string | null): void {
+  executer('UPDATE tickets SET pris_par = ? WHERE id = ?', staffId, ticket.id);
+  historiser(ticket.serveur_id, 'ticket', staffId ? 'claim' : 'unclaim', ticket.utilisateur_id, staffId, { ticketId: ticket.id });
 }
 
 /** Ferme l'accès en écriture du créateur (mode archive). */
-export async function lockCreator(channel: TextChannel, ticket: TicketRow, open: boolean): Promise<void> {
-  await channel.permissionOverwrites.edit(ticket.user_id, { SendMessages: open, ViewChannel: true }, { reason: open ? 'Ticket rouvert' : 'Ticket fermé' }).catch(() => undefined);
+export async function verrouillerCreateur(salon: TextChannel, ticket: LigneTicket, ouvrir: boolean): Promise<void> {
+  await salon.permissionOverwrites.edit(ticket.utilisateur_id, { SendMessages: ouvrir, ViewChannel: true }, { reason: ouvrir ? 'Ticket rouvert' : 'Ticket fermé' }).catch(() => undefined);
 }
 
-export function storeTicketMessage(ticketId: number, messageId: string, authorId: string, authorTag: string, content: string, attachments: string[]): void {
-  run(
-    'INSERT INTO ticket_messages (ticket_id, message_id, author_id, author_tag, content, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+export function stockerMessageTicket(ticketId: number, messageId: string, auteurId: string, pseudoAuteur: string, contenu: string, attachments: string[]): void {
+  executer(
+    'INSERT INTO messages_tickets (ticket_id, message_id, auteur_id, auteur_pseudo, contenu, pieces_jointes, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ticketId,
     messageId,
-    authorId,
-    authorTag,
-    content.slice(0, 4000),
+    auteurId,
+    pseudoAuteur,
+    contenu.slice(0, 4000),
     JSON.stringify(attachments.slice(0, 10)),
     Date.now(),
   );
 }
 
-export function rolesAboveBot(guild: Guild, ids: string[]): string[] {
+export function rolesAuDessusDuBot(serveur: Guild, ids: string[]): string[] {
   return ids.filter((id) => {
-    const role = guild.roles.cache.get(id);
-    return role && !canBotManageRole(guild, role);
+    const role = serveur.roles.cache.get(id);
+    return role && !botPeutGererRole(serveur, role);
   });
 }

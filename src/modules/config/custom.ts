@@ -8,115 +8,115 @@ import {
   type ModalSubmitInteraction,
 } from 'discord.js';
 import {
-  createStreamer,
-  DEFAULT_COLOR,
-  deleteStreamer,
-  EMOJI_KEYS,
-  getStreamer,
-  isEmojiValue,
-  isImageUrl,
-  KEY_PATTERN,
-  listStreamers,
+  creerEnseigne,
+  COULEUR_DEFAUT,
+  supprimerEnseigne,
+  CLES_EMOJIS,
+  lireEnseigne,
+  estEmoji,
+  estLienImage,
+  MOTIF_CLE,
+  listerEnseignes,
   PALETTES,
-  parseColor,
-  setStreamerGuilds,
-  toHex,
-  updateStreamer,
-  type EmojiKey,
-  type StreamerLinks,
+  lireCouleur,
+  poserServeursEnseigne,
+  enHexa,
+  modifierEnseigne,
+  type CleEmoji,
+  type LiensEnseigne,
 } from '../../core/brand';
-import { askConfirmation } from '../../core/confirm';
-import { parseJson } from '../../database/db';
-import { truncate } from '../../core/text';
-import { button, buildModal, isHttpUrl, row } from '../../core/ui';
-import { PermLevel, type ComponentHandler } from '../../core/types';
-import { UserError } from '../../core/errors';
+import { demanderConfirmation } from '../../core/confirm';
+import { lireJson } from '../../database/db';
+import { tronquer } from '../../core/text';
+import { bouton, construireFormulaire, estLienHttp, rangee } from '../../core/ui';
+import { Niveau, type GestionnaireComposant } from '../../core/types';
+import { ErreurUtilisateur } from '../../core/errors';
 
-const NONE = '—';
-const EMOJIS_PER_PAGE = 25;
+const AUCUN = '—';
+const EMOJIS_PAR_PAGE = 25;
 
-function streamerOrThrow(key: string | undefined) {
-  const s = key ? getStreamer(key) : null;
-  if (!s) throw new UserError('Cette enseigne n’existe plus.');
+function exigerEnseigne(cle: string | undefined) {
+  const s = cle ? lireEnseigne(cle) : null;
+  if (!s) throw new ErreurUtilisateur('Cette enseigne n’existe plus.');
   return s;
 }
 
 /** La liste des enseignes. */
-export function customHome(client: Client, note?: string) {
-  const all = listStreamers();
+export function accueilEnseignes(client: Client, note?: string) {
+  const lireTout = listerEnseignes();
   const embed = new EmbedBuilder()
-    .setColor(DEFAULT_COLOR)
+    .setColor(COULEUR_DEFAUT)
     .setTitle('🎨 Enseignes')
     .setDescription(note ?? 'Chaque streamer a sa couleur, son nom, son logo et ses émojis. Les messages du bot prennent ceux du serveur où ils sont envoyés.');
-  if (all.length) {
+  if (lireTout.length) {
     embed.addFields(
-      all.slice(0, 24).map((s) => ({
-        name: truncate(s.name, 256),
-        value: `${toHex(s.color ?? DEFAULT_COLOR)} · ${s.guilds.length} serveur(s)${s.twitch_login ? ` · 🔴 ${s.twitch_login}` : ''}`,
+      lireTout.slice(0, 24).map((s) => ({
+        name: tronquer(s.nom, 256),
+        value: `${enHexa(s.couleur ?? COULEUR_DEFAUT)} · ${s.guilds.length} serveur(s)${s.pseudo_twitch ? ` · 🔴 ${s.pseudo_twitch}` : ''}`,
         inline: true,
       })),
     );
   } else {
     embed.addFields({ name: 'Aucune enseigne', value: 'Le bot garde ses couleurs d’origine partout.', inline: false });
   }
-  const components = [];
-  if (all.length) {
-    components.push(
-      row(
+  const composants = [];
+  if (lireTout.length) {
+    composants.push(
+      rangee(
         new StringSelectMenuBuilder()
           .setCustomId('cu:open')
           .setPlaceholder('Ouvrir une enseigne')
           .addOptions(
-            all.slice(0, 25).map((s) => ({
-              label: truncate(s.name, 100),
-              value: s.key,
-              description: truncate(`${s.guilds.length} serveur(s) · ${toHex(s.color ?? DEFAULT_COLOR)}`, 100),
+            lireTout.slice(0, 25).map((s) => ({
+              label: tronquer(s.nom, 100),
+              value: s.cle,
+              description: tronquer(`${s.guilds.length} serveur(s) · ${enHexa(s.couleur ?? COULEUR_DEFAUT)}`, 100),
             })),
           ),
       ),
     );
   }
-  components.push(row(button('cu:new', 'Nouvelle enseigne', ButtonStyle.Success, '➕')));
+  composants.push(rangee(bouton('cu:new', 'Nouvelle enseigne', ButtonStyle.Success, '➕')));
   void client;
-  return { embeds: [embed], components };
+  return { embeds: [embed], components: composants };
 }
 
 /** L'écran d'une enseigne, avec son rendu sous les yeux. */
-export function customStreamer(client: Client, key: string, note?: string) {
-  const s = streamerOrThrow(key);
-  const color = s.color ?? DEFAULT_COLOR;
-  const links = parseJson<StreamerLinks>(s.links, {});
-  const emojis = parseJson<Record<string, string>>(s.emojis, {});
+export function ecranEnseigne(client: Client, cle: string, note?: string) {
+  const s = exigerEnseigne(cle);
+  const couleur = s.couleur ?? COULEUR_DEFAUT;
+  const liens = lireJson<LiensEnseigne>(s.liens, {});
+  const emojis = lireJson<Record<string, string>>(s.emojis, {});
 
-  const preview = new EmbedBuilder()
-    .setColor(color)
-    .setTitle(s.name)
+  const apercu = new EmbedBuilder()
+    .setColor(couleur)
+    .setTitle(s.nom)
     .setDescription('Voilà de quoi auront l’air les messages de cette enseigne.')
     .addFields(
-      { name: 'Couleur', value: `${toHex(color)}${s.color === null ? ' *(celle du bot)*' : ''}`, inline: true },
+      { name: 'Couleur', value: `${enHexa(couleur)}${s.couleur === null ? ' *(celle du bot)*' : ''}`, inline: true },
       { name: 'Émojis repris', value: String(Object.keys(emojis).length), inline: true },
       { name: 'Serveurs couverts', value: String(s.guilds.length), inline: true },
     );
-  if (s.logo) preview.setThumbnail(s.logo);
-  if (s.footer) preview.setFooter({ text: s.footer, iconURL: s.logo ?? undefined });
-  if (s.background) preview.setImage(s.background);
+  if (s.logo) apercu.setThumbnail(s.logo);
+  if (s.pied) apercu.setFooter({ text: s.pied, iconURL: s.logo ?? undefined });
+  if (s.fond) apercu.setImage(s.fond);
 
-  const guildName = (id: string) => client.guilds.cache.get(id)?.name ?? id;
-  const linkLines = (Object.entries(links) as [string, string][]).filter(([, v]) => v).map(([k, v]) => `• ${k} — ${v}`);
-  const settings = new EmbedBuilder()
-    .setColor(color)
+  const nomServeur = (id: string) => client.guilds.cache.get(id)?.name ?? id;
+  const lignesLiens = (Object.entries(liens) as [string, string][]).filter(([, v]) => v).map(([k, v]) => `• ${k} — ${v}`);
+  const reglages = new EmbedBuilder()
+    .setColor(couleur)
     .setTitle('Réglages')
     .addFields(
-      { name: 'Clé', value: `\`${s.key}\``, inline: true },
-      { name: 'Chaîne Twitch', value: s.twitch_login ? `[${s.twitch_login}](https://twitch.tv/${s.twitch_login})` : NONE, inline: true },
-      { name: 'Pied de page', value: s.footer || NONE, inline: true },
-      { name: 'Liens', value: truncate(linkLines.join('\n') || NONE, 1024), inline: false },
-      { name: 'Serveurs de l’enseigne', value: truncate(s.guilds.length ? s.guilds.map((g) => `• ${guildName(g)}`).join('\n') : NONE, 1024), inline: false },
+      { name: 'Clé', value: `\`${s.cle}\``, inline: true },
+      { name: 'Chaîne Twitch', value: s.pseudo_twitch ? `[${s.pseudo_twitch}](https://twitch.tv/${s.pseudo_twitch})` : AUCUN, inline: true },
+      { name: 'Pied de page', value: s.pied || AUCUN, inline: true },
+      { name: 'Liens', value: tronquer(lignesLiens.join('\n') || AUCUN, 1024), inline: false },
+      { name: 'Serveurs de l’enseigne', value: tronquer(s.guilds.length ? s.guilds.map((g) => `• ${nomServeur(g)}`).join('\n') : AUCUN, 1024), inline: false },
     );
-  if (note) settings.setDescription(note);
+  if (note) reglages.setDescription(note);
 
-  const what = new StringSelectMenuBuilder()
-    .setCustomId(`cu:what:${key}`)
+  const quoi = new StringSelectMenuBuilder()
+    .setCustomId(`cu:what:${cle}`)
     .setPlaceholder('Que veux-tu changer ?')
     .addOptions(
       { label: 'La couleur', value: 'color', description: 'Une palette, ou ton code exact', emoji: '🎨' },
@@ -131,99 +131,99 @@ export function customStreamer(client: Client, key: string, note?: string) {
     );
 
   return {
-    embeds: [preview, settings],
+    embeds: [apercu, reglages],
     components: [
-      row(what),
-      row(button('cu:home', 'Toutes les enseignes', ButtonStyle.Secondary, '⬅️'), button(`cu:del:${key}`, 'Supprimer', ButtonStyle.Danger, '🗑️')),
+      rangee(quoi),
+      rangee(bouton('cu:home', 'Toutes les enseignes', ButtonStyle.Secondary, '⬅️'), bouton(`cu:del:${cle}`, 'Supprimer', ButtonStyle.Danger, '🗑️')),
     ],
   };
 }
 
-function colorScreen(key: string) {
-  const s = streamerOrThrow(key);
-  const current = s.color ?? DEFAULT_COLOR;
+function ecranCouleur(cle: string) {
+  const s = exigerEnseigne(cle);
+  const actuel = s.couleur ?? COULEUR_DEFAUT;
   const embed = new EmbedBuilder()
-    .setColor(current)
+    .setColor(actuel)
     .setTitle('Couleur')
     .setDescription('Quatre familles, six tons chacune. Ou donne ton code exact.')
-    .addFields(PALETTES.map((p) => ({ name: p.name, value: `${p.description}\n${p.tones.map((t) => t.name).join(' · ')}`, inline: false })))
-    .setFooter({ text: `Actuellement : ${toHex(current)}` });
-  const tones = PALETTES.flatMap((p) => p.tones.map((t) => ({ ...t, palette: p.name }))).slice(0, 25);
-  const select = new StringSelectMenuBuilder()
-    .setCustomId(`cu:col:${key}`)
+    .addFields(PALETTES.map((p) => ({ name: p.name, value: `${p.description}\n${p.tons.map((t) => t.name).join(' · ')}`, inline: false })))
+    .setFooter({ text: `Actuellement : ${enHexa(actuel)}` });
+  const tons = PALETTES.flatMap((p) => p.tons.map((t) => ({ ...t, palette: p.name }))).slice(0, 25);
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`cu:col:${cle}`)
     .setPlaceholder('Choisir un ton')
-    .addOptions(tones.map((t) => ({ label: `${t.name} — ${t.palette}`, value: String(t.color), description: toHex(t.color), default: t.color === current })));
+    .addOptions(tons.map((t) => ({ label: `${t.name} — ${t.palette}`, value: String(t.color), description: enHexa(t.color), default: t.color === actuel })));
   return {
     embeds: [embed],
     components: [
-      row(select),
-      row(
-        button(`cu:hex:${key}`, 'Code exact', ButtonStyle.Primary),
-        button(`cu:reset:${key}`, 'Couleur du bot', ButtonStyle.Secondary),
-        button(`cu:m:${key}`, 'Retour', ButtonStyle.Secondary, '⬅️'),
+      rangee(menu),
+      rangee(
+        bouton(`cu:hex:${cle}`, 'Code exact', ButtonStyle.Primary),
+        bouton(`cu:reset:${cle}`, 'Couleur du bot', ButtonStyle.Secondary),
+        bouton(`cu:m:${cle}`, 'Retour', ButtonStyle.Secondary, '⬅️'),
       ),
     ],
   };
 }
 
-function guildsScreen(client: Client, key: string) {
-  const s = streamerOrThrow(key);
-  const guilds = [...client.guilds.cache.values()].slice(0, 25);
+function ecranServeurs(client: Client, cle: string) {
+  const s = exigerEnseigne(cle);
+  const serveurs = [...client.guilds.cache.values()].slice(0, 25);
   const embed = new EmbedBuilder()
-    .setColor(s.color ?? DEFAULT_COLOR)
+    .setColor(s.couleur ?? COULEUR_DEFAUT)
     .setTitle('Serveurs de l’enseigne')
     .setDescription('Les messages envoyés sur ces serveurs prennent les couleurs de l’enseigne.\n-# Un serveur ne peut appartenir qu’à une seule enseigne.');
-  const select = new StringSelectMenuBuilder()
-    .setCustomId(`cu:srv:${key}`)
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`cu:srv:${cle}`)
     .setPlaceholder('Choisir les serveurs')
     .setMinValues(0)
-    .setMaxValues(Math.max(1, guilds.length))
+    .setMaxValues(Math.max(1, serveurs.length))
     .addOptions(
-      guilds.length
-        ? guilds.map((g) => ({ label: truncate(g.name, 100), value: g.id, description: `${g.memberCount} membre(s)`, default: s.guilds.includes(g.id) }))
+      serveurs.length
+        ? serveurs.map((g) => ({ label: tronquer(g.name, 100), value: g.id, description: `${g.memberCount} membre(s)`, default: s.guilds.includes(g.id) }))
         : [{ label: 'Aucun serveur', value: 'none' }],
     );
-  return { embeds: [embed], components: [row(select), row(button(`cu:m:${key}`, 'Retour', ButtonStyle.Secondary, '⬅️'))] };
+  return { embeds: [embed], components: [rangee(menu), rangee(bouton(`cu:m:${cle}`, 'Retour', ButtonStyle.Secondary, '⬅️'))] };
 }
 
-function emojisScreen(key: string, page = 0) {
-  const s = streamerOrThrow(key);
-  const custom = parseJson<Record<string, string>>(s.emojis, {});
-  const keys = (Object.keys(EMOJI_KEYS) as EmojiKey[]).sort();
-  const pages = Math.max(1, Math.ceil(keys.length / EMOJIS_PER_PAGE));
+function ecranEmojis(cle: string, page = 0) {
+  const s = exigerEnseigne(cle);
+  const enseignes = lireJson<Record<string, string>>(s.emojis, {});
+  const cles = (Object.keys(CLES_EMOJIS) as CleEmoji[]).sort();
+  const pages = Math.max(1, Math.ceil(cles.length / EMOJIS_PAR_PAGE));
   const p = Math.min(Math.max(0, page), pages - 1);
-  const slice = keys.slice(p * EMOJIS_PER_PAGE, (p + 1) * EMOJIS_PER_PAGE);
-  const taken = Object.entries(custom);
+  const tranche = cles.slice(p * EMOJIS_PAR_PAGE, (p + 1) * EMOJIS_PAR_PAGE);
+  const pris = Object.entries(enseignes);
   const embed = new EmbedBuilder()
-    .setColor(s.color ?? DEFAULT_COLOR)
+    .setColor(s.couleur ?? COULEUR_DEFAUT)
     .setTitle('Émojis')
     .setDescription('Choisis une clé pour lui donner ton émoji. Celles que tu laisses gardent celui du bot — pas besoin de tout fournir.')
-    .addFields({ name: `Repris par l’enseigne (${taken.length})`, value: truncate(taken.length ? taken.map(([n, c]) => `${c} \`${n}\``).join(' · ') : NONE, 1024) })
-    .setFooter({ text: `Page ${p + 1} sur ${pages} · ${keys.length} clés en tout` });
-  const select = new StringSelectMenuBuilder()
-    .setCustomId(`cu:emo:${key}`)
+    .addFields({ name: `Repris par l’enseigne (${pris.length})`, value: tronquer(pris.length ? pris.map(([n, c]) => `${c} \`${n}\``).join(' · ') : AUCUN, 1024) })
+    .setFooter({ text: `Page ${p + 1} sur ${pages} · ${cles.length} clés en tout` });
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`cu:emo:${cle}`)
     .setPlaceholder('Quelle clé changer ?')
     .addOptions(
-      slice.map((k) => ({
+      tranche.map((k) => ({
         label: k,
         value: k,
-        description: custom[k] ? 'repris par l’enseigne' : `garde ${EMOJI_KEYS[k]}`,
+        description: enseignes[k] ? 'repris par l’enseigne' : `garde ${CLES_EMOJIS[k]}`,
       })),
     );
   return {
     embeds: [embed],
     components: [
-      row(select),
-      row(
-        button(`cu:emop:${key}:${p - 1}`, 'Précédent', ButtonStyle.Secondary, '⬅️').setDisabled(p === 0),
-        button(`cu:emop:${key}:${p + 1}`, 'Suivant', ButtonStyle.Secondary, '➡️').setDisabled(p >= pages - 1),
-        button(`cu:m:${key}`, 'Retour', ButtonStyle.Secondary),
+      rangee(menu),
+      rangee(
+        bouton(`cu:emop:${cle}:${p - 1}`, 'Précédent', ButtonStyle.Secondary, '⬅️').setDisabled(p === 0),
+        bouton(`cu:emop:${cle}:${p + 1}`, 'Suivant', ButtonStyle.Secondary, '➡️').setDisabled(p >= pages - 1),
+        bouton(`cu:m:${cle}`, 'Retour', ButtonStyle.Secondary),
       ),
     ],
   };
 }
 
-const TEXT_FIELDS: Record<string, { title: string; label: string; long?: boolean; required: boolean; max: number }> = {
+const CHAMPS_TEXTE: Record<string, { title: string; label: string; long?: boolean; required: boolean; max: number }> = {
   name: { title: 'Le nom', label: 'Nom de l’enseigne', required: true, max: 64 },
   footer: { title: 'Le pied de page', label: 'Signature (vide = aucune)', required: false, max: 128 },
   logo: { title: 'Le logo', label: 'Lien https d’une image (vide = aucun)', required: false, max: 512 },
@@ -231,176 +231,176 @@ const TEXT_FIELDS: Record<string, { title: string; label: string; long?: boolean
   twitch: { title: 'La chaîne Twitch', label: 'Pseudo Twitch (vide = aucune)', required: false, max: 25 },
 };
 
-export const customComponent: ComponentHandler = {
-  prefix: 'cu',
-  level: PermLevel.BOT_OWNER,
-  async button(interaction: ButtonInteraction<'cached'>, [action, key, extra]) {
+export const composantEnseignes: GestionnaireComposant = {
+  prefixe: 'cu',
+  niveau: Niveau.PROPRIETAIRE_BOT,
+  async bouton(interaction: ButtonInteraction<'cached'>, [action, cle, extra]) {
     const client = interaction.client;
     switch (action) {
       case 'home':
-        await interaction.update(customHome(client));
+        await interaction.update(accueilEnseignes(client));
         return;
       case 'm':
-        await interaction.update(customStreamer(client, key!));
+        await interaction.update(ecranEnseigne(client, cle!));
         return;
       case 'new':
         await interaction.showModal(
-          buildModal('cu:newm', 'Nouvelle enseigne', [
-            { id: 'key', label: 'Clé (minuscules, chiffres, - et _)', placeholder: 'ex : zerator', maxLength: 32, minLength: 2 },
-            { id: 'name', label: 'Nom affiché', placeholder: 'ex : ZeratoR', maxLength: 64 },
+          construireFormulaire('cu:newm', 'Nouvelle enseigne', [
+            { id: 'key', libelle: 'Clé (minuscules, chiffres, - et _)', indication: 'ex : zerator', longueurMax: 32, longueurMin: 2 },
+            { id: 'name', libelle: 'Nom affiché', indication: 'ex : ZeratoR', longueurMax: 64 },
           ]),
         );
         return;
       case 'hex':
-        await interaction.showModal(buildModal(`cu:hexm:${key}`, 'Code couleur', [{ id: 'value', label: 'Code hexadécimal', placeholder: '#9146FF', maxLength: 7 }]));
+        await interaction.showModal(construireFormulaire(`cu:hexm:${cle}`, 'Code couleur', [{ id: 'value', libelle: 'Code hexadécimal', indication: '#9146FF', longueurMax: 7 }]));
         return;
       case 'reset':
-        updateStreamer(key!, { color: null });
-        await interaction.update(customStreamer(client, key!, '✅ Couleur remise à celle du bot.'));
+        modifierEnseigne(cle!, { couleur: null });
+        await interaction.update(ecranEnseigne(client, cle!, '✅ Couleur remise à celle du bot.'));
         return;
       case 'emop':
-        await interaction.update(emojisScreen(key!, Number(extra) || 0));
+        await interaction.update(ecranEmojis(cle!, Number(extra) || 0));
         return;
       case 'del': {
-        const s = streamerOrThrow(key);
-        await askConfirmation(interaction, {
-          title: 'Supprimer l’enseigne ?',
-          description: `L’enseigne **${s.name}** sera supprimée. Ses ${s.guilds.length} serveur(s) reprendront les couleurs du bot.`,
-          confirmLabel: 'Supprimer',
-          onConfirm: async (i) => {
-            deleteStreamer(s.key);
-            await i.update({ embeds: [new EmbedBuilder().setColor(0x3fe08f).setDescription(`✅ Enseigne **${s.name}** supprimée.`)], components: [] });
+        const s = exigerEnseigne(cle);
+        await demanderConfirmation(interaction, {
+          titre: 'Supprimer l’enseigne ?',
+          description: `L’enseigne **${s.nom}** sera supprimée. Ses ${s.guilds.length} serveur(s) reprendront les couleurs du bot.`,
+          libelleConfirmation: 'Supprimer',
+          surConfirmation: async (i) => {
+            supprimerEnseigne(s.cle);
+            await i.update({ embeds: [new EmbedBuilder().setColor(0x3fe08f).setDescription(`✅ Enseigne **${s.nom}** supprimée.`)], components: [] });
           },
         });
         return;
       }
     }
   },
-  async select(interaction: AnySelectMenuInteraction<'cached'>, [action, key]) {
+  async menu(interaction: AnySelectMenuInteraction<'cached'>, [action, cle]) {
     if (!interaction.isStringSelectMenu()) return;
     const client = interaction.client;
-    const value = interaction.values[0] ?? '';
+    const valeur = interaction.values[0] ?? '';
     switch (action) {
       case 'open':
-        await interaction.update(customStreamer(client, value));
+        await interaction.update(ecranEnseigne(client, valeur));
         return;
       case 'what': {
-        const s = streamerOrThrow(key);
-        if (value === 'color') return void (await interaction.update(colorScreen(s.key)));
-        if (value === 'guilds') return void (await interaction.update(guildsScreen(client, s.key)));
-        if (value === 'emojis') return void (await interaction.update(emojisScreen(s.key)));
-        if (value === 'links') {
-          const links = parseJson<StreamerLinks>(s.links, {});
+        const s = exigerEnseigne(cle);
+        if (valeur === 'color') return void (await interaction.update(ecranCouleur(s.cle)));
+        if (valeur === 'guilds') return void (await interaction.update(ecranServeurs(client, s.cle)));
+        if (valeur === 'emojis') return void (await interaction.update(ecranEmojis(s.cle)));
+        if (valeur === 'links') {
+          const liens = lireJson<LiensEnseigne>(s.liens, {});
           await interaction.showModal(
-            buildModal(`cu:linksm:${s.key}`, 'Les liens', [
-              { id: 'twitch', label: 'Twitch', value: links.twitch, required: false, maxLength: 200 },
-              { id: 'youtube', label: 'YouTube', value: links.youtube, required: false, maxLength: 200 },
-              { id: 'x', label: 'X / Twitter', value: links.x, required: false, maxLength: 200 },
-              { id: 'tiktok', label: 'TikTok', value: links.tiktok, required: false, maxLength: 200 },
-              { id: 'instagram', label: 'Instagram', value: links.instagram, required: false, maxLength: 200 },
+            construireFormulaire(`cu:linksm:${s.cle}`, 'Les liens', [
+              { id: 'twitch', libelle: 'Twitch', valeur: liens.twitch, obligatoire: false, longueurMax: 200 },
+              { id: 'youtube', libelle: 'YouTube', valeur: liens.youtube, obligatoire: false, longueurMax: 200 },
+              { id: 'x', libelle: 'X / Twitter', valeur: liens.x, obligatoire: false, longueurMax: 200 },
+              { id: 'tiktok', libelle: 'TikTok', valeur: liens.tiktok, obligatoire: false, longueurMax: 200 },
+              { id: 'instagram', libelle: 'Instagram', valeur: liens.instagram, obligatoire: false, longueurMax: 200 },
             ]),
           );
           return;
         }
-        const field = TEXT_FIELDS[value];
-        if (!field) return;
-        const current = value === 'twitch' ? s.twitch_login : (s as unknown as Record<string, string | null>)[value];
+        const champ = CHAMPS_TEXTE[valeur];
+        if (!champ) return;
+        const actuel = valeur === 'twitch' ? s.pseudo_twitch : (s as unknown as Record<string, string | null>)[valeur];
         await interaction.showModal(
-          buildModal(`cu:txtm:${s.key}:${value}`, field.title, [{ id: 'value', label: field.label, value: current, required: field.required, maxLength: field.max }]),
+          construireFormulaire(`cu:txtm:${s.cle}:${valeur}`, champ.title, [{ id: 'value', libelle: champ.label, valeur: actuel, obligatoire: champ.required, longueurMax: champ.max }]),
         );
         return;
       }
       case 'col': {
-        const color = parseColor(Number(value));
-        if (color === null) throw new UserError('Couleur invalide.');
-        updateStreamer(key!, { color });
-        await interaction.update(customStreamer(client, key!, `✅ Couleur : **${toHex(color)}**`));
+        const couleur = lireCouleur(Number(valeur));
+        if (couleur === null) throw new ErreurUtilisateur('Couleur invalide.');
+        modifierEnseigne(cle!, { couleur });
+        await interaction.update(ecranEnseigne(client, cle!, `✅ Couleur : **${enHexa(couleur)}**`));
         return;
       }
       case 'srv': {
         const ids = interaction.values.filter((v) => v !== 'none');
-        setStreamerGuilds(key!, ids);
-        await interaction.update(customStreamer(client, key!, `✅ ${ids.length} serveur(s) couvert(s).`));
+        poserServeursEnseigne(cle!, ids);
+        await interaction.update(ecranEnseigne(client, cle!, `✅ ${ids.length} serveur(s) couvert(s).`));
         return;
       }
       case 'emo': {
-        const s = streamerOrThrow(key);
-        const current = parseJson<Record<string, string>>(s.emojis, {})[value];
+        const s = exigerEnseigne(cle);
+        const actuel = lireJson<Record<string, string>>(s.emojis, {})[valeur];
         await interaction.showModal(
-          buildModal(`cu:emom:${s.key}:${value}`, `Émoji « ${value} »`, [
-            { id: 'value', label: 'Émoji (vide = celui du bot)', placeholder: '<:nom:123456789012345678> ou 🎉', value: current, required: false, maxLength: 64 },
+          construireFormulaire(`cu:emom:${s.cle}:${valeur}`, `Émoji « ${valeur} »`, [
+            { id: 'value', libelle: 'Émoji (vide = celui du bot)', indication: '<:nom:123456789012345678> ou 🎉', valeur: actuel, obligatoire: false, longueurMax: 64 },
           ]),
         );
         return;
       }
     }
   },
-  async modal(interaction: ModalSubmitInteraction<'cached'>, [action, key, extra]) {
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>, [action, cle, extra]) {
     const client = interaction.client;
-    const respond = async (payload: ReturnType<typeof customStreamer>) => {
-      if (interaction.isFromMessage()) await interaction.update(payload);
-      else await interaction.reply({ ...payload, flags: 64 });
+    const repondreEcran = async (charge: ReturnType<typeof ecranEnseigne>) => {
+      if (interaction.isFromMessage()) await interaction.update(charge);
+      else await interaction.reply({ ...charge, flags: 64 });
     };
     switch (action) {
       case 'newm': {
-        const newKey = interaction.fields.getTextInputValue('key').trim().toLowerCase();
-        const name = interaction.fields.getTextInputValue('name').trim();
-        if (!KEY_PATTERN.test(newKey)) throw new UserError('Clé invalide : 2 à 32 caractères parmi a-z, 0-9, - et _.');
-        if (getStreamer(newKey)) throw new UserError('Cette clé existe déjà.');
-        createStreamer(newKey, name || newKey);
-        await respond(customStreamer(client, newKey, '✅ Enseigne créée. Choisis maintenant ce que tu veux régler.'));
+        const nouvelleCle = interaction.fields.getTextInputValue('key').trim().toLowerCase();
+        const nom = interaction.fields.getTextInputValue('name').trim();
+        if (!MOTIF_CLE.test(nouvelleCle)) throw new ErreurUtilisateur('Clé invalide : 2 à 32 caractères parmi a-z, 0-9, - et _.');
+        if (lireEnseigne(nouvelleCle)) throw new ErreurUtilisateur('Cette clé existe déjà.');
+        creerEnseigne(nouvelleCle, nom || nouvelleCle);
+        await repondreEcran(ecranEnseigne(client, nouvelleCle, '✅ Enseigne créée. Choisis maintenant ce que tu veux régler.'));
         return;
       }
       case 'hexm': {
-        const color = parseColor(interaction.fields.getTextInputValue('value'));
-        if (color === null) throw new UserError('Code attendu : 6 caractères hexadécimaux, ex. `#9146FF`.');
-        updateStreamer(key!, { color });
-        await respond(customStreamer(client, key!, `✅ Couleur : **${toHex(color)}**`));
+        const couleur = lireCouleur(interaction.fields.getTextInputValue('value'));
+        if (couleur === null) throw new ErreurUtilisateur('Code attendu : 6 caractères hexadécimaux, ex. `#9146FF`.');
+        modifierEnseigne(cle!, { couleur });
+        await repondreEcran(ecranEnseigne(client, cle!, `✅ Couleur : **${enHexa(couleur)}**`));
         return;
       }
       case 'txtm': {
-        const raw = interaction.fields.getTextInputValue('value').trim();
+        const brut = interaction.fields.getTextInputValue('value').trim();
         if (extra === 'name') {
-          if (!raw) throw new UserError('Le nom ne peut pas être vide.');
-          updateStreamer(key!, { name: raw });
+          if (!brut) throw new ErreurUtilisateur('Le nom ne peut pas être vide.');
+          modifierEnseigne(cle!, { nom: brut });
         } else if (extra === 'footer') {
-          updateStreamer(key!, { footer: raw || null });
+          modifierEnseigne(cle!, { pied: brut || null });
         } else if (extra === 'logo' || extra === 'background') {
-          if (raw && !isImageUrl(raw)) throw new UserError('Lien attendu : https, terminé par .png, .jpg, .gif ou .webp.');
-          updateStreamer(key!, { [extra]: raw || null });
+          if (brut && !estLienImage(brut)) throw new ErreurUtilisateur('Lien attendu : https, terminé par .png, .jpg, .gif ou .webp.');
+          modifierEnseigne(cle!, { [extra]: brut || null });
         } else if (extra === 'twitch') {
-          const login = raw.replace(/^https?:\/\/(www\.)?twitch\.tv\//i, '').replace(/\/.*$/, '').toLowerCase();
-          if (login && !/^[a-z0-9_]{3,25}$/.test(login)) throw new UserError('Pseudo Twitch invalide.');
-          updateStreamer(key!, { twitch_login: login || null });
+          const pseudo = brut.replace(/^https?:\/\/(www\.)?twitch\.tv\//i, '').replace(/\/.*$/, '').toLowerCase();
+          if (pseudo && !/^[a-z0-9_]{3,25}$/.test(pseudo)) throw new ErreurUtilisateur('Pseudo Twitch invalide.');
+          modifierEnseigne(cle!, { pseudo_twitch: pseudo || null });
         }
-        await respond(customStreamer(client, key!, '✅ C’est enregistré.'));
+        await repondreEcran(ecranEnseigne(client, cle!, '✅ C’est enregistré.'));
         return;
       }
       case 'linksm': {
-        const links: StreamerLinks = {};
-        const bad: string[] = [];
+        const liens: LiensEnseigne = {};
+        const rejetes: string[] = [];
         for (const k of ['twitch', 'youtube', 'x', 'tiktok', 'instagram'] as const) {
           const v = interaction.fields.getTextInputValue(k).trim();
           if (!v) continue;
-          if (!isHttpUrl(v)) bad.push(k);
-          else links[k] = v;
+          if (!estLienHttp(v)) rejetes.push(k);
+          else liens[k] = v;
         }
-        updateStreamer(key!, { links });
-        await respond(customStreamer(client, key!, bad.length ? `⚠️ Ignorés (lien http(s) attendu) : ${bad.join(', ')}` : '✅ Liens enregistrés.'));
+        modifierEnseigne(cle!, { liens });
+        await repondreEcran(ecranEnseigne(client, cle!, rejetes.length ? `⚠️ Ignorés (lien http(s) attendu) : ${rejetes.join(', ')}` : '✅ Liens enregistrés.'));
         return;
       }
       case 'emom': {
-        const s = streamerOrThrow(key);
-        const emojiKey = extra as EmojiKey;
-        if (!(emojiKey in EMOJI_KEYS)) throw new UserError('Clé d’émoji inconnue.');
-        const raw = interaction.fields.getTextInputValue('value').trim();
-        const emojis = parseJson<Partial<Record<EmojiKey, string>>>(s.emojis, {});
-        if (!raw) delete emojis[emojiKey];
-        else if (!isEmojiValue(raw)) throw new UserError('Émoji attendu : un émoji unicode ou `<:nom:id>`.');
-        else emojis[emojiKey] = raw;
-        updateStreamer(s.key, { emojis });
-        if (interaction.isFromMessage()) await interaction.update(emojisScreen(s.key));
-        else await interaction.reply({ ...emojisScreen(s.key), flags: 64 });
+        const s = exigerEnseigne(cle);
+        const cleEmoji = extra as CleEmoji;
+        if (!(cleEmoji in CLES_EMOJIS)) throw new ErreurUtilisateur('Clé d’émoji inconnue.');
+        const brut = interaction.fields.getTextInputValue('value').trim();
+        const emojis = lireJson<Partial<Record<CleEmoji, string>>>(s.emojis, {});
+        if (!brut) delete emojis[cleEmoji];
+        else if (!estEmoji(brut)) throw new ErreurUtilisateur('Émoji attendu : un émoji unicode ou `<:nom:id>`.');
+        else emojis[cleEmoji] = brut;
+        modifierEnseigne(s.cle, { emojis });
+        if (interaction.isFromMessage()) await interaction.update(ecranEmojis(s.cle));
+        else await interaction.reply({ ...ecranEmojis(s.cle), flags: 64 });
         return;
       }
     }

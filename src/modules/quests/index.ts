@@ -1,224 +1,224 @@
 import { EmbedBuilder, SlashCommandBuilder, type Client, type Guild, type User } from 'discord.js';
-import { all, get, run } from '../../database/db';
-import { brandEmbed, colorFor } from '../../core/embeds';
-import { getConfig, type QuestDefinition } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { isModuleEnabled } from '../../core/moduleManager';
-import type { SetupPage } from '../../core/setup';
-import { formatNumber, progressBar } from '../../core/text';
-import { dayKey, previousDayKey } from '../../core/time';
-import { on, type BotModule, type PrefixCommand, type SlashCommand } from '../../core/types';
-import { onActivity, type ActivityType } from '../../services/activity';
-import { addCoins } from '../../services/economy';
-import { onVoiceTime } from '../../services/voice';
-import { addXp } from '../../services/xp';
+import { lireTout, lire, executer } from '../../database/db';
+import { embedEnseigne, couleurPour } from '../../core/embeds';
+import { lireConfig, type DefinitionQuete } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { moduleActif } from '../../core/moduleManager';
+import type { PageReglage } from '../../core/setup';
+import { formaterNombre, barreProgression } from '../../core/text';
+import { cleJour, cleJourPrecedent } from '../../core/time';
+import { sur, type ModuleBot, type CommandePrefixe, type CommandeSlash } from '../../core/types';
+import { surActivite, type TypeActivite } from '../../services/activity';
+import { ajouterPieces } from '../../services/economy';
+import { surTempsVocal } from '../../services/voice';
+import { ajouterXp } from '../../services/xp';
 
-const today = (guildId: string) => dayKey(Date.now(), getConfig(guildId).general.timezone);
+const aujourdhui = (serveurId: string) => cleJour(Date.now(), lireConfig(serveurId).general.fuseau);
 
-async function notify(client: Client | null, guildId: string, userId: string, text: string): Promise<void> {
-  if (!client || !getConfig(guildId).quests.announce) return;
-  const guild = client.guilds.cache.get(guildId);
-  const user = await client.users.fetch(userId).catch(() => null);
-  if (!guild || !user) return;
-  await user.send({ embeds: [new EmbedBuilder().setColor(colorFor(guild, 'success')).setAuthor({ name: guild.name, iconURL: guild.iconURL() ?? undefined }).setDescription(text)] }).catch(() => undefined);
+async function prevenir(client: Client | null, serveurId: string, utilisateurId: string, texte: string): Promise<void> {
+  if (!client || !lireConfig(serveurId).quetes.annonce) return;
+  const serveur = client.guilds.cache.get(serveurId);
+  const utilisateur = await client.users.fetch(utilisateurId).catch(() => null);
+  if (!serveur || !utilisateur) return;
+  await utilisateur.send({ embeds: [new EmbedBuilder().setColor(couleurPour(serveur, 'success')).setAuthor({ name: serveur.name, iconURL: serveur.iconURL() ?? undefined }).setDescription(texte)] }).catch(() => undefined);
 }
 
-function reward(guildId: string, userId: string, xp: number, coins: number): string {
-  const parts: string[] = [];
-  if (xp > 0 && isModuleEnabled(guildId, 'xp')) {
-    addXp(guildId, userId, xp);
-    parts.push(`+${formatNumber(xp)} XP`);
+function recompense(serveurId: string, utilisateurId: string, xp: number, pieces: number): string {
+  const parties: string[] = [];
+  if (xp > 0 && moduleActif(serveurId, 'xp')) {
+    ajouterXp(serveurId, utilisateurId, xp);
+    parties.push(`+${formaterNombre(xp)} XP`);
   }
-  if (coins > 0 && isModuleEnabled(guildId, 'economy')) {
-    addCoins(guildId, userId, coins, 'quest');
-    const eco = getConfig(guildId).economy;
-    parts.push(`+${formatNumber(coins)} ${eco.currencyEmoji} ${eco.currencyName}`);
+  if (pieces > 0 && moduleActif(serveurId, 'economy')) {
+    ajouterPieces(serveurId, utilisateurId, pieces, 'quest');
+    const economie = lireConfig(serveurId).economie;
+    parties.push(`+${formaterNombre(pieces)} ${economie.emojiMonnaie} ${economie.nomMonnaie}`);
   }
-  return parts.join(' · ') || 'la gloire éternelle';
+  return parties.join(' · ') || 'la gloire éternelle';
 }
 
 /** Avance les quêtes du jour d'un type donné et distribue les récompenses une seule fois. */
-function progress(client: Client | null, guildId: string, userId: string, type: ActivityType, amount: number): void {
-  if (!isModuleEnabled(guildId, 'quests') || amount <= 0) return;
-  const day = today(guildId);
-  for (const quest of getConfig(guildId).quests.list.filter((q) => q.type === type)) {
-    const row = get<{ progress: number; completed: number }>('SELECT progress, completed FROM quests WHERE guild_id = ? AND user_id = ? AND day = ? AND quest_id = ?', guildId, userId, day, quest.id);
-    if (row?.completed) continue;
-    const value = Math.min(quest.target, (row?.progress ?? 0) + amount);
-    const done = value >= quest.target;
-    run(
-      `INSERT INTO quests (guild_id, user_id, day, quest_id, progress, completed) VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(guild_id, user_id, day, quest_id) DO UPDATE SET progress = excluded.progress, completed = excluded.completed`,
-      guildId,
-      userId,
-      day,
-      quest.id,
-      value,
-      done ? 1 : 0,
+function progression(client: Client | null, serveurId: string, utilisateurId: string, type: TypeActivite, montant: number): void {
+  if (!moduleActif(serveurId, 'quests') || montant <= 0) return;
+  const jour = aujourdhui(serveurId);
+  for (const quete of lireConfig(serveurId).quetes.list.filter((q) => q.type === type)) {
+    const rangee = lire<{ progression: number; terminee: number }>('SELECT progression, terminee FROM quetes WHERE serveur_id = ? AND utilisateur_id = ? AND jour = ? AND quete_id = ?', serveurId, utilisateurId, jour, quete.id);
+    if (rangee?.terminee) continue;
+    const valeur = Math.min(quete.cible, (rangee?.progression ?? 0) + montant);
+    const fait = valeur >= quete.cible;
+    executer(
+      `INSERT INTO quetes (serveur_id, utilisateur_id, jour, quete_id, progression, terminee) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(serveur_id, utilisateur_id, jour, quete_id) DO UPDATE SET progression = excluded.progression, terminee = excluded.terminee`,
+      serveurId,
+      utilisateurId,
+      jour,
+      quete.id,
+      valeur,
+      fait ? 1 : 0,
     );
-    if (done) {
-      const gains = reward(guildId, userId, quest.rewardXp, quest.rewardCoins);
-      void notify(client, guildId, userId, `🎯 **Quête du jour terminée !**\n${quest.label}\n\nRécompense : **${gains}**`);
+    if (fait) {
+      const gains = recompense(serveurId, utilisateurId, quete.recompenseXp, quete.recompensePieces);
+      void prevenir(client, serveurId, utilisateurId, `🎯 **Quête du jour terminée !**\n${quete.libelle}\n\nRécompense : **${gains}**`);
     }
   }
 }
 
 /** Série quotidienne : +1 par jour d'activité consécutif, remise à 1 après un jour manqué. */
-function bumpStreak(client: Client | null, guildId: string, userId: string): void {
-  if (!isModuleEnabled(guildId, 'quests')) return;
-  const day = today(guildId);
-  const row = get<{ current: number; best: number; last_day: string | null }>('SELECT current, best, last_day FROM streaks WHERE guild_id = ? AND user_id = ?', guildId, userId);
-  if (row?.last_day === day) return;
-  const current = row?.last_day === previousDayKey(day) ? row.current + 1 : 1;
-  const best = Math.max(current, row?.best ?? 0);
-  run(
-    `INSERT INTO streaks (guild_id, user_id, current, best, last_day) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(guild_id, user_id) DO UPDATE SET current = excluded.current, best = excluded.best, last_day = excluded.last_day`,
-    guildId,
-    userId,
-    current,
-    best,
-    day,
+function avancerSerie(client: Client | null, serveurId: string, utilisateurId: string): void {
+  if (!moduleActif(serveurId, 'quests')) return;
+  const jour = aujourdhui(serveurId);
+  const rangee = lire<{ actuelle: number; record: number; dernier_jour: string | null }>('SELECT actuelle, record, dernier_jour FROM series WHERE serveur_id = ? AND utilisateur_id = ?', serveurId, utilisateurId);
+  if (rangee?.dernier_jour === jour) return;
+  const actuel = rangee?.dernier_jour === cleJourPrecedent(jour) ? rangee.actuelle + 1 : 1;
+  const record = Math.max(actuel, rangee?.record ?? 0);
+  executer(
+    `INSERT INTO series (serveur_id, utilisateur_id, actuelle, record, dernier_jour) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET actuelle = excluded.actuelle, record = excluded.record, dernier_jour = excluded.dernier_jour`,
+    serveurId,
+    utilisateurId,
+    actuel,
+    record,
+    jour,
   );
-  const milestone = getConfig(guildId).quests.streakMilestones.find((m) => m.days === current);
-  if (milestone) {
-    const gains = reward(guildId, userId, milestone.xp, milestone.coins);
-    void notify(client, guildId, userId, `🔥 **Série de ${current} jours !**\nMerci pour ta fidélité. Récompense : **${gains}**`);
+  const palier = lireConfig(serveurId).quetes.paliersSerie.find((m) => m.days === actuel);
+  if (palier) {
+    const gains = recompense(serveurId, utilisateurId, palier.xp, palier.pieces);
+    void prevenir(client, serveurId, utilisateurId, `🔥 **Série de ${actuel} jours !**\nMerci pour ta fidélité. Récompense : **${gains}**`);
   }
 }
 
-onActivity((event, client) => progress(client, event.guildId, event.userId, event.type, event.amount));
-onVoiceTime((credit, client) => {
-  if (credit.idle) return;
-  progress(client, credit.guildId, credit.userId, 'voice_minutes', Math.floor(credit.seconds / 60));
+surActivite((evenement, client) => progression(client, evenement.serveurId, evenement.utilisateurId, evenement.type, evenement.montant));
+surTempsVocal((credit, client) => {
+  if (credit.inactif) return;
+  progression(client, credit.serveurId, credit.utilisateurId, 'voice_minutes', Math.floor(credit.secondes / 60));
 });
 
-function questsEmbed(guild: Guild, user: User) {
-  const day = today(guild.id);
-  const rows = all<{ quest_id: string; progress: number; completed: number }>('SELECT quest_id, progress, completed FROM quests WHERE guild_id = ? AND user_id = ? AND day = ?', guild.id, user.id, day);
-  const streak = get<{ current: number; best: number }>('SELECT current, best FROM streaks WHERE guild_id = ? AND user_id = ?', guild.id, user.id);
-  const eco = getConfig(guild.id).economy;
-  const lines = getConfig(guild.id).quests.list.map((q: QuestDefinition) => {
-    const r = rows.find((x) => x.quest_id === q.id);
-    const value = r?.progress ?? 0;
-    const rewards = [q.rewardXp ? `+${q.rewardXp} XP` : null, q.rewardCoins ? `+${q.rewardCoins} ${eco.currencyEmoji}` : null].filter(Boolean).join(' · ');
-    return `${r?.completed ? '✅' : '🎯'} **${q.label}**\n${progressBar(value / q.target, 12)} ${value}/${q.target}${rewards ? ` · ${rewards}` : ''}`;
+function embedQuetes(serveur: Guild, utilisateur: User) {
+  const jour = aujourdhui(serveur.id);
+  const rangees = lireTout<{ quete_id: string; progression: number; terminee: number }>('SELECT quete_id, progression, terminee FROM quetes WHERE serveur_id = ? AND utilisateur_id = ? AND jour = ?', serveur.id, utilisateur.id, jour);
+  const serie = lire<{ actuelle: number; record: number }>('SELECT actuelle, record FROM series WHERE serveur_id = ? AND utilisateur_id = ?', serveur.id, utilisateur.id);
+  const economie = lireConfig(serveur.id).economie;
+  const lignes = lireConfig(serveur.id).quetes.list.map((q: DefinitionQuete) => {
+    const r = rangees.find((x) => x.quete_id === q.id);
+    const valeur = r?.progression ?? 0;
+    const recompenses = [q.recompenseXp ? `+${q.recompenseXp} XP` : null, q.recompensePieces ? `+${q.recompensePieces} ${economie.emojiMonnaie}` : null].filter(Boolean).join(' · ');
+    return `${r?.terminee ? '✅' : '🎯'} **${q.libelle}**\n${barreProgression(valeur / q.cible, 12)} ${valeur}/${q.cible}${recompenses ? ` · ${recompenses}` : ''}`;
   });
-  return brandEmbed(guild)
-    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ size: 64 }) })
+  return embedEnseigne(serveur)
+    .setAuthor({ name: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) })
     .setTitle('🎯 QUÊTES DU JOUR')
-    .setDescription(lines.join('\n\n') || '*Aucune quête configurée.*')
-    .addFields({ name: '🔥 Série actuelle', value: `${streak?.current ?? 0} jour(s) · record ${streak?.best ?? 0}`, inline: false })
+    .setDescription(lignes.join('\n\n') || '*Aucune quête configurée.*')
+    .addFields({ name: '🔥 Série actuelle', value: `${serie?.actuelle ?? 0} jour(s) · record ${serie?.record ?? 0}`, inline: false })
     .setFooter({ text: 'Les quêtes se renouvellent chaque jour à minuit.' });
 }
 
-const quest: SlashCommand = {
-  category: 'economy',
-  data: new SlashCommandBuilder()
+const quete: CommandeSlash = {
+  categorie: 'economy',
+  donnees: new SlashCommandBuilder()
     .setName('quest')
     .setDescription('Tes quêtes du jour et ta série')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)')),
-  async execute(interaction) {
-    await reply(interaction, { embeds: [questsEmbed(interaction.guild, interaction.options.getUser('membre') ?? interaction.user)] });
+  async executer(interaction) {
+    await repondre(interaction, { embeds: [embedQuetes(interaction.guild, interaction.options.getUser('membre') ?? interaction.user)] });
   },
 };
 
-const prefixCommands: PrefixCommand[] = [
+const commandesPrefixe: CommandePrefixe[] = [
   {
-    name: 'quetes',
-    aliases: ['quests', 'quest', 'streak'],
-    domain: 'general',
-    category: 'economy',
+    nom: 'quetes',
+    alias: ['quests', 'quest', 'streak'],
+    domaine: 'general',
+    categorie: 'economy',
     description: 'Tes quêtes et ta série',
-    async execute(message) {
-      await message.reply({ embeds: [questsEmbed(message.guild, message.author)], allowedMentions: { repliedUser: false } });
+    async executer(message) {
+      await message.reply({ embeds: [embedQuetes(message.guild, message.author)], allowedMentions: { repliedUser: false } });
     },
   },
 ];
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'quests',
   section: 'community',
-  title: 'Quêtes & séries',
+  titre: 'Quêtes & séries',
   emoji: '🎯',
   moduleId: 'quests',
-  order: 10,
+  ordre: 10,
   description:
     'Quêtes quotidiennes (messages, vocal, giveaways, /daily) et série de jours actifs.\n-# Format des quêtes : `type:objectif:xp:pièces:texte` séparées par des retours à la ligne.\n-# Paliers de série : `jours:pièces:xp` séparés par des virgules.',
-  fields: [
-    { kind: 'toggle', key: 'announce', label: 'Prévenir en MP', get: (c) => c.quests.announce, set: (c, v) => void (c.quests.announce = v) },
+  champs: [
+    { kind: 'toggle', cle: 'announce', libelle: 'Prévenir en MP', get: (c) => c.quetes.annonce, set: (c, v) => void (c.quetes.annonce = v) },
     {
       kind: 'text',
-      key: 'list',
-      label: 'Quêtes du jour',
+      cle: 'list',
+      libelle: 'Quêtes du jour',
       long: true,
       maxLength: 1500,
-      get: (c) => c.quests.list.map((q) => `${q.type}:${q.target}:${q.rewardXp}:${q.rewardCoins}:${q.label}`).join('\n'),
+      get: (c) => c.quetes.list.map((q) => `${q.type}:${q.cible}:${q.recompenseXp}:${q.recompensePieces}:${q.libelle}`).join('\n'),
       set: (c, v) => {
-        const parsed = parseQuests(v);
-        if (parsed) c.quests.list = parsed;
+        const lu = lireQuetes(v);
+        if (lu) c.quetes.list = lu;
       },
-      validate: (v) => (parseQuests(v) ? null : 'Format : `messages:20:100:50:Envoyer 20 messages` (types : messages, voice_minutes, giveaways, daily).'),
+      validate: (v) => (lireQuetes(v) ? null : 'Format : `messages:20:100:50:Envoyer 20 messages` (types : messages, voice_minutes, giveaways, daily).'),
     },
     {
       kind: 'text',
-      key: 'milestones',
-      label: 'Paliers de série',
+      cle: 'milestones',
+      libelle: 'Paliers de série',
       maxLength: 300,
-      get: (c) => c.quests.streakMilestones.map((m) => `${m.days}:${m.coins}:${m.xp}`).join(', '),
+      get: (c) => c.quetes.paliersSerie.map((m) => `${m.days}:${m.pieces}:${m.xp}`).join(', '),
       set: (c, v) => {
-        const parsed = parseMilestones(v);
-        if (parsed) c.quests.streakMilestones = parsed;
+        const lu = lirePaliers(v);
+        if (lu) c.quetes.paliersSerie = lu;
       },
-      validate: (v) => (parseMilestones(v) ? null : 'Format : `7:200:200, 30:1000:1000`.'),
+      validate: (v) => (lirePaliers(v) ? null : 'Format : `7:200:200, 30:1000:1000`.'),
     },
   ],
 };
 
-export function parseQuests(input: string): QuestDefinition[] | null {
-  const out: QuestDefinition[] = [];
-  for (const line of input.split('\n').map((l) => l.trim()).filter(Boolean)) {
-    const m = /^(messages|voice_minutes|giveaways|daily)\s*:\s*(\d{1,6})\s*:\s*(\d{1,7})\s*:\s*(\d{1,7})\s*:\s*(.{2,100})$/.exec(line);
+export function lireQuetes(saisie: string): DefinitionQuete[] | null {
+  const sortie: DefinitionQuete[] = [];
+  for (const ligne of saisie.split('\n').map((l) => l.trim()).filter(Boolean)) {
+    const m = /^(messages|voice_minutes|giveaways|daily)\s*:\s*(\d{1,6})\s*:\s*(\d{1,7})\s*:\s*(\d{1,7})\s*:\s*(.{2,100})$/.exec(ligne);
     if (!m) return null;
-    out.push({ id: `${m[1]}${m[2]}-${out.length}`, type: m[1] as QuestDefinition['type'], target: Math.max(1, Number(m[2])), rewardXp: Number(m[3]), rewardCoins: Number(m[4]), label: m[5]!.trim() });
+    sortie.push({ id: `${m[1]}${m[2]}-${sortie.length}`, type: m[1] as DefinitionQuete['type'], cible: Math.max(1, Number(m[2])), recompenseXp: Number(m[3]), recompensePieces: Number(m[4]), libelle: m[5]!.trim() });
   }
-  return out.slice(0, 10);
+  return sortie.slice(0, 10);
 }
 
-export function parseMilestones(input: string): { days: number; coins: number; xp: number }[] | null {
-  if (!input.trim()) return [];
-  const out: { days: number; coins: number; xp: number }[] = [];
-  for (const part of input.split(',')) {
-    const m = /^\s*(\d{1,4})\s*:\s*(\d{1,7})\s*:\s*(\d{1,7})\s*$/.exec(part);
+export function lirePaliers(saisie: string): { days: number; pieces: number; xp: number }[] | null {
+  if (!saisie.trim()) return [];
+  const sortie: { days: number; pieces: number; xp: number }[] = [];
+  for (const partie of saisie.split(',')) {
+    const m = /^\s*(\d{1,4})\s*:\s*(\d{1,7})\s*:\s*(\d{1,7})\s*$/.exec(partie);
     if (!m) return null;
-    out.push({ days: Number(m[1]), coins: Number(m[2]), xp: Number(m[3]) });
+    sortie.push({ days: Number(m[1]), pieces: Number(m[2]), xp: Number(m[3]) });
   }
-  return out.sort((a, b) => a.days - b.days).slice(0, 10);
+  return sortie.sort((a, b) => a.days - b.days).slice(0, 10);
 }
 
-export const questsModule: BotModule = {
+export const moduleQuetes: ModuleBot = {
   id: 'quests',
-  name: 'Quêtes & séries',
+  nom: 'Quêtes & séries',
   emoji: '🎯',
   description: 'Quêtes quotidiennes et récompenses de série',
-  toggleable: true,
-  defaultEnabled: false,
-  commands: [quest],
-  prefixCommands,
-  setupPages: [setupPage],
-  events: [
-    on('messageCreate', (message) => {
+  desactivable: true,
+  actifParDefaut: false,
+  commandes: [quete],
+  commandesPrefixe,
+  pagesReglage: [pageReglage],
+  evenements: [
+    sur('messageCreate', (message) => {
       if (!message.inGuild() || message.author.bot) return;
-      bumpStreak(message.client, message.guildId, message.author.id);
-      progress(message.client, message.guildId, message.author.id, 'messages', 1);
+      avancerSerie(message.client, message.guildId, message.author.id);
+      progression(message.client, message.guildId, message.author.id, 'messages', 1);
     }, 190),
   ],
-  tasks: [
+  taches: [
     {
-      name: 'quests-cleanup',
-      intervalMs: 12 * 3_600_000,
-      async run() {
-        run('DELETE FROM quests WHERE day < ?', new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10));
+      nom: 'quests-cleanup',
+      intervalleMs: 12 * 3_600_000,
+      async executer() {
+        executer('DELETE FROM quetes WHERE jour < ?', new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10));
       },
     },
   ],

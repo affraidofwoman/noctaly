@@ -1,81 +1,81 @@
 import { SlashCommandBuilder, type Message } from 'discord.js';
-import { get, run } from '../../database/db';
+import { lire, executer } from '../../database/db';
 import { info, ok } from '../../core/embeds';
-import { reply } from '../../core/interactions';
-import { neutralizeMentions, truncate } from '../../core/text';
-import { formatDuration, ts } from '../../core/time';
-import { on, type BotModule, type PrefixCommand, type SlashCommand } from '../../core/types';
+import { repondre } from '../../core/interactions';
+import { neutraliserMentions, tronquer } from '../../core/text';
+import { formaterDuree, marqueTemps } from '../../core/time';
+import { sur, type ModuleBot, type CommandePrefixe, type CommandeSlash } from '../../core/types';
 
-interface AfkRow {
-  reason: string;
-  since: number;
+interface LigneAfk {
+  raison: string;
+  depuis: number;
 }
 
-const notified = new Map<string, number>();
+const prevenus = new Map<string, number>();
 
-function setAfk(guildId: string, userId: string, reason: string): void {
-  run('INSERT OR REPLACE INTO afk (guild_id, user_id, reason, since) VALUES (?, ?, ?, ?)', guildId, userId, truncate(neutralizeMentions(reason || 'AFK'), 200), Date.now());
+function mettreAfk(serveurId: string, utilisateurId: string, raison: string): void {
+  executer('INSERT OR REPLACE INTO afk (serveur_id, utilisateur_id, raison, depuis) VALUES (?, ?, ?, ?)', serveurId, utilisateurId, tronquer(neutraliserMentions(raison || 'AFK'), 200), Date.now());
 }
 
-async function onMessage(message: Message): Promise<void> {
+async function surMessage(message: Message): Promise<void> {
   if (!message.inGuild() || message.author.bot) return;
-  const self = get<AfkRow>('SELECT reason, since FROM afk WHERE guild_id = ? AND user_id = ?', message.guildId, message.author.id);
+  const soi = lire<LigneAfk>('SELECT raison, depuis FROM afk WHERE serveur_id = ? AND utilisateur_id = ?', message.guildId, message.author.id);
   // Le message qui active l'AFK ne doit pas le retirer aussitôt.
-  if (self && Date.now() - self.since > 5_000) {
-    run('DELETE FROM afk WHERE guild_id = ? AND user_id = ?', message.guildId, message.author.id);
-    const note = await message.reply({ embeds: [ok(message.guild, `👋 Bienvenue de retour <@${message.author.id}> ! Tu étais AFK depuis **${formatDuration(Date.now() - self.since)}**.`)], allowedMentions: { repliedUser: false } }).catch(() => null);
+  if (soi && Date.now() - soi.depuis > 5_000) {
+    executer('DELETE FROM afk WHERE serveur_id = ? AND utilisateur_id = ?', message.guildId, message.author.id);
+    const note = await message.reply({ embeds: [ok(message.guild, `👋 Bienvenue de retour <@${message.author.id}> ! Tu étais AFK depuis **${formaterDuree(Date.now() - soi.depuis)}**.`)], allowedMentions: { repliedUser: false } }).catch(() => null);
     if (note) setTimeout(() => void note.delete().catch(() => undefined), 10_000).unref();
   }
-  const mentioned = [...message.mentions.users.values()].filter((u) => u.id !== message.author.id && !u.bot).slice(0, 5);
-  const lines: string[] = [];
-  for (const user of mentioned) {
-    const row = get<AfkRow>('SELECT reason, since FROM afk WHERE guild_id = ? AND user_id = ?', message.guildId, user.id);
-    if (!row) continue;
-    const key = `${message.channelId}:${user.id}`;
-    if ((notified.get(key) ?? 0) > Date.now()) continue;
-    notified.set(key, Date.now() + 60_000);
-    lines.push(`💤 <@${user.id}> est actuellement AFK ${ts(row.since, 'R')}.\n**Raison :** ${row.reason}`);
+  const mentionnes = [...message.mentions.users.values()].filter((u) => u.id !== message.author.id && !u.bot).slice(0, 5);
+  const lignes: string[] = [];
+  for (const utilisateur of mentionnes) {
+    const rangee = lire<LigneAfk>('SELECT raison, depuis FROM afk WHERE serveur_id = ? AND utilisateur_id = ?', message.guildId, utilisateur.id);
+    if (!rangee) continue;
+    const cle = `${message.channelId}:${utilisateur.id}`;
+    if ((prevenus.get(cle) ?? 0) > Date.now()) continue;
+    prevenus.set(cle, Date.now() + 60_000);
+    lignes.push(`💤 <@${utilisateur.id}> est actuellement AFK ${marqueTemps(rangee.depuis, 'R')}.\n**Raison :** ${rangee.raison}`);
   }
-  if (notified.size > 5_000) for (const [k, v] of notified) if (v < Date.now()) notified.delete(k);
-  if (lines.length) await message.reply({ embeds: [info(message.guild, lines.join('\n\n'), { emoji: '💤' })], allowedMentions: { parse: [], repliedUser: false } }).catch(() => undefined);
+  if (prevenus.size > 5_000) for (const [k, v] of prevenus) if (v < Date.now()) prevenus.delete(k);
+  if (lignes.length) await message.reply({ embeds: [info(message.guild, lignes.join('\n\n'), { emoji: '💤' })], allowedMentions: { parse: [], repliedUser: false } }).catch(() => undefined);
 }
 
-const afk: SlashCommand = {
-  category: 'community',
-  data: new SlashCommandBuilder()
+const afk: CommandeSlash = {
+  categorie: 'community',
+  donnees: new SlashCommandBuilder()
     .setName('afk')
     .setDescription('Te mettre AFK')
     .addStringOption((o) => o.setName('raison').setDescription('Ex : En train de dormir').setMaxLength(200)),
-  async execute(interaction) {
-    const reason = interaction.options.getString('raison') ?? 'AFK';
-    setAfk(interaction.guildId, interaction.user.id, reason);
-    await reply(interaction, { embeds: [info(interaction.guild, `💤 <@${interaction.user.id}> est maintenant AFK.\n**Raison :** ${neutralizeMentions(reason)}`)], allowedMentions: { parse: [] } });
+  async executer(interaction) {
+    const raison = interaction.options.getString('raison') ?? 'AFK';
+    mettreAfk(interaction.guildId, interaction.user.id, raison);
+    await repondre(interaction, { embeds: [info(interaction.guild, `💤 <@${interaction.user.id}> est maintenant AFK.\n**Raison :** ${neutraliserMentions(raison)}`)], allowedMentions: { parse: [] } });
   },
 };
 
-const prefixCommands: PrefixCommand[] = [
+const commandesPrefixe: CommandePrefixe[] = [
   {
-    name: 'afk',
-    domain: 'general',
-    category: 'community',
+    nom: 'afk',
+    domaine: 'general',
+    categorie: 'community',
     description: 'Te mettre AFK',
     usage: '[raison]',
-    async execute(message, args) {
-      const reason = args.join(' ') || 'AFK';
-      setAfk(message.guildId, message.author.id, reason);
-      await message.reply({ embeds: [info(message.guild, `💤 Tu es maintenant AFK.\n**Raison :** ${neutralizeMentions(reason)}`)], allowedMentions: { parse: [], repliedUser: false } });
+    async executer(message, parametres) {
+      const raison = parametres.join(' ') || 'AFK';
+      mettreAfk(message.guildId, message.author.id, raison);
+      await message.reply({ embeds: [info(message.guild, `💤 Tu es maintenant AFK.\n**Raison :** ${neutraliserMentions(raison)}`)], allowedMentions: { parse: [], repliedUser: false } });
     },
   },
 ];
 
-export const afkModule: BotModule = {
+export const moduleAfk: ModuleBot = {
   id: 'afk',
-  name: 'AFK',
+  nom: 'AFK',
   emoji: '💤',
   description: 'Statut AFK avec rappel quand on te mentionne',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [afk],
-  prefixCommands,
-  events: [on('messageCreate', (m) => onMessage(m), 120)],
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [afk],
+  commandesPrefixe,
+  evenements: [sur('messageCreate', (m) => surMessage(m), 120)],
 };

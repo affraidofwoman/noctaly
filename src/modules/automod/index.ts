@@ -1,150 +1,150 @@
 import { ChannelType, type Message } from 'discord.js';
-import { emojiFor } from '../../core/brand';
+import { emojiPour } from '../../core/brand';
 import { info, ok, refus } from '../../core/embeds';
-import { getConfig, updateConfig } from '../../core/guildConfig';
-import { journal, recordLog } from '../../core/logService';
-import { createLogger } from '../../core/logger';
-import { isBypassed } from '../../core/permissions';
-import { Cooldowns, SlidingWindowLimiter } from '../../core/rateLimit';
-import type { SetupPage } from '../../core/setup';
-import { truncate } from '../../core/text';
-import { on, PermLevel, type BotModule, type PrefixCommand } from '../../core/types';
-import { applySanction } from '../../services/moderation';
-import { baseForm, DEFAULT_WORDS } from '../../services/badwords';
-import { checkContent, normalizeForDuplicate, RULE_LABELS, type AutoModRule } from '../../services/automodRules';
+import { lireConfig, modifierConfig } from '../../core/guildConfig';
+import { journal, historiser } from '../../core/logService';
+import { creerRegistre } from '../../core/logger';
+import { estExempte } from '../../core/permissions';
+import { Delais, LimiteurFenetre } from '../../core/rateLimit';
+import type { PageReglage } from '../../core/setup';
+import { tronquer } from '../../core/text';
+import { sur, Niveau, type ModuleBot, type CommandePrefixe } from '../../core/types';
+import { appliquerSanction } from '../../services/moderation';
+import { formeDeBase, MOTS_DEFAUT } from '../../services/badwords';
+import { verifierContenu, normaliserPourRepetition, LIBELLES_REGLES, type RegleAutomod } from '../../services/automodRules';
 
-const log = createLogger('automod');
+const registre = creerRegistre('automod');
 
-const spamLimiters = new Map<string, SlidingWindowLimiter>();
-const recentContents = new Map<string, { text: string; at: number }[]>();
-const actionCooldown = new Cooldowns();
+const limiteursSpam = new Map<string, LimiteurFenetre>();
+const contenusRecents = new Map<string, { text: string; at: number }[]>();
+const delaiActions = new Delais();
 
-function spamHit(guildId: string, userId: string, messages: number, seconds: number): boolean {
-  const key = `${guildId}:${messages}:${seconds}`;
-  let limiter = spamLimiters.get(key);
-  if (!limiter) spamLimiters.set(key, (limiter = new SlidingWindowLimiter(messages, seconds * 1000)));
-  return !limiter.hit(`${guildId}:${userId}`);
+function spamDetecte(serveurId: string, utilisateurId: string, messages: number, secondes: number): boolean {
+  const cle = `${serveurId}:${messages}:${secondes}`;
+  let limiteur = limiteursSpam.get(cle);
+  if (!limiteur) limiteursSpam.set(cle, (limiteur = new LimiteurFenetre(messages, secondes * 1000)));
+  return !limiteur.compter(`${serveurId}:${utilisateurId}`);
 }
 
-function duplicateHit(guildId: string, userId: string, content: string, count: number): boolean {
-  const text = normalizeForDuplicate(content);
-  if (text.length < 3) return false;
-  const key = `${guildId}:${userId}`;
-  const now = Date.now();
-  const list = (recentContents.get(key) ?? []).filter((e) => now - e.at < 60_000);
-  list.push({ text, at: now });
-  recentContents.set(key, list.slice(-20));
-  if (recentContents.size > 5000) recentContents.delete(recentContents.keys().next().value!);
-  return list.filter((e) => e.text === text).length >= count;
+function repetitionDetectee(serveurId: string, utilisateurId: string, contenu: string, nombre: number): boolean {
+  const texte = normaliserPourRepetition(contenu);
+  if (texte.length < 3) return false;
+  const cle = `${serveurId}:${utilisateurId}`;
+  const maintenant = Date.now();
+  const liste = (contenusRecents.get(cle) ?? []).filter((e) => maintenant - e.at < 60_000);
+  liste.push({ text: texte, at: maintenant });
+  contenusRecents.set(cle, liste.slice(-20));
+  if (contenusRecents.size > 5000) contenusRecents.delete(contenusRecents.keys().next().value!);
+  return liste.filter((e) => e.text === texte).length >= nombre;
 }
 
-async function punish(message: Message<true>, rule: AutoModRule, detail: string): Promise<void> {
-  const guild = message.guild;
-  const cfg = getConfig(guild.id).automod;
+async function sanctionner(message: Message<true>, regle: RegleAutomod, detail: string): Promise<void> {
+  const serveur = message.guild;
+  const reglages = lireConfig(serveur.id).automod;
   await message.delete().catch(() => undefined);
 
   // Une seule réaction par personne toutes les 10 secondes : pas de cascade de sanctions sur un spam.
-  if (actionCooldown.take(`${guild.id}:${message.author.id}`, 10_000) > 0) return;
+  if (delaiActions.prendre(`${serveur.id}:${message.author.id}`, 10_000) > 0) return;
 
-  const label = RULE_LABELS[rule];
-  const notice = await message.channel
-    .send({ embeds: [refus(guild, `<@${message.author.id}>, ${label.notice}.`)], allowedMentions: { users: [message.author.id] } })
+  const libelle = LIBELLES_REGLES[regle];
+  const avertissement = await message.channel
+    .send({ embeds: [refus(serveur, `<@${message.author.id}>, ${libelle.avertissement}.`)], allowedMentions: { users: [message.author.id] } })
     .catch(() => null);
-  if (notice) setTimeout(() => void notice.delete().catch(() => undefined), 6_000).unref();
+  if (avertissement) setTimeout(() => void avertissement.delete().catch(() => undefined), 6_000).unref();
 
   let sanction = 'message supprimé';
-  const me = guild.members.me;
-  if (me && cfg.action !== 'delete') {
+  const moi = serveur.members.me;
+  if (moi && reglages.action !== 'delete') {
     try {
-      await applySanction({
-        guild,
-        actor: me,
-        target: message.author,
-        type: cfg.action === 'warn' ? 'warn' : 'timeout',
-        reason: `AutoMod — ${label.label}`,
-        durationMs: cfg.action === 'timeout' ? cfg.timeoutMinutes * 60_000 : undefined,
-        auto: cfg.action === 'timeout',
+      await appliquerSanction({
+        serveur,
+        auteur: moi,
+        cible: message.author,
+        type: reglages.action === 'warn' ? 'warn' : 'timeout',
+        raison: `AutoMod — ${libelle.label}`,
+        dureeMs: reglages.action === 'timeout' ? reglages.minutesTimeout * 60_000 : undefined,
+        auto: reglages.action === 'timeout',
       });
-      sanction = cfg.action === 'warn' ? 'avertissement' : `timeout ${cfg.timeoutMinutes} min`;
-    } catch (err) {
-      log.warn(`Sanction AutoMod impossible : ${(err as Error).message}`);
+      sanction = reglages.action === 'warn' ? 'avertissement' : `timeout ${reglages.minutesTimeout} min`;
+    } catch (echec) {
+      registre.avertir(`Sanction AutoMod impossible : ${(echec as Error).message}`);
     }
   }
 
-  recordLog(guild.id, 'automod', rule, message.author.id, null, { detail, channelId: message.channelId });
-  void journal(guild, 'automod', {
-    title: `AutoMod — ${label.label}`,
-    tone: 'alerte',
-    lines: [
+  historiser(serveur.id, 'automod', regle, message.author.id, null, { detail, channelId: message.channelId });
+  void journal(serveur, 'automod', {
+    titre: `AutoMod — ${libelle.label}`,
+    ton: 'alerte',
+    lignes: [
       `**Membre** : <@${message.author.id}> \`${message.author.tag}\``,
       `**Salon** : <#${message.channelId}>`,
-      `**Détecté** : \`${truncate(detail, 100)}\``,
+      `**Détecté** : \`${tronquer(detail, 100)}\``,
       `**Action** : ${sanction}`,
       '',
-      truncate(message.content, 1500),
+      tronquer(message.content, 1500),
     ],
   });
 }
 
-async function onMessage(message: Message): Promise<'stop' | void> {
+async function surMessage(message: Message): Promise<'stop' | void> {
   if (!message.inGuild() || message.author.bot || !message.member) return;
-  const cfg = getConfig(message.guildId).automod;
-  if (cfg.whitelistChannels.includes(message.channelId) || cfg.whitelistUsers.includes(message.author.id)) return;
-  if (message.member.roles.cache.some((r) => cfg.whitelistRoles.includes(r.id))) return;
-  if (cfg.ignoreStaff && isBypassed(message.member)) return;
+  const reglages = lireConfig(message.guildId).automod;
+  if (reglages.salonsExemptes.includes(message.channelId) || reglages.membresExemptes.includes(message.author.id)) return;
+  if (message.member.roles.cache.some((r) => reglages.rolesExemptes.includes(r.id))) return;
+  if (reglages.ignorerStaff && estExempte(message.member)) return;
 
-  const content = message.content ?? '';
+  const contenu = message.content ?? '';
   const mentions = new Set([...message.mentions.users.keys(), ...message.mentions.roles.keys()]).size;
-  const verdict = checkContent(cfg, content, mentions, message.mentions.everyone && !message.member.permissions.has('MentionEveryone'));
+  const verdict = verifierContenu(reglages, contenu, mentions, message.mentions.everyone && !message.member.permissions.has('MentionEveryone'));
   if (verdict) {
-    await punish(message, verdict.rule, verdict.detail);
+    await sanctionner(message, verdict.regle, verdict.detail);
     return 'stop';
   }
-  if (cfg.spam.enabled && spamHit(message.guildId, message.author.id, cfg.spam.messages, cfg.spam.seconds)) {
-    await punish(message, 'spam', `${cfg.spam.messages} messages / ${cfg.spam.seconds} s`);
+  if (reglages.spam.enabled && spamDetecte(message.guildId, message.author.id, reglages.spam.messages, reglages.spam.seconds)) {
+    await sanctionner(message, 'spam', `${reglages.spam.messages} messages / ${reglages.spam.seconds} s`);
     return 'stop';
   }
-  if (cfg.duplicates.enabled && content && duplicateHit(message.guildId, message.author.id, content, cfg.duplicates.count)) {
-    await punish(message, 'duplicates', truncate(content, 80));
+  if (reglages.repetitions.enabled && contenu && repetitionDetectee(message.guildId, message.author.id, contenu, reglages.repetitions.count)) {
+    await sanctionner(message, 'duplicates', tronquer(contenu, 80));
     return 'stop';
   }
 }
 
-const listField = (key: 'links' | 'badWords', label: string) => ({
+const champListe = (cle: 'links' | 'badWords', libelle: string) => ({
   kind: 'text' as const,
-  key,
-  label,
+  cle,
+  libelle,
   long: true,
   maxLength: 2000,
-  get: (c: import('../../core/guildConfig').GuildConfig) => (key === 'links' ? c.automod.links.whitelist : c.automod.badWords.words).join(', '),
-  set: (c: import('../../core/guildConfig').GuildConfig, v: string) => {
-    const items = [...new Set(v.split(/[,\n]/).map((s) => s.trim()).filter(Boolean))].slice(0, 300);
-    if (key === 'links') c.automod.links.whitelist = items.map((d) => d.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
-    else c.automod.badWords.words = [...new Set(items.map(baseForm).filter(Boolean))];
+  get: (c: import('../../core/guildConfig').ConfigServeur) => (cle === 'links' ? c.automod.liens.whitelist : c.automod.motsInterdits.mots).join(', '),
+  set: (c: import('../../core/guildConfig').ConfigServeur, v: string) => {
+    const articles = [...new Set(v.split(/[,\n]/).map((s) => s.trim()).filter(Boolean))].slice(0, 300);
+    if (cle === 'links') c.automod.liens.whitelist = articles.map((d) => d.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
+    else c.automod.motsInterdits.mots = [...new Set(articles.map(formeDeBase).filter(Boolean))];
   },
 });
 
-const pages: SetupPage[] = [
+const pages: PageReglage[] = [
   {
     id: 'automod',
     section: 'moderation',
-    title: 'AutoMod',
+    titre: 'AutoMod',
     emoji: '🤖',
     moduleId: 'automod',
-    order: 2,
+    ordre: 2,
     description: 'Les filtres automatiques. Le staff, le bypass et les salons/rôles autorisés sont ignorés.\n-# Liste des domaines et mots : séparés par des virgules.',
-    fields: [
-      { kind: 'toggle', key: 'spam', label: 'Spam', get: (c) => c.automod.spam.enabled, set: (c, v) => void (c.automod.spam.enabled = v) },
-      { kind: 'toggle', key: 'dup', label: 'Répétition', get: (c) => c.automod.duplicates.enabled, set: (c, v) => void (c.automod.duplicates.enabled = v) },
-      { kind: 'toggle', key: 'links', label: 'Liens', get: (c) => c.automod.links.enabled, set: (c, v) => void (c.automod.links.enabled = v) },
-      { kind: 'toggle', key: 'invites', label: 'Invitations', get: (c) => c.automod.invites.enabled, set: (c, v) => void (c.automod.invites.enabled = v) },
-      { kind: 'toggle', key: 'words', label: 'Mots interdits', get: (c) => c.automod.badWords.enabled, set: (c, v) => void (c.automod.badWords.enabled = v) },
-      { kind: 'toggle', key: 'mentions', label: 'Mentions', get: (c) => c.automod.mentions.enabled, set: (c, v) => void (c.automod.mentions.enabled = v) },
-      { kind: 'toggle', key: 'caps', label: 'Majuscules', get: (c) => c.automod.caps.enabled, set: (c, v) => void (c.automod.caps.enabled = v) },
+    champs: [
+      { kind: 'toggle', cle: 'spam', libelle: 'Spam', get: (c) => c.automod.spam.enabled, set: (c, v) => void (c.automod.spam.enabled = v) },
+      { kind: 'toggle', cle: 'dup', libelle: 'Répétition', get: (c) => c.automod.repetitions.enabled, set: (c, v) => void (c.automod.repetitions.enabled = v) },
+      { kind: 'toggle', cle: 'links', libelle: 'Liens', get: (c) => c.automod.liens.enabled, set: (c, v) => void (c.automod.liens.enabled = v) },
+      { kind: 'toggle', cle: 'invites', libelle: 'Invitations', get: (c) => c.automod.invites.enabled, set: (c, v) => void (c.automod.invites.enabled = v) },
+      { kind: 'toggle', cle: 'words', libelle: 'Mots interdits', get: (c) => c.automod.motsInterdits.enabled, set: (c, v) => void (c.automod.motsInterdits.enabled = v) },
+      { kind: 'toggle', cle: 'mentions', libelle: 'Mentions', get: (c) => c.automod.mentions.enabled, set: (c, v) => void (c.automod.mentions.enabled = v) },
+      { kind: 'toggle', cle: 'caps', libelle: 'Majuscules', get: (c) => c.automod.majuscules.enabled, set: (c, v) => void (c.automod.majuscules.enabled = v) },
       {
         kind: 'choice',
-        key: 'action',
-        label: 'Action',
+        cle: 'action',
+        libelle: 'Action',
         options: [
           { value: 'delete', label: 'Supprimer le message', emoji: '🗑️' },
           { value: 'warn', label: 'Supprimer + avertir', emoji: '⚠️' },
@@ -153,111 +153,111 @@ const pages: SetupPage[] = [
         get: (c) => c.automod.action,
         set: (c, v) => void (c.automod.action = v as 'delete' | 'warn' | 'timeout'),
       },
-      { ...listField('links', 'Domaines autorisés') },
-      { ...listField('badWords', 'Mots interdits') },
-      { kind: 'number', key: 'mentionsmax', label: 'Mentions max', min: 1, max: 50, get: (c) => c.automod.mentions.max, set: (c, v) => void (c.automod.mentions.max = v) },
-      { kind: 'number', key: 'timeout', label: 'Durée du timeout', min: 1, max: 1440, unit: 'min', get: (c) => c.automod.timeoutMinutes, set: (c, v) => void (c.automod.timeoutMinutes = v) },
+      { ...champListe('links', 'Domaines autorisés') },
+      { ...champListe('badWords', 'Mots interdits') },
+      { kind: 'number', cle: 'mentionsmax', libelle: 'Mentions max', min: 1, max: 50, get: (c) => c.automod.mentions.max, set: (c, v) => void (c.automod.mentions.max = v) },
+      { kind: 'number', cle: 'timeout', libelle: 'Durée du timeout', min: 1, max: 1440, unit: 'min', get: (c) => c.automod.minutesTimeout, set: (c, v) => void (c.automod.minutesTimeout = v) },
     ],
   },
   {
     id: 'automod-advanced',
     section: 'moderation',
-    title: 'AutoMod — réglages fins',
+    titre: 'AutoMod — réglages fins',
     emoji: '🎚️',
-    order: 3,
+    ordre: 3,
     description: 'Seuils des filtres et exceptions.',
-    fields: [
+    champs: [
       {
         kind: 'channels',
-        key: 'channels',
-        label: 'Salons ignorés',
+        cle: 'channels',
+        libelle: 'Salons ignorés',
         channelTypes: [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement],
-        get: (c) => c.automod.whitelistChannels,
-        set: (c, v) => void (c.automod.whitelistChannels = v),
+        get: (c) => c.automod.salonsExemptes,
+        set: (c, v) => void (c.automod.salonsExemptes = v),
       },
-      { kind: 'roles', key: 'roles', label: 'Rôles ignorés', get: (c) => c.automod.whitelistRoles, set: (c, v) => void (c.automod.whitelistRoles = v) },
-      { kind: 'toggle', key: 'staff', label: 'Ignorer le staff', get: (c) => c.automod.ignoreStaff, set: (c, v) => void (c.automod.ignoreStaff = v) },
-      { kind: 'number', key: 'spammsg', label: 'Spam : messages', min: 2, max: 30, get: (c) => c.automod.spam.messages, set: (c, v) => void (c.automod.spam.messages = v) },
-      { kind: 'number', key: 'spamsec', label: 'Spam : secondes', min: 1, max: 60, unit: 's', get: (c) => c.automod.spam.seconds, set: (c, v) => void (c.automod.spam.seconds = v) },
-      { kind: 'number', key: 'dup', label: 'Répétitions tolérées', min: 2, max: 20, get: (c) => c.automod.duplicates.count, set: (c, v) => void (c.automod.duplicates.count = v) },
-      { kind: 'number', key: 'capspct', label: 'Majuscules : %', min: 50, max: 100, unit: '%', get: (c) => c.automod.caps.percent, set: (c, v) => void (c.automod.caps.percent = v) },
-      { kind: 'number', key: 'capsmin', label: 'Majuscules : longueur min', min: 5, max: 200, get: (c) => c.automod.caps.minLength, set: (c, v) => void (c.automod.caps.minLength = v) },
+      { kind: 'roles', cle: 'roles', libelle: 'Rôles ignorés', get: (c) => c.automod.rolesExemptes, set: (c, v) => void (c.automod.rolesExemptes = v) },
+      { kind: 'toggle', cle: 'staff', libelle: 'Ignorer le staff', get: (c) => c.automod.ignorerStaff, set: (c, v) => void (c.automod.ignorerStaff = v) },
+      { kind: 'number', cle: 'spammsg', libelle: 'Spam : messages', min: 2, max: 30, get: (c) => c.automod.spam.messages, set: (c, v) => void (c.automod.spam.messages = v) },
+      { kind: 'number', cle: 'spamsec', libelle: 'Spam : secondes', min: 1, max: 60, unit: 's', get: (c) => c.automod.spam.seconds, set: (c, v) => void (c.automod.spam.seconds = v) },
+      { kind: 'number', cle: 'dup', libelle: 'Répétitions tolérées', min: 2, max: 20, get: (c) => c.automod.repetitions.count, set: (c, v) => void (c.automod.repetitions.count = v) },
+      { kind: 'number', cle: 'capspct', libelle: 'Majuscules : %', min: 50, max: 100, unit: '%', get: (c) => c.automod.majuscules.percent, set: (c, v) => void (c.automod.majuscules.percent = v) },
+      { kind: 'number', cle: 'capsmin', libelle: 'Majuscules : longueur min', min: 5, max: 200, get: (c) => c.automod.majuscules.minLength, set: (c, v) => void (c.automod.majuscules.minLength = v) },
     ],
   },
 ];
 
-const prefixCommands: PrefixCommand[] = [
+const commandesPrefixe: CommandePrefixe[] = [
   {
-    name: 'badword',
-    domain: 'sanction',
-    category: 'salons',
+    nom: 'badword',
+    domaine: 'sanction',
+    categorie: 'salons',
     description: 'Mots interdits (seul : liste)',
     usage: '[mot|on|off]',
-    level: PermLevel.MODERATOR,
-    async execute(message, args) {
-      const guildId = message.guildId;
-      const arg = args.join(' ').trim();
-      const cfg = getConfig(guildId).automod.badWords;
-      const subject = { titre: 'Mots interdits', sujet: emojiFor(guildId, 'sanction') };
-      if (!arg) {
-        const text = cfg.words.length ? cfg.words.map((w) => `\`${w}\``).join(' · ') : '*Aucun mot.*';
-        await message.reply({ embeds: [info(message.guild, `Filtre : **${cfg.enabled ? 'actif' : 'coupé'}**\n\n${truncate(text, 3800)}`, subject)], allowedMentions: { repliedUser: false } });
+    niveau: Niveau.MODERATEUR,
+    async executer(message, parametres) {
+      const serveurId = message.guildId;
+      const argument = parametres.join(' ').trim();
+      const reglages = lireConfig(serveurId).automod.motsInterdits;
+      const sujet = { titre: 'Mots interdits', sujet: emojiPour(serveurId, 'sanction') };
+      if (!argument) {
+        const texte = reglages.mots.length ? reglages.mots.map((w) => `\`${w}\``).join(' · ') : '*Aucun mot.*';
+        await message.reply({ embeds: [info(message.guild, `Filtre : **${reglages.enabled ? 'actif' : 'coupé'}**\n\n${tronquer(texte, 3800)}`, sujet)], allowedMentions: { repliedUser: false } });
         return;
       }
-      if (arg === 'on' || arg === 'off') {
-        const seeded = arg === 'on' && cfg.words.length === 0;
-        updateConfig(guildId, (c) => {
-          c.automod.badWords.enabled = arg === 'on';
-          if (seeded) c.automod.badWords.words = [...DEFAULT_WORDS];
+      if (argument === 'on' || argument === 'off') {
+        const initialise = argument === 'on' && reglages.mots.length === 0;
+        modifierConfig(serveurId, (c) => {
+          c.automod.motsInterdits.enabled = argument === 'on';
+          if (initialise) c.automod.motsInterdits.mots = [...MOTS_DEFAUT];
         });
-        await message.reply({ embeds: [ok(message.guild, `Filtre ${arg === 'on' ? 'activé' : 'coupé'}.${seeded ? `\n-# Liste de départ : ${DEFAULT_WORDS.length} mots.` : ''}`, subject)], allowedMentions: { repliedUser: false } });
+        await message.reply({ embeds: [ok(message.guild, `Filtre ${argument === 'on' ? 'activé' : 'coupé'}.${initialise ? `\n-# Liste de départ : ${MOTS_DEFAUT.length} mots.` : ''}`, sujet)], allowedMentions: { repliedUser: false } });
         return;
       }
-      const word = baseForm(arg);
-      if (!word) throw new Error('mot invalide');
-      let added = false;
-      updateConfig(guildId, (c) => {
-        const list = c.automod.badWords.words;
-        const idx = list.indexOf(word);
-        if (idx === -1) {
-          list.push(word);
-          added = true;
-        } else list.splice(idx, 1);
+      const mot = formeDeBase(argument);
+      if (!mot) throw new Error('mot invalide');
+      let ajoute = false;
+      modifierConfig(serveurId, (c) => {
+        const liste = c.automod.motsInterdits.mots;
+        const indice = liste.indexOf(mot);
+        if (indice === -1) {
+          liste.push(mot);
+          ajoute = true;
+        } else liste.splice(indice, 1);
       });
       await message.delete().catch(() => undefined);
-      await message.channel.send({ embeds: [ok(message.guild, `\`${word}\` ${added ? 'ajouté au' : 'retiré du'} filtre.`, subject)] });
+      await message.channel.send({ embeds: [ok(message.guild, `\`${mot}\` ${ajoute ? 'ajouté au' : 'retiré du'} filtre.`, sujet)] });
     },
   },
 ];
 
-export const automodModule: BotModule = {
+export const moduleAutomod: ModuleBot = {
   id: 'automod',
-  name: 'AutoMod',
+  nom: 'AutoMod',
   emoji: '🤖',
   description: 'Spam, flood, liens, invitations, mots interdits, mentions, majuscules',
-  toggleable: true,
-  defaultEnabled: true,
-  setupPages: pages,
-  prefixCommands,
-  events: [on('messageCreate', (m) => onMessage(m), 10), on('messageUpdate', (_old, m) => (m.partial ? undefined : onMessage(m as Message)), 10)],
+  desactivable: true,
+  actifParDefaut: true,
+  pagesReglage: pages,
+  commandesPrefixe,
+  evenements: [sur('messageCreate', (m) => surMessage(m), 10), sur('messageUpdate', (_ancien, m) => (m.partial ? undefined : surMessage(m as Message)), 10)],
   tests: [
     {
       id: 'rules',
-      label: 'État des filtres',
+      libelle: 'État des filtres',
       emoji: '🤖',
       description: 'Les filtres actifs et l’action choisie',
-      async run(interaction) {
-        const a = getConfig(interaction.guildId).automod;
-        const rows: [string, boolean][] = [
+      async executer(interaction) {
+        const a = lireConfig(interaction.guildId).automod;
+        const rangees: [string, boolean][] = [
           ['Spam', a.spam.enabled],
-          ['Répétition', a.duplicates.enabled],
-          ['Liens', a.links.enabled],
+          ['Répétition', a.repetitions.enabled],
+          ['Liens', a.liens.enabled],
           ['Invitations', a.invites.enabled],
-          ['Mots interdits', a.badWords.enabled],
+          ['Mots interdits', a.motsInterdits.enabled],
           ['Mentions', a.mentions.enabled],
-          ['Majuscules', a.caps.enabled],
+          ['Majuscules', a.majuscules.enabled],
         ];
-        return `${rows.map(([l, e]) => `${e ? '🟢' : '🔴'} ${l}`).join('\n')}\n\nAction : **${a.action}**`;
+        return `${rangees.map(([l, e]) => `${e ? '🟢' : '🔴'} ${l}`).join('\n')}\n\nAction : **${a.action}**`;
       },
     },
   ],

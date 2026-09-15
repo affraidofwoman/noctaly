@@ -1,17 +1,17 @@
-import { deployCommands } from './core/deploy';
-import { env } from './core/env';
+import { enregistrerCommandes } from './core/deploy';
+import { environnement } from './core/env';
 import { modules } from './modules';
 
-async function main(): Promise<void> {
-  if (!env.discordToken || !env.clientId) {
+async function demarrer(): Promise<void> {
+  if (!environnement.jetonDiscord || !environnement.clientId) {
     throw new Error('DISCORD_TOKEN et DISCORD_CLIENT_ID sont requis (voir .env.example)');
   }
-  const changed = await deployCommands(modules, { force: true });
-  console.log(changed ? '✅ Commandes enregistrées.' : 'ℹ️ Aucune modification.');
-  if (!env.devGuildId) console.log('ℹ️ Commandes globales : la propagation peut prendre quelques minutes.');
+  const change = await enregistrerCommandes(modules, { force: true });
+  console.log(change ? '✅ Commandes enregistrées.' : 'ℹ️ Aucune modification.');
+  if (!environnement.serveurDevId) console.log('ℹ️ Commandes globales : la propagation peut prendre quelques minutes.');
 }
 
-main().catch((err: unknown) => {
-  console.error('❌ Échec :', err instanceof Error ? err.message : err);
+demarrer().catch((echec: unknown) => {
+  console.error('❌ Échec :', echec instanceof Error ? echec.message : echec);
   process.exit(1);
 });

@@ -9,61 +9,61 @@ import {
   type MessageActionRowComponentBuilder,
 } from 'discord.js';
 
-export interface ModalField {
+export interface ChampFenetre {
   id: string;
-  label: string;
+  libelle: string;
   description?: string;
   long?: boolean;
-  required?: boolean;
-  placeholder?: string;
-  value?: string | null;
-  minLength?: number;
-  maxLength?: number;
+  obligatoire?: boolean;
+  indication?: string;
+  valeur?: string | null;
+  longueurMin?: number;
+  longueurMax?: number;
 }
 
 /** Construit un modal Discord à partir d'une liste de champs texte (5 maximum). */
-export function buildModal(customId: string, title: string, fields: ModalField[]): ModalBuilder {
-  const modal = new ModalBuilder().setCustomId(customId).setTitle(title.slice(0, 45));
-  for (const field of fields.slice(0, 5)) {
-    const input = new TextInputBuilder()
-      .setCustomId(field.id)
-      .setStyle(field.long ? TextInputStyle.Paragraph : TextInputStyle.Short)
-      .setRequired(field.required ?? true)
-      .setMaxLength(Math.min(field.maxLength ?? (field.long ? 4000 : 200), 4000));
-    if (field.minLength) input.setMinLength(field.minLength);
-    if (field.placeholder) input.setPlaceholder(field.placeholder.slice(0, 100));
-    if (field.value) input.setValue(field.value.slice(0, field.maxLength ?? 4000));
-    const label = new LabelBuilder().setLabel(field.label.slice(0, 45)).setTextInputComponent(input);
-    if (field.description) label.setDescription(field.description.slice(0, 100));
-    modal.addLabelComponents(label);
+export function construireFormulaire(idPersonnalise: string, titre: string, champs: ChampFenetre[]): ModalBuilder {
+  const fenetre = new ModalBuilder().setCustomId(idPersonnalise).setTitle(titre.slice(0, 45));
+  for (const champ of champs.slice(0, 5)) {
+    const saisie = new TextInputBuilder()
+      .setCustomId(champ.id)
+      .setStyle(champ.long ? TextInputStyle.Paragraph : TextInputStyle.Short)
+      .setRequired(champ.obligatoire ?? true)
+      .setMaxLength(Math.min(champ.longueurMax ?? (champ.long ? 4000 : 200), 4000));
+    if (champ.longueurMin) saisie.setMinLength(champ.longueurMin);
+    if (champ.indication) saisie.setPlaceholder(champ.indication.slice(0, 100));
+    if (champ.valeur) saisie.setValue(champ.valeur.slice(0, champ.longueurMax ?? 4000));
+    const libelle = new LabelBuilder().setLabel(champ.libelle.slice(0, 45)).setTextInputComponent(saisie);
+    if (champ.description) libelle.setDescription(champ.description.slice(0, 100));
+    fenetre.addLabelComponents(libelle);
   }
-  return modal;
+  return fenetre;
 }
 
-export function row<T extends MessageActionRowComponentBuilder>(...components: T[]): ActionRowBuilder<T> {
-  return new ActionRowBuilder<T>().addComponents(...components);
+export function rangee<T extends MessageActionRowComponentBuilder>(...composants: T[]): ActionRowBuilder<T> {
+  return new ActionRowBuilder<T>().addComponents(...composants);
 }
 
-export function button(customId: string, label: string, style: ButtonStyle = ButtonStyle.Secondary, emoji?: string): ButtonBuilder {
-  const b = new ButtonBuilder().setCustomId(customId).setStyle(style);
-  if (label) b.setLabel(label.slice(0, 80));
+export function bouton(idPersonnalise: string, libelle: string, style: ButtonStyle = ButtonStyle.Secondary, emoji?: string): ButtonBuilder {
+  const b = new ButtonBuilder().setCustomId(idPersonnalise).setStyle(style);
+  if (libelle) b.setLabel(libelle.slice(0, 80));
   if (emoji) b.setEmoji(emoji);
   return b;
 }
 
-export function linkButton(url: string, label: string, emoji?: string): ButtonBuilder {
-  const b = new ButtonBuilder().setURL(url).setLabel(label.slice(0, 80)).setStyle(ButtonStyle.Link);
+export function boutonLien(url: string, libelle: string, emoji?: string): ButtonBuilder {
+  const b = new ButtonBuilder().setURL(url).setLabel(libelle.slice(0, 80)).setStyle(ButtonStyle.Link);
   if (emoji) b.setEmoji(emoji);
   return b;
 }
 
-export function toggleButton(customId: string, label: string, enabled: boolean): ButtonBuilder {
-  return button(customId, `${label} : ${enabled ? 'activé' : 'désactivé'}`, enabled ? ButtonStyle.Success : ButtonStyle.Secondary, enabled ? '🟢' : '🔴');
+export function boutonBascule(idPersonnalise: string, libelle: string, actif: boolean): ButtonBuilder {
+  return bouton(idPersonnalise, `${libelle} : ${actif ? 'activé' : 'désactivé'}`, actif ? ButtonStyle.Success : ButtonStyle.Secondary, actif ? '🟢' : '🔴');
 }
 
-export function isHttpUrl(value: string): boolean {
+export function estLienHttp(valeur: string): boolean {
   try {
-    const u = new URL(value);
+    const u = new URL(valeur);
     return u.protocol === 'https:' || u.protocol === 'http:';
   } catch {
     return false;

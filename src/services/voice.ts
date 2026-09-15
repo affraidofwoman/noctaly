@@ -1,93 +1,93 @@
 import type { Client, VoiceState } from 'discord.js';
-import { all, run } from '../database/db';
-import { createLogger } from '../core/logger';
+import { lireTout, executer } from '../database/db';
+import { creerRegistre } from '../core/logger';
 
-const log = createLogger('vocal');
+const registre = creerRegistre('vocal');
 
-export interface VoiceCredit {
-  guildId: string;
-  userId: string;
-  channelId: string;
-  seconds: number;
+export interface CreditVocal {
+  serveurId: string;
+  utilisateurId: string;
+  salonId: string;
+  secondes: number;
   /** Seul(e) dans le salon, sourd ou dans le salon AFK : les modules peuvent ignorer ce temps. */
-  idle: boolean;
+  inactif: boolean;
 }
 
-type Listener = (credit: VoiceCredit, client: Client) => void;
+type Ecouteur = (credit: CreditVocal, client: Client) => void;
 
-const listeners: Listener[] = [];
-const MAX_CREDIT_S = 10 * 60;
+const ecouteurs: Ecouteur[] = [];
+const CREDIT_MAX_S = 10 * 60;
 
 /** Un module s'abonne au temps passé en vocal (XP, statistiques, quêtes…). */
-export function onVoiceTime(listener: Listener): void {
-  listeners.push(listener);
+export function surTempsVocal(ecouteur: Ecouteur): void {
+  ecouteurs.push(ecouteur);
 }
 
-function emit(client: Client, credit: VoiceCredit): void {
-  if (credit.seconds <= 0) return;
-  for (const l of listeners) {
+function emettre(client: Client, credit: CreditVocal): void {
+  if (credit.secondes <= 0) return;
+  for (const l of ecouteurs) {
     try {
       l(credit, client);
-    } catch (err) {
-      log.warn(`Écouteur vocal en échec : ${(err as Error).message}`);
+    } catch (echec) {
+      registre.avertir(`Écouteur vocal en échec : ${(echec as Error).message}`);
     }
   }
 }
 
-function isIdle(state: VoiceState): boolean {
-  const channel = state.channel;
-  if (!channel) return true;
-  if (state.selfDeaf || state.serverDeaf) return true;
-  if (state.guild.afkChannelId === channel.id) return true;
-  return channel.members.filter((m) => !m.user.bot).size < 2;
+function estInactif(etat: VoiceState): boolean {
+  const salon = etat.channel;
+  if (!salon) return true;
+  if (etat.selfDeaf || etat.serverDeaf) return true;
+  if (etat.guild.afkChannelId === salon.id) return true;
+  return salon.members.filter((m) => !m.user.bot).size < 2;
 }
 
-function credit(client: Client, guildId: string, userId: string, until: number, state: VoiceState | null): void {
-  const row = all<{ channel_id: string; started_at: number }>('SELECT channel_id, started_at FROM voice_sessions WHERE guild_id = ? AND user_id = ?', guildId, userId)[0];
-  if (!row) return;
-  const seconds = Math.min(Math.floor((until - row.started_at) / 1000), MAX_CREDIT_S);
-  emit(client, { guildId, userId, channelId: row.channel_id, seconds, idle: state ? isIdle(state) : false });
+function credit(client: Client, serveurId: string, utilisateurId: string, jusqua: number, etat: VoiceState | null): void {
+  const rangee = lireTout<{ salon_id: string; debut_le: number }>('SELECT salon_id, debut_le FROM sessions_vocales WHERE serveur_id = ? AND utilisateur_id = ?', serveurId, utilisateurId)[0];
+  if (!rangee) return;
+  const secondes = Math.min(Math.floor((jusqua - rangee.debut_le) / 1000), CREDIT_MAX_S);
+  emettre(client, { serveurId, utilisateurId, salonId: rangee.salon_id, secondes, inactif: etat ? estInactif(etat) : false });
 }
 
 /** À brancher sur voiceStateUpdate (module cœur). */
-export function handleVoiceState(before: VoiceState, after: VoiceState): void {
-  const member = after.member ?? before.member;
-  if (!member || member.user.bot) return;
-  const now = Date.now();
-  const guildId = after.guild.id;
-  if (before.channelId && before.channelId !== after.channelId) {
-    credit(after.client, guildId, member.id, now, before);
-    run('DELETE FROM voice_sessions WHERE guild_id = ? AND user_id = ?', guildId, member.id);
+export function traiterEtatVocal(avant: VoiceState, apres: VoiceState): void {
+  const membre = apres.member ?? avant.member;
+  if (!membre || membre.user.bot) return;
+  const maintenant = Date.now();
+  const serveurId = apres.guild.id;
+  if (avant.channelId && avant.channelId !== apres.channelId) {
+    credit(apres.client, serveurId, membre.id, maintenant, avant);
+    executer('DELETE FROM sessions_vocales WHERE serveur_id = ? AND utilisateur_id = ?', serveurId, membre.id);
   }
-  if (after.channelId && before.channelId !== after.channelId) {
-    run('INSERT OR REPLACE INTO voice_sessions (guild_id, user_id, channel_id, started_at) VALUES (?, ?, ?, ?)', guildId, member.id, after.channelId, now);
+  if (apres.channelId && avant.channelId !== apres.channelId) {
+    executer('INSERT OR REPLACE INTO sessions_vocales (serveur_id, utilisateur_id, salon_id, debut_le) VALUES (?, ?, ?, ?)', serveurId, membre.id, apres.channelId, maintenant);
   }
 }
 
 /** Crédite régulièrement les sessions en cours (le temps n'est pas perdu en cas de redémarrage). */
-export function flushVoice(client: Client): void {
-  const now = Date.now();
-  for (const row of all<{ guild_id: string; user_id: string; channel_id: string; started_at: number }>('SELECT * FROM voice_sessions')) {
-    const guild = client.guilds.cache.get(row.guild_id);
-    const state = guild?.voiceStates.cache.get(row.user_id);
-    if (!guild || !state?.channelId) {
-      run('DELETE FROM voice_sessions WHERE guild_id = ? AND user_id = ?', row.guild_id, row.user_id);
+export function crediterVocal(client: Client): void {
+  const maintenant = Date.now();
+  for (const rangee of lireTout<{ serveur_id: string; utilisateur_id: string; salon_id: string; debut_le: number }>('SELECT * FROM sessions_vocales')) {
+    const serveur = client.guilds.cache.get(rangee.serveur_id);
+    const etat = serveur?.voiceStates.cache.get(rangee.utilisateur_id);
+    if (!serveur || !etat?.channelId) {
+      executer('DELETE FROM sessions_vocales WHERE serveur_id = ? AND utilisateur_id = ?', rangee.serveur_id, rangee.utilisateur_id);
       continue;
     }
-    const seconds = Math.min(Math.floor((now - row.started_at) / 1000), MAX_CREDIT_S);
-    emit(client, { guildId: row.guild_id, userId: row.user_id, channelId: state.channelId, seconds, idle: isIdle(state) });
-    run('UPDATE voice_sessions SET started_at = ?, channel_id = ? WHERE guild_id = ? AND user_id = ?', now, state.channelId, row.guild_id, row.user_id);
+    const secondes = Math.min(Math.floor((maintenant - rangee.debut_le) / 1000), CREDIT_MAX_S);
+    emettre(client, { serveurId: rangee.serveur_id, utilisateurId: rangee.utilisateur_id, salonId: etat.channelId, secondes, inactif: estInactif(etat) });
+    executer('UPDATE sessions_vocales SET debut_le = ?, salon_id = ? WHERE serveur_id = ? AND utilisateur_id = ?', maintenant, etat.channelId, rangee.serveur_id, rangee.utilisateur_id);
   }
 }
 
 /** Au démarrage : repart de zéro pour les personnes déjà en vocal. */
-export function resyncVoice(client: Client): void {
-  run('DELETE FROM voice_sessions');
-  const now = Date.now();
-  for (const guild of client.guilds.cache.values()) {
-    for (const state of guild.voiceStates.cache.values()) {
-      if (!state.channelId || state.member?.user.bot) continue;
-      run('INSERT OR REPLACE INTO voice_sessions (guild_id, user_id, channel_id, started_at) VALUES (?, ?, ?, ?)', guild.id, state.id, state.channelId, now);
+export function resynchroniserVocal(client: Client): void {
+  executer('DELETE FROM sessions_vocales');
+  const maintenant = Date.now();
+  for (const serveur of client.guilds.cache.values()) {
+    for (const etat of serveur.voiceStates.cache.values()) {
+      if (!etat.channelId || etat.member?.user.bot) continue;
+      executer('INSERT OR REPLACE INTO sessions_vocales (serveur_id, utilisateur_id, salon_id, debut_le) VALUES (?, ?, ?, ?)', serveur.id, etat.id, etat.channelId, maintenant);
     }
   }
 }

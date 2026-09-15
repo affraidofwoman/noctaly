@@ -1,177 +1,177 @@
 import { AttachmentBuilder, ChannelType, EmbedBuilder, type Guild, type GuildMember } from 'discord.js';
-import { emojiFor } from '../../core/brand';
-import { brandEmbed, colorFor } from '../../core/embeds';
-import { getConfig } from '../../core/guildConfig';
-import { resolveTextChannel } from '../../core/logService';
-import { createLogger } from '../../core/logger';
-import { isModuleEnabled } from '../../core/moduleManager';
-import type { SetupPage } from '../../core/setup';
-import { truncate } from '../../core/text';
-import { isHttpUrl } from '../../core/ui';
-import { renderTemplate, variablesHelp } from '../../core/variables';
-import { on, type BotModule } from '../../core/types';
-import { buildWelcomeCard } from '../../services/welcomeCard';
+import { emojiPour } from '../../core/brand';
+import { embedEnseigne, couleurPour } from '../../core/embeds';
+import { lireConfig } from '../../core/guildConfig';
+import { resoudreSalonTexte } from '../../core/logService';
+import { creerRegistre } from '../../core/logger';
+import { moduleActif } from '../../core/moduleManager';
+import type { PageReglage } from '../../core/setup';
+import { tronquer } from '../../core/text';
+import { estLienHttp } from '../../core/ui';
+import { remplirModele, aideVariables } from '../../core/variables';
+import { sur, type ModuleBot } from '../../core/types';
+import { construireCarteBienvenue } from '../../services/welcomeCard';
 
-const log = createLogger('bienvenue');
+const registre = creerRegistre('bienvenue');
 
 /** Envoie l'accueil d'un membre. Retourne le salon utilisé, ou null si rien n'a été envoyé. */
-export async function sendWelcome(member: GuildMember): Promise<string | null> {
-  const guild = member.guild;
-  const cfg = getConfig(guild.id).welcome;
-  const channel = resolveTextChannel(guild, cfg.channelId);
-  if (!channel) return null;
+export async function envoyerBienvenue(membre: GuildMember): Promise<string | null> {
+  const serveur = membre.guild;
+  const reglages = lireConfig(serveur.id).bienvenue;
+  const salon = resoudreSalonTexte(serveur, reglages.channelId);
+  if (!salon) return null;
 
-  const text = renderTemplate(cfg.message, { member, guild });
-  const allowedMentions = { users: [member.id], roles: [] as string[] };
-  let card: Buffer | null = null;
-  if (cfg.imageMode === 'card') card = await buildWelcomeCard(member);
-  const files = card ? [new AttachmentBuilder(card, { name: 'bienvenue.png' })] : [];
+  const texte = remplirModele(reglages.message, { membre, serveur });
+  const mentionsAutorisees = { users: [membre.id], roles: [] as string[] };
+  let carte: Buffer | null = null;
+  if (reglages.modeImage === 'card') carte = await construireCarteBienvenue(membre);
+  const fichiers = carte ? [new AttachmentBuilder(carte, { name: 'bienvenue.png' })] : [];
 
-  if (!cfg.useEmbed) {
-    await channel.send({ content: truncate(text, 2000), files, allowedMentions });
-    return channel.id;
+  if (!reglages.utiliserEmbed) {
+    await salon.send({ content: tronquer(texte, 2000), files: fichiers, allowedMentions: mentionsAutorisees });
+    return salon.id;
   }
 
   const embed = new EmbedBuilder()
-    .setColor(colorFor(guild))
-    .setTitle(renderTemplate(cfg.title || `${emojiFor(guild.id, 'bienvenue')} Nouveau membre`, { member, guild }).slice(0, 256))
-    .setDescription(truncate(text, 4096))
-    .setFooter({ text: `${member.user.tag} · ${guild.memberCount}ᵉ membre`, iconURL: member.user.displayAvatarURL({ size: 64 }) })
+    .setColor(couleurPour(serveur))
+    .setTitle(remplirModele(reglages.title || `${emojiPour(serveur.id, 'bienvenue')} Nouveau membre`, { membre, serveur }).slice(0, 256))
+    .setDescription(tronquer(texte, 4096))
+    .setFooter({ text: `${membre.user.tag} · ${serveur.memberCount}ᵉ membre`, iconURL: membre.user.displayAvatarURL({ size: 64 }) })
     .setTimestamp();
-  if (card) embed.setImage('attachment://bienvenue.png');
-  else if (cfg.imageMode === 'url' && isHttpUrl(cfg.imageUrl)) embed.setImage(cfg.imageUrl);
-  else embed.setThumbnail(member.user.displayAvatarURL({ size: 256 }));
+  if (carte) embed.setImage('attachment://bienvenue.png');
+  else if (reglages.modeImage === 'url' && estLienHttp(reglages.urlImage)) embed.setImage(reglages.urlImage);
+  else embed.setThumbnail(membre.user.displayAvatarURL({ size: 256 }));
 
   try {
-    await channel.send({ embeds: [embed], files, allowedMentions });
-  } catch (err) {
-    if (!files.length) throw err;
+    await salon.send({ embeds: [embed], files: fichiers, allowedMentions: mentionsAutorisees });
+  } catch (echec) {
+    if (!fichiers.length) throw echec;
     // La carte a été refusée : l'accueil part sans elle.
-    embed.setImage(null).setThumbnail(member.user.displayAvatarURL({ size: 256 }));
-    await channel.send({ embeds: [embed], allowedMentions });
+    embed.setImage(null).setThumbnail(membre.user.displayAvatarURL({ size: 256 }));
+    await salon.send({ embeds: [embed], allowedMentions: mentionsAutorisees });
   }
-  return channel.id;
+  return salon.id;
 }
 
-async function sendWelcomeDm(member: GuildMember): Promise<void> {
-  const cfg = getConfig(member.guild.id).welcome;
-  if (!cfg.dmEnabled || !cfg.dmMessage) return;
-  const embed = brandEmbed(member.guild)
-    .setTitle(`${emojiFor(member.guild.id, 'bienvenue')} ${member.guild.name}`)
-    .setDescription(truncate(renderTemplate(cfg.dmMessage, { member, guild: member.guild }), 4096))
-    .setThumbnail(member.guild.iconURL({ size: 128 }));
-  await member.send({ embeds: [embed] }).catch(() => undefined);
+async function envoyerBienvenueMp(membre: GuildMember): Promise<void> {
+  const reglages = lireConfig(membre.guild.id).bienvenue;
+  if (!reglages.mpActif || !reglages.messageMp) return;
+  const embed = embedEnseigne(membre.guild)
+    .setTitle(`${emojiPour(membre.guild.id, 'bienvenue')} ${membre.guild.name}`)
+    .setDescription(tronquer(remplirModele(reglages.messageMp, { membre, serveur: membre.guild }), 4096))
+    .setThumbnail(membre.guild.iconURL({ size: 128 }));
+  await membre.send({ embeds: [embed] }).catch(() => undefined);
 }
 
 // ─── Compteur de membres (renommage limité par Discord : 2 fois / 10 min) ──
 
-const pendingCounters = new Set<string>();
-const lastRename = new Map<string, number>();
-const RENAME_INTERVAL = 5 * 60_000 + 10_000;
+const compteursEnAttente = new Set<string>();
+const dernierRenommage = new Map<string, number>();
+const INTERVALLE_RENOMMAGE = 5 * 60_000 + 10_000;
 
-async function updateCounter(guild: Guild): Promise<void> {
-  const cfg = getConfig(guild.id).welcome;
-  if (!cfg.counterChannelId) return;
-  const channel = guild.channels.cache.get(cfg.counterChannelId);
-  if (!channel || channel.type === ChannelType.GuildCategory || !('setName' in channel)) return;
-  const name = renderTemplate(cfg.counterFormat, { guild }).slice(0, 100);
-  if (channel.name === name) return;
-  if (Date.now() - (lastRename.get(guild.id) ?? 0) < RENAME_INTERVAL) {
-    pendingCounters.add(guild.id);
+async function actualiserCompteur(serveur: Guild): Promise<void> {
+  const reglages = lireConfig(serveur.id).bienvenue;
+  if (!reglages.salonCompteurId) return;
+  const salon = serveur.channels.cache.get(reglages.salonCompteurId);
+  if (!salon || salon.type === ChannelType.GuildCategory || !('setName' in salon)) return;
+  const nom = remplirModele(reglages.formatCompteur, { serveur }).slice(0, 100);
+  if (salon.name === nom) return;
+  if (Date.now() - (dernierRenommage.get(serveur.id) ?? 0) < INTERVALLE_RENOMMAGE) {
+    compteursEnAttente.add(serveur.id);
     return;
   }
-  lastRename.set(guild.id, Date.now());
-  pendingCounters.delete(guild.id);
-  await channel.setName(name, 'Compteur de membres').catch((err: Error) => log.warn(`Compteur non renommé : ${err.message}`));
+  dernierRenommage.set(serveur.id, Date.now());
+  compteursEnAttente.delete(serveur.id);
+  await salon.setName(nom, 'Compteur de membres').catch((echec: Error) => registre.avertir(`Compteur non renommé : ${echec.message}`));
 }
 
-export function scheduleCounter(guild: Guild): void {
-  void updateCounter(guild);
+export function planifierCompteur(serveur: Guild): void {
+  void actualiserCompteur(serveur);
 }
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'welcome',
   section: 'welcome',
-  title: 'Bienvenue',
+  titre: 'Bienvenue',
   emoji: '👋',
   moduleId: 'welcome',
-  order: 1,
+  ordre: 1,
   description: `Le message posté à chaque arrivée, avec la carte aux couleurs de l’enseigne.\n-# Variables : ${['mention', 'user', 'username', 'server', 'membercount', 'createdat'].map((v) => `\`{${v}}\``).join(' ')}`,
-  fields: [
-    { kind: 'channel', key: 'channel', label: 'Salon de bienvenue', get: (c) => c.welcome.channelId, set: (c, v) => void (c.welcome.channelId = v) },
+  champs: [
+    { kind: 'channel', cle: 'channel', libelle: 'Salon de bienvenue', get: (c) => c.bienvenue.channelId, set: (c, v) => void (c.bienvenue.channelId = v) },
     {
       kind: 'channel',
-      key: 'counter',
-      label: 'Salon compteur de membres',
+      cle: 'counter',
+      libelle: 'Salon compteur de membres',
       channelTypes: [ChannelType.GuildVoice, ChannelType.GuildText, ChannelType.GuildStageVoice],
-      get: (c) => c.welcome.counterChannelId,
-      set: (c, v) => void (c.welcome.counterChannelId = v),
+      get: (c) => c.bienvenue.salonCompteurId,
+      set: (c, v) => void (c.bienvenue.salonCompteurId = v),
     },
     {
       kind: 'choice',
-      key: 'image',
-      label: 'Image',
+      cle: 'image',
+      libelle: 'Image',
       options: [
         { value: 'card', label: 'Carte de bienvenue générée', emoji: '🖼️' },
         { value: 'url', label: 'Image fixe (lien)', emoji: '🔗' },
         { value: 'none', label: 'Juste l’avatar', emoji: '👤' },
       ],
-      get: (c) => c.welcome.imageMode,
-      set: (c, v) => void (c.welcome.imageMode = v as 'card' | 'url' | 'none'),
+      get: (c) => c.bienvenue.modeImage,
+      set: (c, v) => void (c.bienvenue.modeImage = v as 'card' | 'url' | 'none'),
     },
-    { kind: 'toggle', key: 'embed', label: 'Embed', get: (c) => c.welcome.useEmbed, set: (c, v) => void (c.welcome.useEmbed = v) },
-    { kind: 'toggle', key: 'dm', label: 'Message privé', get: (c) => c.welcome.dmEnabled, set: (c, v) => void (c.welcome.dmEnabled = v) },
-    { kind: 'text', key: 'title', label: 'Titre', maxLength: 200, get: (c) => c.welcome.title, set: (c, v) => void (c.welcome.title = v) },
-    { kind: 'text', key: 'message', label: 'Message', long: true, maxLength: 2000, required: true, get: (c) => c.welcome.message, set: (c, v) => void (c.welcome.message = v) },
-    { kind: 'text', key: 'dmmessage', label: 'Message privé', long: true, maxLength: 2000, get: (c) => c.welcome.dmMessage, set: (c, v) => void (c.welcome.dmMessage = v) },
+    { kind: 'toggle', cle: 'embed', libelle: 'Embed', get: (c) => c.bienvenue.utiliserEmbed, set: (c, v) => void (c.bienvenue.utiliserEmbed = v) },
+    { kind: 'toggle', cle: 'dm', libelle: 'Message privé', get: (c) => c.bienvenue.mpActif, set: (c, v) => void (c.bienvenue.mpActif = v) },
+    { kind: 'text', cle: 'title', libelle: 'Titre', maxLength: 200, get: (c) => c.bienvenue.title, set: (c, v) => void (c.bienvenue.title = v) },
+    { kind: 'text', cle: 'message', libelle: 'Message', long: true, maxLength: 2000, required: true, get: (c) => c.bienvenue.message, set: (c, v) => void (c.bienvenue.message = v) },
+    { kind: 'text', cle: 'dmmessage', libelle: 'Message privé', long: true, maxLength: 2000, get: (c) => c.bienvenue.messageMp, set: (c, v) => void (c.bienvenue.messageMp = v) },
     {
       kind: 'text',
-      key: 'imageurl',
-      label: 'Lien de l’image fixe',
+      cle: 'imageurl',
+      libelle: 'Lien de l’image fixe',
       maxLength: 500,
-      get: (c) => c.welcome.imageUrl,
-      set: (c, v) => void (c.welcome.imageUrl = v),
-      validate: (v) => (!v || isHttpUrl(v) ? null : 'Lien http(s) attendu.'),
+      get: (c) => c.bienvenue.urlImage,
+      set: (c, v) => void (c.bienvenue.urlImage = v),
+      validate: (v) => (!v || estLienHttp(v) ? null : 'Lien http(s) attendu.'),
     },
-    { kind: 'text', key: 'counterformat', label: 'Nom du compteur', maxLength: 90, get: (c) => c.welcome.counterFormat, set: (c, v) => void (c.welcome.counterFormat = v) },
+    { kind: 'text', cle: 'counterformat', libelle: 'Nom du compteur', maxLength: 90, get: (c) => c.bienvenue.formatCompteur, set: (c, v) => void (c.bienvenue.formatCompteur = v) },
   ],
 };
 
-export const welcomeModule: BotModule = {
+export const moduleBienvenue: ModuleBot = {
   id: 'welcome',
-  name: 'Bienvenue',
+  nom: 'Bienvenue',
   emoji: '👋',
   description: 'Message, carte, message privé et compteur de membres',
-  toggleable: true,
-  defaultEnabled: true,
-  setupPages: [setupPage],
-  events: [
-    on('guildMemberAdd', async (member) => {
-      if (member.user.bot) {
-        scheduleCounter(member.guild);
+  desactivable: true,
+  actifParDefaut: true,
+  pagesReglage: [pageReglage],
+  evenements: [
+    sur('guildMemberAdd', async (membre) => {
+      if (membre.user.bot) {
+        planifierCompteur(membre.guild);
         return;
       }
       // En premier : rien de ce qui suit ne doit pouvoir empêcher un accueil.
-      await sendWelcome(member).catch((err: Error) => log.warn(`${member.id} non accueilli : ${err.message}`));
-      await sendWelcomeDm(member);
-      scheduleCounter(member.guild);
+      await envoyerBienvenue(membre).catch((echec: Error) => registre.avertir(`${membre.id} non accueilli : ${echec.message}`));
+      await envoyerBienvenueMp(membre);
+      planifierCompteur(membre.guild);
     }, 40),
-    on('guildMemberRemove', (member) => {
-      scheduleCounter(member.guild);
+    sur('guildMemberRemove', (membre) => {
+      planifierCompteur(membre.guild);
     }),
   ],
-  tasks: [
+  taches: [
     {
-      name: 'welcome-counter',
-      intervalMs: 60_000,
-      async run(client) {
-        for (const guildId of [...pendingCounters]) {
-          const guild = client.guilds.cache.get(guildId);
-          if (!guild || !isModuleEnabled(guildId, 'welcome')) {
-            pendingCounters.delete(guildId);
+      nom: 'welcome-counter',
+      intervalleMs: 60_000,
+      async executer(client) {
+        for (const serveurId of [...compteursEnAttente]) {
+          const serveur = client.guilds.cache.get(serveurId);
+          if (!serveur || !moduleActif(serveurId, 'welcome')) {
+            compteursEnAttente.delete(serveurId);
             continue;
           }
-          await updateCounter(guild);
+          await actualiserCompteur(serveur);
         }
       },
     },
@@ -179,21 +179,21 @@ export const welcomeModule: BotModule = {
   tests: [
     {
       id: 'message',
-      label: 'Message de bienvenue',
+      libelle: 'Message de bienvenue',
       emoji: '👋',
       description: 'Poster ton propre accueil dans le salon réglé',
-      async run(interaction) {
-        const channelId = await sendWelcome(interaction.member);
-        return channelId ? `✅ Accueil posté dans <#${channelId}>.` : '⚠️ Aucun salon de bienvenue utilisable (réglage ou permissions).';
+      async executer(interaction) {
+        const salonId = await envoyerBienvenue(interaction.member);
+        return salonId ? `✅ Accueil posté dans <#${salonId}>.` : '⚠️ Aucun salon de bienvenue utilisable (réglage ou permissions).';
       },
     },
     {
       id: 'variables',
-      label: 'Variables disponibles',
+      libelle: 'Variables disponibles',
       emoji: '🧩',
       description: 'La liste des variables des messages',
-      async run() {
-        return variablesHelp(['user', 'mention', 'username', 'userid', 'server', 'membercount', 'createdat', 'date', 'time', 'brand']);
+      async executer() {
+        return aideVariables(['user', 'mention', 'username', 'userid', 'server', 'membercount', 'createdat', 'date', 'time', 'brand']);
       },
     },
   ],

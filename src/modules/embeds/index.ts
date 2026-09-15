@@ -1,13 +1,13 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { UserError } from '../../core/errors';
-import { reply } from '../../core/interactions';
-import { PermLevel, type BotModule, type SlashCommand } from '../../core/types';
-import { editorPayload, newDraft, onBuilderButton, onBuilderModal, onBuilderSelect, storeDraft } from '../../services/embedBuilder';
+import { ErreurUtilisateur } from '../../core/errors';
+import { repondre } from '../../core/interactions';
+import { Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
+import { affichageEditeur, nouveauBrouillon, surBoutonRedaction, surFenetreRedaction, surMenuRedaction, stockerBrouillon } from '../../services/embedBuilder';
 
-const embed: SlashCommand = {
-  category: 'customization',
-  level: PermLevel.STAFF,
-  data: new SlashCommandBuilder()
+const embed: CommandeSlash = {
+  categorie: 'customization',
+  niveau: Niveau.STAFF,
+  donnees: new SlashCommandBuilder()
     .setName('embed')
     .setDescription('Créer ou modifier un embed')
     .addSubcommand((s) => s.setName('create').setDescription('Créer un embed pas à pas'))
@@ -17,21 +17,21 @@ const embed: SlashCommand = {
         .setDescription('Modifier un embed envoyé par le bot')
         .addStringOption((o) => o.setName('lien').setDescription('Lien du message (clic droit → Copier le lien)').setRequired(true)),
     ),
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const draft = newDraft(guild, interaction.user.id, 'embed');
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const brouillon = nouveauBrouillon(serveur, interaction.user.id, 'embed');
     if (interaction.options.getSubcommand() === 'edit') {
       const m = /channels\/(\d+)\/(\d+)\/(\d+)/.exec(interaction.options.getString('lien', true));
-      if (!m || m[1] !== guild.id) throw new UserError('Lien de message invalide (il doit venir de ce serveur).');
-      const channel = guild.channels.cache.get(m[2]!);
-      const message = channel?.isTextBased() ? await channel.messages.fetch(m[3]!).catch(() => null) : null;
-      if (!message) throw new UserError('Message introuvable.');
-      if (message.author.id !== interaction.client.user.id) throw new UserError('Je ne peux modifier que mes propres messages.');
+      if (!m || m[1] !== serveur.id) throw new ErreurUtilisateur('Lien de message invalide (il doit venir de ce serveur).');
+      const salon = serveur.channels.cache.get(m[2]!);
+      const message = salon?.isTextBased() ? await salon.messages.fetch(m[3]!).catch(() => null) : null;
+      if (!message) throw new ErreurUtilisateur('Message introuvable.');
+      if (message.author.id !== interaction.client.user.id) throw new ErreurUtilisateur('Je ne peux modifier que mes propres messages.');
       const source = message.embeds[0];
-      Object.assign(draft, {
+      Object.assign(brouillon, {
         title: source?.title ?? '',
         description: source?.description ?? '',
-        color: source?.color ?? draft.color,
+        color: source?.color ?? brouillon.couleur,
         url: source?.url ?? '',
         authorName: source?.author?.name ?? '',
         authorIcon: source?.author?.iconURL ?? '',
@@ -41,29 +41,29 @@ const embed: SlashCommand = {
         timestamp: !!source?.timestamp,
         fields: source?.fields.map((f) => ({ name: f.name, value: f.value, inline: !!f.inline })) ?? [],
         content: message.content,
-        editMessage: { channelId: channel!.id, messageId: message.id },
+        editMessage: { channelId: salon!.id, messageId: message.id },
       });
-      storeDraft(draft);
+      stockerBrouillon(brouillon);
     }
-    await reply(interaction, { ...editorPayload(guild, draft), ephemeral: true });
+    await repondre(interaction, { ...affichageEditeur(serveur, brouillon), ephemeral: true });
   },
 };
 
-export const embedsModule: BotModule = {
+export const moduleRedaction: ModuleBot = {
   id: 'embeds',
-  name: 'Embed builder',
+  nom: 'Embed builder',
   emoji: '📦',
   description: 'Créer et modifier des embeds au clic',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [embed],
-  components: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [embed],
+  composants: [
     {
-      prefix: 'eb',
-      level: PermLevel.STAFF,
-      button: (i, args) => onBuilderButton(i, args),
-      select: (i, args) => onBuilderSelect(i, args),
-      modal: (i, args) => onBuilderModal(i, args),
+      prefixe: 'eb',
+      niveau: Niveau.STAFF,
+      bouton: (i, parametres) => surBoutonRedaction(i, parametres),
+      menu: (i, parametres) => surMenuRedaction(i, parametres),
+      fenetre: (i, parametres) => surFenetreRedaction(i, parametres),
     },
   ],
 };

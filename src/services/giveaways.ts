@@ -7,327 +7,327 @@ import {
   type GuildMember,
   type GuildTextBasedChannel,
 } from 'discord.js';
-import { all, get, parseJson, run, transaction } from '../database/db';
-import { emojiFor } from '../core/brand';
-import { colorFor } from '../core/embeds';
-import { getConfig } from '../core/guildConfig';
-import { journal, recordLog } from '../core/logService';
-import { createLogger } from '../core/logger';
-import { truncate } from '../core/text';
-import { daysSince, formatDuration } from '../core/time';
-import { button, row } from '../core/ui';
-import { emitActivity } from './activity';
-import { grantBadge } from './badges';
-import { levelOf } from './xp';
+import { lireTout, lire, lireJson, executer, transaction } from '../database/db';
+import { emojiPour } from '../core/brand';
+import { couleurPour } from '../core/embeds';
+import { lireConfig } from '../core/guildConfig';
+import { journal, historiser } from '../core/logService';
+import { creerRegistre } from '../core/logger';
+import { tronquer } from '../core/text';
+import { joursDepuis, formaterDuree } from '../core/time';
+import { bouton, rangee } from '../core/ui';
+import { emettreActivite } from './activity';
+import { donnerBadge } from './badges';
+import { niveauDe } from './xp';
 
-const log = createLogger('giveaways');
+const registre = creerRegistre('giveaways');
 
-export interface GiveawayRequirements {
+export interface ConditionsTirage {
   roleId?: string | null;
-  minLevel?: number | null;
-  minAccountDays?: number | null;
-  minMemberDays?: number | null;
-  minParticipants?: number | null;
+  niveauMin?: number | null;
+  joursCompteMin?: number | null;
+  joursServeurMin?: number | null;
+  participantsMin?: number | null;
   note?: string | null;
 }
 
-export interface GiveawayRow {
+export interface LigneTirage {
   id: number;
-  guild_id: string;
-  channel_id: string;
+  serveur_id: string;
+  salon_id: string;
   message_id: string | null;
-  host_id: string;
-  prize: string;
-  winners_count: number;
-  ends_at: number;
-  status: 'running' | 'paused' | 'ended';
-  paused_remaining: number | null;
-  requirements: string;
-  winners: string;
-  created_at: number;
+  organisateur_id: string;
+  lot: string;
+  nombre_gagnants: number;
+  fin_le: number;
+  statut: 'running' | 'paused' | 'ended';
+  restant_pause: number | null;
+  conditions: string;
+  gagnants: string;
+  cree_le: number;
 }
 
-export function getGiveaway(id: number): GiveawayRow | undefined {
-  return get<GiveawayRow>('SELECT * FROM giveaways WHERE id = ?', id);
+export function lireTirage(id: number): LigneTirage | undefined {
+  return lire<LigneTirage>('SELECT * FROM tirages WHERE id = ?', id);
 }
 
-export function guildGiveaways(guildId: string, status?: GiveawayRow['status']): GiveawayRow[] {
-  return status
-    ? all<GiveawayRow>('SELECT * FROM giveaways WHERE guild_id = ? AND status = ? ORDER BY created_at DESC LIMIT 100', guildId, status)
-    : all<GiveawayRow>('SELECT * FROM giveaways WHERE guild_id = ? ORDER BY created_at DESC LIMIT 100', guildId);
+export function tiragesDuServeur(serveurId: string, statut?: LigneTirage['statut']): LigneTirage[] {
+  return statut
+    ? lireTout<LigneTirage>('SELECT * FROM tirages WHERE serveur_id = ? AND statut = ? ORDER BY cree_le DESC LIMIT 100', serveurId, statut)
+    : lireTout<LigneTirage>('SELECT * FROM tirages WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 100', serveurId);
 }
 
 export function participants(id: number): string[] {
-  return all<{ user_id: string }>('SELECT user_id FROM giveaway_entries WHERE giveaway_id = ? ORDER BY entered_at', id).map((r) => r.user_id);
+  return lireTout<{ utilisateur_id: string }>('SELECT utilisateur_id FROM participations_tirages WHERE tirage_id = ? ORDER BY inscrit_le', id).map((r) => r.utilisateur_id);
 }
 
-export function participantCount(id: number): number {
-  return get<{ n: number }>('SELECT COUNT(*) AS n FROM giveaway_entries WHERE giveaway_id = ?', id)?.n ?? 0;
+export function nombreParticipants(id: number): number {
+  return lire<{ n: number }>('SELECT COUNT(*) AS n FROM participations_tirages WHERE tirage_id = ?', id)?.n ?? 0;
 }
 
-export function winsOf(guildId: string, userId: string): number {
+export function victoiresDe(serveurId: string, utilisateurId: string): number {
   return (
-    get<{ n: number }>("SELECT COUNT(*) AS n FROM giveaways WHERE guild_id = ? AND status = 'ended' AND winners LIKE ?", guildId, `%"${userId}"%`)?.n ?? 0
+    lire<{ n: number }>("SELECT COUNT(*) AS n FROM tirages WHERE serveur_id = ? AND statut = 'ended' AND gagnants LIKE ?", serveurId, `%"${utilisateurId}"%`)?.n ?? 0
   );
 }
 
-export function requirementsOf(g: GiveawayRow): GiveawayRequirements {
-  return parseJson<GiveawayRequirements>(g.requirements, {});
+export function conditionsDe(g: LigneTirage): ConditionsTirage {
+  return lireJson<ConditionsTirage>(g.conditions, {});
 }
 
-export function describeRequirements(req: GiveawayRequirements): string[] {
+export function decrireConditions(conditions: ConditionsTirage): string[] {
   return [
-    req.roleId ? `• Rôle — <@&${req.roleId}>` : null,
-    req.minLevel ? `• Niveau XP — **${req.minLevel}** minimum` : null,
-    req.minAccountDays ? `• Compte Discord — **${req.minAccountDays} j** minimum` : null,
-    req.minMemberDays ? `• Sur le serveur depuis — **${req.minMemberDays} j** minimum` : null,
-    req.minParticipants ? `• Tirage si au moins **${req.minParticipants}** participants` : null,
-    req.note ? `• ${req.note}` : null,
+    conditions.roleId ? `• Rôle — <@&${conditions.roleId}>` : null,
+    conditions.niveauMin ? `• Niveau XP — **${conditions.niveauMin}** minimum` : null,
+    conditions.joursCompteMin ? `• Compte Discord — **${conditions.joursCompteMin} j** minimum` : null,
+    conditions.joursServeurMin ? `• Sur le serveur depuis — **${conditions.joursServeurMin} j** minimum` : null,
+    conditions.participantsMin ? `• Tirage si au moins **${conditions.participantsMin}** participants` : null,
+    conditions.note ? `• ${conditions.note}` : null,
   ].filter((l): l is string => !!l);
 }
 
 /** Vérifie les conditions de participation. Retourne la raison du refus ou null. */
-export function checkEligibility(member: GuildMember, req: GiveawayRequirements): string | null {
-  if (req.roleId && !member.roles.cache.has(req.roleId)) return `Il te faut le rôle <@&${req.roleId}> pour participer.`;
-  if (req.minLevel && levelOf(member.guild.id, member.id) < req.minLevel) return `Il faut être au moins niveau **${req.minLevel}** (tu es niveau ${levelOf(member.guild.id, member.id)}).`;
-  if (req.minAccountDays && daysSince(member.user.createdTimestamp) < req.minAccountDays) return `Ton compte Discord doit avoir au moins **${req.minAccountDays} jours**.`;
-  if (req.minMemberDays && (!member.joinedTimestamp || daysSince(member.joinedTimestamp) < req.minMemberDays)) {
-    return `Il faut être sur le serveur depuis au moins **${req.minMemberDays} jours**.`;
+export function verifierEligibilite(membre: GuildMember, conditions: ConditionsTirage): string | null {
+  if (conditions.roleId && !membre.roles.cache.has(conditions.roleId)) return `Il te faut le rôle <@&${conditions.roleId}> pour participer.`;
+  if (conditions.niveauMin && niveauDe(membre.guild.id, membre.id) < conditions.niveauMin) return `Il faut être au moins niveau **${conditions.niveauMin}** (tu es niveau ${niveauDe(membre.guild.id, membre.id)}).`;
+  if (conditions.joursCompteMin && joursDepuis(membre.user.createdTimestamp) < conditions.joursCompteMin) return `Ton compte Discord doit avoir au moins **${conditions.joursCompteMin} jours**.`;
+  if (conditions.joursServeurMin && (!membre.joinedTimestamp || joursDepuis(membre.joinedTimestamp) < conditions.joursServeurMin)) {
+    return `Il faut être sur le serveur depuis au moins **${conditions.joursServeurMin} jours**.`;
   }
   return null;
 }
 
-export function mentionList(ids: string[], max = 40): string {
-  const shown = ids.slice(0, max).map((id) => `<@${id}>`).join(', ');
-  const rest = ids.length - Math.min(ids.length, max);
-  return rest > 0 ? `${shown} et ${rest} autre${rest > 1 ? 's' : ''}` : shown;
+export function listeMentions(ids: string[], max = 40): string {
+  const affiches = ids.slice(0, max).map((id) => `<@${id}>`).join(', ');
+  const reste = ids.length - Math.min(ids.length, max);
+  return reste > 0 ? `${affiches} et ${reste} autre${reste > 1 ? 's' : ''}` : affiches;
 }
 
-export function buildGiveawayMessage(guild: Guild, g: GiveawayRow) {
-  const count = participantCount(g.id);
-  const winners = parseJson<string[]>(g.winners, []);
-  const req = requirementsOf(g);
-  const gift = emojiFor(guild.id, 'cadeau');
-  const ended = g.status === 'ended';
-  const paused = g.status === 'paused';
+export function construireMessageTirage(serveur: Guild, g: LigneTirage) {
+  const nombre = nombreParticipants(g.id);
+  const gagnants = lireJson<string[]>(g.gagnants, []);
+  const conditions = conditionsDe(g);
+  const cadeauEmoji = emojiPour(serveur.id, 'cadeau');
+  const termine = g.statut === 'ended';
+  const enPause = g.statut === 'paused';
   const embed = new EmbedBuilder()
-    .setColor(colorFor(guild, ended ? 'info' : 'primary'))
-    .setAuthor({ name: ended ? 'Giveaway terminé' : paused ? 'Giveaway en pause' : 'Giveaway en cours' })
-    .setTitle(`${gift} ${ended ? `~~${truncate(g.prize, 200)}~~` : truncate(g.prize, 240)}`)
-    .setFooter({ text: `${g.winners_count} gagnant${g.winners_count > 1 ? 's' : ''} · lancé par ${guild.members.cache.get(g.host_id)?.user.tag ?? 'le staff'}` });
+    .setColor(couleurPour(serveur, termine ? 'info' : 'primary'))
+    .setAuthor({ name: termine ? 'Giveaway terminé' : enPause ? 'Giveaway en pause' : 'Giveaway en cours' })
+    .setTitle(`${cadeauEmoji} ${termine ? `~~${tronquer(g.lot, 200)}~~` : tronquer(g.lot, 240)}`)
+    .setFooter({ text: `${g.nombre_gagnants} gagnant${g.nombre_gagnants > 1 ? 's' : ''} · lancé par ${serveur.members.cache.get(g.organisateur_id)?.user.tag ?? 'le staff'}` });
 
-  if (ended) {
-    embed.setDescription(winners.length ? `${gift} ${winners.length > 1 ? 'Gagnants' : 'Gagnant'} : ${mentionList(winners)}` : '*Personne n’a gagné.*');
-    embed.addFields({ name: 'Participants', value: String(count), inline: true });
+  if (termine) {
+    embed.setDescription(gagnants.length ? `${cadeauEmoji} ${gagnants.length > 1 ? 'Gagnants' : 'Gagnant'} : ${listeMentions(gagnants)}` : '*Personne n’a gagné.*');
+    embed.addFields({ name: 'Participants', value: String(nombre), inline: true });
   } else {
-    embed.setDescription(paused ? '⏸️ Les participations sont suspendues pour le moment.' : 'Clique sur **Participer** pour tenter ta chance.');
-    const end = Math.floor(g.ends_at / 1000);
+    embed.setDescription(enPause ? '⏸️ Les participations sont suspendues pour le moment.' : 'Clique sur **Participer** pour tenter ta chance.');
+    const fin = Math.floor(g.fin_le / 1000);
     embed.addFields(
-      paused
-        ? { name: 'Temps restant', value: formatDuration(g.paused_remaining ?? 0), inline: true }
-        : { name: 'Tirage', value: `<t:${end}:R>\n-# <t:${end}:f>`, inline: true },
-      { name: 'Participants', value: String(count), inline: true },
+      enPause
+        ? { name: 'Temps restant', value: formaterDuree(g.restant_pause ?? 0), inline: true }
+        : { name: 'Tirage', value: `<t:${fin}:R>\n-# <t:${fin}:f>`, inline: true },
+      { name: 'Participants', value: String(nombre), inline: true },
     );
   }
-  const reqLines = describeRequirements(req);
-  if (reqLines.length) embed.addFields({ name: 'Conditions', value: truncate(reqLines.join('\n'), 1024), inline: false });
+  const lignesConditions = decrireConditions(conditions);
+  if (lignesConditions.length) embed.addFields({ name: 'Conditions', value: tronquer(lignesConditions.join('\n'), 1024), inline: false });
 
-  const components = [
-    row(
-      button(`gw:join:${g.id}`, `Participer (${count})`, ButtonStyle.Primary, emojiFor(guild.id, 'giveaway')).setDisabled(ended || paused),
-      button(`gw:info:${g.id}`, '', ButtonStyle.Secondary, emojiFor(guild.id, 'info')),
+  const composants = [
+    rangee(
+      bouton(`gw:join:${g.id}`, `Participer (${nombre})`, ButtonStyle.Primary, emojiPour(serveur.id, 'giveaway')).setDisabled(termine || enPause),
+      bouton(`gw:info:${g.id}`, '', ButtonStyle.Secondary, emojiPour(serveur.id, 'info')),
     ),
   ];
-  return { embeds: [embed], components };
+  return { embeds: [embed], components: composants };
 }
 
-async function fetchChannel(client: Client, g: GiveawayRow): Promise<GuildTextBasedChannel | null> {
-  const channel = await client.channels.fetch(g.channel_id).catch(() => null);
-  return channel && channel.isTextBased() && !channel.isDMBased() ? channel : null;
+async function recupererSalon(client: Client, g: LigneTirage): Promise<GuildTextBasedChannel | null> {
+  const salon = await client.channels.fetch(g.salon_id).catch(() => null);
+  return salon && salon.isTextBased() && !salon.isDMBased() ? salon : null;
 }
 
-export async function refreshMessage(client: Client, g: GiveawayRow): Promise<void> {
+export async function rafraichirMessage(client: Client, g: LigneTirage): Promise<void> {
   if (!g.message_id) return;
-  const channel = await fetchChannel(client, g);
-  if (!channel) return;
-  const message = await channel.messages.fetch(g.message_id).catch(() => null);
+  const salon = await recupererSalon(client, g);
+  if (!salon) return;
+  const message = await salon.messages.fetch(g.message_id).catch(() => null);
   if (!message) return;
-  await message.edit(buildGiveawayMessage(channel.guild, g)).catch((err: Error) => log.debug(`Message giveaway non mis à jour : ${err.message}`));
+  await message.edit(construireMessageTirage(salon.guild, g)).catch((echec: Error) => registre.debogage(`Message giveaway non mis à jour : ${echec.message}`));
 }
 
 /** Tirage équitable (crypto) de `count` gagnants distincts. */
-export function pickWinners(pool: string[], count: number): string[] {
-  const copy = [...pool];
-  const winners: string[] = [];
-  while (copy.length && winners.length < count) winners.push(copy.splice(randomInt(copy.length), 1)[0]!);
-  return winners;
+export function tirerGagnants(reserveTirage: string[], nombre: number): string[] {
+  const copie = [...reserveTirage];
+  const gagnants: string[] = [];
+  while (copie.length && gagnants.length < nombre) gagnants.push(copie.splice(randomInt(copie.length), 1)[0]!);
+  return gagnants;
 }
 
-export interface CreateGiveawayInput {
-  channel: GuildTextBasedChannel;
-  host: GuildMember;
-  prize: string;
-  winners: number;
-  durationMs: number;
-  requirements: GiveawayRequirements;
+export interface NouveauTirage {
+  salon: GuildTextBasedChannel;
+  organisateur: GuildMember;
+  lot: string;
+  gagnants: number;
+  dureeMs: number;
+  conditions: ConditionsTirage;
 }
 
-export async function startGiveaway(input: CreateGiveawayInput): Promise<GiveawayRow> {
-  const guild = input.channel.guild;
-  const r = run(
-    'INSERT INTO giveaways (guild_id, channel_id, host_id, prize, winners_count, ends_at, requirements, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    guild.id,
-    input.channel.id,
-    input.host.id,
-    input.prize,
-    input.winners,
-    Date.now() + input.durationMs,
-    JSON.stringify(input.requirements),
+export async function lancerTirage(saisie: NouveauTirage): Promise<LigneTirage> {
+  const serveur = saisie.salon.guild;
+  const r = executer(
+    'INSERT INTO tirages (serveur_id, salon_id, organisateur_id, lot, nombre_gagnants, fin_le, conditions, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    serveur.id,
+    saisie.salon.id,
+    saisie.organisateur.id,
+    saisie.lot,
+    saisie.gagnants,
+    Date.now() + saisie.dureeMs,
+    JSON.stringify(saisie.conditions),
     Date.now(),
   );
-  const g = getGiveaway(r.lastInsertRowid)!;
-  const ping = getConfig(guild.id).giveaways.pingRoleId;
-  const message = await input.channel.send({
+  const g = lireTirage(r.lastInsertRowid)!;
+  const ping = lireConfig(serveur.id).tirages.roleMentionId;
+  const message = await saisie.salon.send({
     content: ping ? `<@&${ping}>` : undefined,
-    ...buildGiveawayMessage(guild, g),
+    ...construireMessageTirage(serveur, g),
     allowedMentions: { roles: ping ? [ping] : [] },
   });
-  run('UPDATE giveaways SET message_id = ? WHERE id = ?', message.id, g.id);
-  recordLog(guild.id, 'giveaway', 'start', null, input.host.id, { id: g.id, prize: input.prize });
-  void journal(guild, 'giveaway', {
-    title: 'Giveaway lancé',
-    tone: 'info',
-    lines: [
-      `**Lot** : ${truncate(input.prize, 300)}`,
-      `**Gagnants** : ${input.winners}`,
-      `**Fin** : <t:${Math.floor(g.ends_at / 1000)}:R>`,
-      `**Salon** : <#${input.channel.id}> · [message](${message.url})`,
-      ...describeRequirements(input.requirements),
+  executer('UPDATE tirages SET message_id = ? WHERE id = ?', message.id, g.id);
+  historiser(serveur.id, 'giveaway', 'start', null, saisie.organisateur.id, { id: g.id, prize: saisie.lot });
+  void journal(serveur, 'giveaway', {
+    titre: 'Giveaway lancé',
+    ton: 'info',
+    lignes: [
+      `**Lot** : ${tronquer(saisie.lot, 300)}`,
+      `**Gagnants** : ${saisie.gagnants}`,
+      `**Fin** : <t:${Math.floor(g.fin_le / 1000)}:R>`,
+      `**Salon** : <#${saisie.salon.id}> · [message](${message.url})`,
+      ...decrireConditions(saisie.conditions),
     ],
-    by: input.host.user,
+    par: saisie.organisateur.user,
   });
-  return getGiveaway(g.id)!;
+  return lireTirage(g.id)!;
 }
 
-export type JoinResult = { joined: true } | { joined: false; reason: string } | { alreadyIn: true };
+export type ResultatParticipation = { inscrit: true } | { inscrit: false; raison: string } | { dejaInscrit: true };
 
-export function joinGiveaway(member: GuildMember, g: GiveawayRow): JoinResult {
-  if (g.status !== 'running') return { joined: false, reason: g.status === 'paused' ? 'Ce giveaway est en pause.' : 'Ce giveaway est terminé.' };
-  if (g.ends_at <= Date.now()) return { joined: false, reason: 'Le tirage est en cours.' };
-  const refusal = checkEligibility(member, requirementsOf(g));
-  if (refusal) return { joined: false, reason: refusal };
-  const r = run('INSERT OR IGNORE INTO giveaway_entries (giveaway_id, user_id, entered_at) VALUES (?, ?, ?)', g.id, member.id, Date.now());
-  if (!r.changes) return { alreadyIn: true };
-  emitActivity({ guildId: member.guild.id, userId: member.id, type: 'giveaways', amount: 1 });
-  if (getConfig(member.guild.id).giveaways.logParticipations) {
-    void journal(member.guild, 'giveaway', { title: 'Participation', tone: 'neutre', lines: [`<@${member.id}> participe à **${truncate(g.prize, 100)}**`] });
+export function participerTirage(membre: GuildMember, g: LigneTirage): ResultatParticipation {
+  if (g.statut !== 'running') return { inscrit: false, raison: g.statut === 'paused' ? 'Ce giveaway est en pause.' : 'Ce giveaway est terminé.' };
+  if (g.fin_le <= Date.now()) return { inscrit: false, raison: 'Le tirage est en cours.' };
+  const refusMotif = verifierEligibilite(membre, conditionsDe(g));
+  if (refusMotif) return { inscrit: false, raison: refusMotif };
+  const r = executer('INSERT OR IGNORE INTO participations_tirages (tirage_id, utilisateur_id, inscrit_le) VALUES (?, ?, ?)', g.id, membre.id, Date.now());
+  if (!r.changes) return { dejaInscrit: true };
+  emettreActivite({ serveurId: membre.guild.id, utilisateurId: membre.id, type: 'giveaways', montant: 1 });
+  if (lireConfig(membre.guild.id).tirages.journaliserParticipations) {
+    void journal(membre.guild, 'giveaway', { titre: 'Participation', ton: 'neutre', lignes: [`<@${membre.id}> participe à **${tronquer(g.lot, 100)}**`] });
   }
-  return { joined: true };
+  return { inscrit: true };
 }
 
-export function leaveGiveaway(userId: string, g: GiveawayRow): boolean {
-  return run('DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?', g.id, userId).changes > 0;
+export function quitterTirage(utilisateurId: string, g: LigneTirage): boolean {
+  return executer('DELETE FROM participations_tirages WHERE tirage_id = ? AND utilisateur_id = ?', g.id, utilisateurId).changes > 0;
 }
 
 /** Termine un giveaway : tirage parmi les participants encore éligibles, annonce, MP, badges, logs. */
-export async function endGiveaway(client: Client, id: number, endedBy: string | null = null): Promise<string[]> {
-  const claimed = transaction(() => {
-    const g = getGiveaway(id);
-    if (!g || g.status === 'ended') return null;
-    run("UPDATE giveaways SET status = 'ended', ends_at = ? WHERE id = ?", Math.min(g.ends_at, Date.now()), id);
+export async function terminerTirage(client: Client, id: number, terminePar: string | null = null): Promise<string[]> {
+  const pris = transaction(() => {
+    const g = lireTirage(id);
+    if (!g || g.statut === 'ended') return null;
+    executer("UPDATE tirages SET statut = 'ended', fin_le = ? WHERE id = ?", Math.min(g.fin_le, Date.now()), id);
     return g;
   });
-  if (!claimed) return [];
-  const channel = await fetchChannel(client, claimed);
-  const guild = channel?.guild ?? client.guilds.cache.get(claimed.guild_id);
-  const req = requirementsOf(claimed);
-  const pool = participants(id);
+  if (!pris) return [];
+  const salon = await recupererSalon(client, pris);
+  const serveur = salon?.guild ?? client.guilds.cache.get(pris.serveur_id);
+  const conditions = conditionsDe(pris);
+  const reserveTirage = participants(id);
 
-  let eligible = pool;
-  if (guild) {
+  let eligibles = reserveTirage;
+  if (serveur) {
     // Les membres partis ou qui ne remplissent plus les conditions ne peuvent pas gagner.
-    const members = await guild.members.fetch({ user: pool.slice(0, 1000) }).catch(() => null);
-    if (members) eligible = pool.filter((uid) => {
-      const m = members.get(uid);
-      return m && !checkEligibility(m, req);
+    const membres = await serveur.members.fetch({ user: reserveTirage.slice(0, 1000) }).catch(() => null);
+    if (membres) eligibles = reserveTirage.filter((uid) => {
+      const m = membres.get(uid);
+      return m && !verifierEligibilite(m, conditions);
     });
   }
-  const enough = !req.minParticipants || pool.length >= req.minParticipants;
-  const winners = enough ? pickWinners(eligible, claimed.winners_count) : [];
-  run('UPDATE giveaways SET winners = ? WHERE id = ?', JSON.stringify(winners), id);
-  const g = getGiveaway(id)!;
+  const suffisant = !conditions.participantsMin || reserveTirage.length >= conditions.participantsMin;
+  const gagnants = suffisant ? tirerGagnants(eligibles, pris.nombre_gagnants) : [];
+  executer('UPDATE tirages SET gagnants = ? WHERE id = ?', JSON.stringify(gagnants), id);
+  const g = lireTirage(id)!;
 
-  if (guild) {
-    for (const w of winners) grantBadge(guild.id, w, 'giveaway');
-    recordLog(guild.id, 'giveaway', 'end', null, endedBy, { id, winners, participants: pool.length });
-    void journal(guild, 'giveaway', {
-      title: 'Giveaway terminé',
-      tone: winners.length ? 'ok' : 'alerte',
-      lines: [
-        `**Lot** : ${truncate(g.prize, 300)}`,
-        winners.length ? `**Gagnant(s)** : ${mentionList(winners)}` : enough ? '**Aucun participant éligible**' : `**Pas assez de participants** (${pool.length}/${req.minParticipants})`,
-        `**Participants** : ${pool.length}`,
-        endedBy ? `**Arrêté par** : <@${endedBy}>` : null,
+  if (serveur) {
+    for (const w of gagnants) donnerBadge(serveur.id, w, 'giveaway');
+    historiser(serveur.id, 'giveaway', 'end', null, terminePar, { id, winners: gagnants, participants: reserveTirage.length });
+    void journal(serveur, 'giveaway', {
+      titre: 'Giveaway terminé',
+      ton: gagnants.length ? 'ok' : 'alerte',
+      lignes: [
+        `**Lot** : ${tronquer(g.lot, 300)}`,
+        gagnants.length ? `**Gagnant(s)** : ${listeMentions(gagnants)}` : suffisant ? '**Aucun participant éligible**' : `**Pas assez de participants** (${reserveTirage.length}/${conditions.participantsMin})`,
+        `**Participants** : ${reserveTirage.length}`,
+        terminePar ? `**Arrêté par** : <@${terminePar}>` : null,
       ],
     });
   }
 
-  if (channel) {
-    await refreshMessage(client, g);
-    const gift = emojiFor(channel.guild.id, 'cadeau');
-    if (winners.length) {
-      await channel
+  if (salon) {
+    await rafraichirMessage(client, g);
+    const cadeauEmoji = emojiPour(salon.guild.id, 'cadeau');
+    if (gagnants.length) {
+      await salon
         .send({
-          content: winners.slice(0, 50).map((w) => `<@${w}>`).join(' '),
-          embeds: [new EmbedBuilder().setColor(colorFor(channel.guild, 'success')).setDescription(`${gift} Bravo ${mentionList(winners)} — tu remportes **${truncate(g.prize, 300)}** !\n-# Ouvre un ticket pour récupérer ton lot.`)],
-          allowedMentions: { users: winners.slice(0, 100) },
+          content: gagnants.slice(0, 50).map((w) => `<@${w}>`).join(' '),
+          embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'success')).setDescription(`${cadeauEmoji} Bravo ${listeMentions(gagnants)} — tu remportes **${tronquer(g.lot, 300)}** !\n-# Ouvre un ticket pour récupérer ton lot.`)],
+          allowedMentions: { users: gagnants.slice(0, 100) },
         })
         .catch(() => undefined);
     } else {
-      const why = enough ? 'Personne d’éligible n’a participé' : `Pas assez de participants (${pool.length}/${req.minParticipants})`;
-      await channel.send({ embeds: [new EmbedBuilder().setColor(colorFor(channel.guild, 'warning')).setDescription(`⏹️ ${why} : **${truncate(g.prize, 300)}** n’a pas trouvé preneur.`)] }).catch(() => undefined);
+      const raisonRefus = suffisant ? 'Personne d’éligible n’a participé' : `Pas assez de participants (${reserveTirage.length}/${conditions.participantsMin})`;
+      await salon.send({ embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'warning')).setDescription(`⏹️ ${raisonRefus} : **${tronquer(g.lot, 300)}** n’a pas trouvé preneur.`)] }).catch(() => undefined);
     }
-    if (winners.length && getConfig(channel.guild.id).giveaways.dmWinners) {
-      for (const w of winners.slice(0, 20)) {
-        const user = await client.users.fetch(w).catch(() => null);
-        await user
-          ?.send({ embeds: [new EmbedBuilder().setColor(colorFor(channel.guild, 'success')).setTitle(`${gift} Tu as gagné !`).setDescription(`Tu remportes **${truncate(g.prize, 300)}** sur **${channel.guild.name}**.\nOuvre un ticket sur le serveur pour récupérer ton lot.`)] })
+    if (gagnants.length && lireConfig(salon.guild.id).tirages.mpGagnants) {
+      for (const w of gagnants.slice(0, 20)) {
+        const utilisateur = await client.users.fetch(w).catch(() => null);
+        await utilisateur
+          ?.send({ embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'success')).setTitle(`${cadeauEmoji} Tu as gagné !`).setDescription(`Tu remportes **${tronquer(g.lot, 300)}** sur **${salon.guild.name}**.\nOuvre un ticket sur le serveur pour récupérer ton lot.`)] })
           .catch(() => undefined);
       }
     }
   }
-  return winners;
+  return gagnants;
 }
 
-export async function rerollGiveaway(client: Client, g: GiveawayRow, actorId: string, count?: number): Promise<string[]> {
-  const previous = parseJson<string[]>(g.winners, []);
-  const pool = participants(g.id).filter((p) => !previous.includes(p));
-  const winners = pickWinners(pool.length ? pool : participants(g.id), count ?? g.winners_count);
-  if (!winners.length) return [];
-  run('UPDATE giveaways SET winners = ? WHERE id = ?', JSON.stringify(winners), g.id);
-  const channel = await fetchChannel(client, g);
-  if (channel) {
-    for (const w of winners) grantBadge(channel.guild.id, w, 'giveaway');
-    await refreshMessage(client, getGiveaway(g.id)!);
-    await channel.send({
-      content: winners.map((w) => `<@${w}>`).join(' '),
-      embeds: [new EmbedBuilder().setColor(colorFor(channel.guild, 'success')).setDescription(`${emojiFor(channel.guild.id, 'cadeau')} Nouveau tirage pour **${truncate(g.prize, 300)}** — bravo ${mentionList(winners)}.`)],
-      allowedMentions: { users: winners },
+export async function relancerTirage(client: Client, g: LigneTirage, auteurId: string, nombre?: number): Promise<string[]> {
+  const precedent = lireJson<string[]>(g.gagnants, []);
+  const reserveTirage = participants(g.id).filter((p) => !precedent.includes(p));
+  const gagnants = tirerGagnants(reserveTirage.length ? reserveTirage : participants(g.id), nombre ?? g.nombre_gagnants);
+  if (!gagnants.length) return [];
+  executer('UPDATE tirages SET gagnants = ? WHERE id = ?', JSON.stringify(gagnants), g.id);
+  const salon = await recupererSalon(client, g);
+  if (salon) {
+    for (const w of gagnants) donnerBadge(salon.guild.id, w, 'giveaway');
+    await rafraichirMessage(client, lireTirage(g.id)!);
+    await salon.send({
+      content: gagnants.map((w) => `<@${w}>`).join(' '),
+      embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'success')).setDescription(`${emojiPour(salon.guild.id, 'cadeau')} Nouveau tirage pour **${tronquer(g.lot, 300)}** — bravo ${listeMentions(gagnants)}.`)],
+      allowedMentions: { users: gagnants },
     });
-    recordLog(channel.guild.id, 'giveaway', 'reroll', null, actorId, { id: g.id, winners });
-    void journal(channel.guild, 'giveaway', { title: 'Giveaway relancé', tone: 'info', lines: [`**Lot** : ${truncate(g.prize, 300)}`, `**Nouveau(x) gagnant(s)** : ${mentionList(winners)}`], by: client.users.cache.get(actorId) ?? null });
+    historiser(salon.guild.id, 'giveaway', 'reroll', null, auteurId, { id: g.id, winners: gagnants });
+    void journal(salon.guild, 'giveaway', { titre: 'Giveaway relancé', ton: 'info', lignes: [`**Lot** : ${tronquer(g.lot, 300)}`, `**Nouveau(x) gagnant(s)** : ${listeMentions(gagnants)}`], par: client.users.cache.get(auteurId) ?? null });
   }
-  return winners;
+  return gagnants;
 }
 
-export function pauseGiveaway(g: GiveawayRow): void {
-  run("UPDATE giveaways SET status = 'paused', paused_remaining = ? WHERE id = ? AND status = 'running'", Math.max(0, g.ends_at - Date.now()), g.id);
+export function mettreTirageEnPause(g: LigneTirage): void {
+  executer("UPDATE tirages SET statut = 'paused', restant_pause = ? WHERE id = ? AND statut = 'running'", Math.max(0, g.fin_le - Date.now()), g.id);
 }
 
-export function resumeGiveaway(g: GiveawayRow): void {
-  run("UPDATE giveaways SET status = 'running', ends_at = ?, paused_remaining = NULL WHERE id = ? AND status = 'paused'", Date.now() + (g.paused_remaining ?? 60_000), g.id);
+export function reprendreTirage(g: LigneTirage): void {
+  executer("UPDATE tirages SET statut = 'running', fin_le = ?, restant_pause = NULL WHERE id = ? AND statut = 'paused'", Date.now() + (g.restant_pause ?? 60_000), g.id);
 }
 
-export function dueGiveaways(): GiveawayRow[] {
-  return all<GiveawayRow>("SELECT * FROM giveaways WHERE status = 'running' AND ends_at <= ? LIMIT 20", Date.now());
+export function tiragesEchus(): LigneTirage[] {
+  return lireTout<LigneTirage>("SELECT * FROM tirages WHERE statut = 'running' AND fin_le <= ? LIMIT 20", Date.now());
 }

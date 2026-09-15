@@ -11,52 +11,52 @@ import {
   type Message,
   type User,
 } from 'discord.js';
-import { emojiFor } from '../../core/brand';
-import { brandEmbed, erreur, ok, refus } from '../../core/embeds';
-import { journal, recordLog, syncLogPermissions } from '../../core/logService';
-import { getLevel, levelLabel } from '../../core/permissions';
-import { resolveUser } from '../../core/resolve';
-import { truncate } from '../../core/text';
-import { ts } from '../../core/time';
-import { button, row } from '../../core/ui';
-import { PermLevel, type ComponentHandler, type PrefixCommand } from '../../core/types';
+import { emojiPour } from '../../core/brand';
+import { embedEnseigne, erreur, ok, refus } from '../../core/embeds';
+import { journal, historiser, synchroniserAccesJournaux } from '../../core/logService';
+import { lireNiveau, libelleNiveau } from '../../core/permissions';
+import { resoudreUtilisateur } from '../../core/resolve';
+import { tronquer } from '../../core/text';
+import { marqueTemps } from '../../core/time';
+import { bouton, rangee } from '../../core/ui';
+import { Niveau, type GestionnaireComposant, type CommandePrefixe } from '../../core/types';
 import {
-  addToWhitelist,
-  canManageWhitelist,
-  getWhitelist,
-  isEnvOwner,
-  isWhitelisted,
-  listMembers,
-  removeFromWhitelist,
-  userWhitelists,
-  whitelistEntry,
+  ajouterWhitelist,
+  peutGererWhitelist,
+  lireWhitelist,
+  estProprietaireFixe,
+  estWhitelist,
+  membresListe,
+  retirerWhitelist,
+  whitelistsMembre,
+  entreeWhitelist,
   WHITELISTS,
-  type WhitelistDefinition,
+  type DefinitionWhitelist,
   type WhitelistId,
 } from '../../core/whitelists';
 
-const LOG_RELATED: WhitelistId[] = ['streamer', 'admin', 'sys', 'staff', 'logs'];
+const LIEES_AUX_JOURNAUX: WhitelistId[] = ['streamer', 'admin', 'sys', 'staff', 'logs'];
 
-function canManage(member: GuildMember, def: WhitelistDefinition): boolean {
-  return canManageWhitelist(getLevel(member), def, isEnvOwner(member.id), member.id === member.guild.ownerId);
+function peutGerer(membre: GuildMember, definition: DefinitionWhitelist): boolean {
+  return peutGererWhitelist(lireNiveau(membre), definition, estProprietaireFixe(membre.id), membre.id === membre.guild.ownerId);
 }
 
-function whitelistOptions(guildId: string, targetId?: string) {
+function optionsWhitelists(serveurId: string, cibleId?: string) {
   return WHITELISTS.map((w) => {
-    const has = targetId ? isWhitelisted(w.id, targetId, guildId) : false;
+    const possede = cibleId ? estWhitelist(w.id, cibleId, serveurId) : false;
     return {
-      label: truncate(`${w.group} · ${w.label}`, 100),
+      label: tronquer(`${w.groupe} · ${w.libelle}`, 100),
       value: w.id,
-      emoji: targetId ? (has ? '✅' : w.emoji) : w.emoji,
-      description: truncate(targetId ? `${has ? 'Oui — choisir pour retirer' : 'Non — choisir pour donner'} · ${w.description}` : w.description, 100),
+      emoji: cibleId ? (possede ? '✅' : w.emoji) : w.emoji,
+      description: tronquer(cibleId ? `${possede ? 'Oui — choisir pour retirer' : 'Non — choisir pour donner'} · ${w.description}` : w.description, 100),
     };
   });
 }
 
 /** Écran d'accueil : choisir une whitelist pour voir sa liste. */
-export function wlHome(guild: Guild, note?: string) {
-  const embed = brandEmbed(guild)
-    .setTitle(`${emojiFor(guild.id, 'whitelist')} Whitelists`)
+export function accueilWhitelists(serveur: Guild, note?: string) {
+  const embed = embedEnseigne(serveur)
+    .setTitle(`${emojiPour(serveur.id, 'whitelist')} Whitelists`)
     .setDescription(
       note ??
         [
@@ -64,200 +64,200 @@ export function wlHome(guild: Guild, note?: string) {
           '-# Relance avec quelqu’un (`/wl personne:`) pour l’ajouter ou le retirer.',
         ].join('\n'),
     );
-  const groups = new Map<string, WhitelistDefinition[]>();
-  for (const w of WHITELISTS) groups.set(w.group, [...(groups.get(w.group) ?? []), w]);
-  for (const [group, list] of groups) {
+  const groupes = new Map<string, DefinitionWhitelist[]>();
+  for (const w of WHITELISTS) groupes.set(w.groupe, [...(groupes.get(w.groupe) ?? []), w]);
+  for (const [groupe, liste] of groupes) {
     embed.addFields({
-      name: group,
-      value: list.map((w) => `${w.emoji} **${w.label}** — \`${listMembers(w.id, guild.id).length}\``).join('\n'),
+      name: groupe,
+      value: liste.map((w) => `${w.emoji} **${w.libelle}** — \`${membresListe(w.id, serveur.id).length}\``).join('\n'),
       inline: true,
     });
   }
-  const select = new StringSelectMenuBuilder().setCustomId('wl:list').setPlaceholder('Quelle whitelist ?').addOptions(whitelistOptions(guild.id));
-  return { embeds: [embed], components: [row(select)] };
+  const menu = new StringSelectMenuBuilder().setCustomId('wl:list').setPlaceholder('Quelle whitelist ?').addOptions(optionsWhitelists(serveur.id));
+  return { embeds: [embed], components: [rangee(menu)] };
 }
 
 /** La liste d'une whitelist, avec ajout/retrait si l'on a le droit. */
-export function wlList(member: GuildMember, listId: WhitelistId, note?: string) {
-  const guild = member.guild;
-  const def = getWhitelist(listId)!;
-  const ids = listMembers(listId, guild.id);
-  const lines = ids.slice(0, 40).map((id) => {
-    const entry = whitelistEntry(listId, id, guild.id);
-    const extra = entry ? ` · ${ts(entry.added_at, 'R')}${entry.added_by ? ` par <@${entry.added_by}>` : ''}` : isEnvOwner(id) ? ' · *fixe (.env)*' : '';
+export function listeWhitelist(membre: GuildMember, listeId: WhitelistId, note?: string) {
+  const serveur = membre.guild;
+  const definition = lireWhitelist(listeId)!;
+  const ids = membresListe(listeId, serveur.id);
+  const lignes = ids.slice(0, 40).map((id) => {
+    const entree = entreeWhitelist(listeId, id, serveur.id);
+    const extra = entree ? ` · ${marqueTemps(entree.ajoute_le, 'R')}${entree.ajoute_par ? ` par <@${entree.ajoute_par}>` : ''}` : estProprietaireFixe(id) ? ' · *fixe (.env)*' : '';
     return `• <@${id}> \`${id}\`${extra}`;
   });
-  const embed = brandEmbed(guild)
-    .setTitle(`${def.emoji} Whitelist ${def.label} (${ids.length})`)
+  const embed = embedEnseigne(serveur)
+    .setTitle(`${definition.emoji} Whitelist ${definition.libelle} (${ids.length})`)
     .setDescription(
       [
-        `-# ${def.description}`,
-        def.scope === 'global' ? '-# Portée : **tous les serveurs**' : '',
+        `-# ${definition.description}`,
+        definition.portee === 'global' ? '-# Portée : **tous les serveurs**' : '',
         note ? `\n${note}` : '',
         '',
-        lines.length ? lines.join('\n') : '*Personne pour l’instant.*',
+        lignes.length ? lignes.join('\n') : '*Personne pour l’instant.*',
         ids.length > 40 ? `-# … +${ids.length - 40} autre(s)` : '',
       ]
         .filter((l) => l !== '')
         .join('\n'),
     );
-  const components = [];
-  if (canManage(member, def)) {
-    components.push(row(new UserSelectMenuBuilder().setCustomId(`wl:add:${listId}`).setPlaceholder('Ajouter quelqu’un').setMinValues(1).setMaxValues(5)));
-    const removable = ids.filter((id) => !(listId === 'owner' && isEnvOwner(id))).slice(0, 25);
-    if (removable.length) {
-      components.push(
-        row(
+  const composants = [];
+  if (peutGerer(membre, definition)) {
+    composants.push(rangee(new UserSelectMenuBuilder().setCustomId(`wl:add:${listeId}`).setPlaceholder('Ajouter quelqu’un').setMinValues(1).setMaxValues(5)));
+    const retirables = ids.filter((id) => !(listeId === 'owner' && estProprietaireFixe(id))).slice(0, 25);
+    if (retirables.length) {
+      composants.push(
+        rangee(
           new StringSelectMenuBuilder()
-            .setCustomId(`wl:rm:${listId}`)
+            .setCustomId(`wl:rm:${listeId}`)
             .setPlaceholder('Retirer quelqu’un')
             .setMinValues(1)
-            .setMaxValues(removable.length)
+            .setMaxValues(retirables.length)
             .addOptions(
-              removable.map((id) => {
-                const m = guild.members.cache.get(id);
-                return { label: truncate(m?.user.tag ?? id, 100), value: id, description: m ? id : 'hors du serveur' };
+              retirables.map((id) => {
+                const m = serveur.members.cache.get(id);
+                return { label: tronquer(m?.user.tag ?? id, 100), value: id, description: m ? id : 'hors du serveur' };
               }),
             ),
         ),
       );
     }
   } else {
-    embed.setFooter({ text: `Tu peux voir cette liste, pas la modifier (accès requis : ${levelLabel(def.managedBy)})` });
+    embed.setFooter({ text: `Tu peux voir cette liste, pas la modifier (accès requis : ${libelleNiveau(definition.gerePar)})` });
   }
-  components.push(row(button('wl:home', 'Toutes les whitelists', ButtonStyle.Secondary, '⬅️')));
-  return { embeds: [embed], components };
+  composants.push(rangee(bouton('wl:home', 'Toutes les whitelists', ButtonStyle.Secondary, '⬅️')));
+  return { embeds: [embed], components: composants };
 }
 
 /** Les whitelists d'une personne : choisir pour donner ou retirer. */
-export function wlUser(member: GuildMember, target: User, note?: string) {
-  const guild = member.guild;
-  const current = userWhitelists(target.id, guild.id);
-  const embed = brandEmbed(guild)
-    .setAuthor({ name: target.tag, iconURL: target.displayAvatarURL({ size: 64 }) })
-    .setTitle(`${emojiFor(guild.id, 'whitelist')} Whitelists — ${target.displayName}`)
+export function whitelistsDe(membre: GuildMember, cible: User, note?: string) {
+  const serveur = membre.guild;
+  const actuel = whitelistsMembre(cible.id, serveur.id);
+  const embed = embedEnseigne(serveur)
+    .setAuthor({ name: cible.tag, iconURL: cible.displayAvatarURL({ size: 64 }) })
+    .setTitle(`${emojiPour(serveur.id, 'whitelist')} Whitelists — ${cible.displayName}`)
     .setDescription(
       [
-        `Choisis la whitelist à donner ou retirer à <@${target.id}>.`,
+        `Choisis la whitelist à donner ou retirer à <@${cible.id}>.`,
         note ? `\n${note}` : '',
         '',
-        `**Actuellement :** ${current.length ? current.map((w) => `${w.emoji} ${w.label}`).join(' · ') : '*aucune*'}`,
+        `**Actuellement :** ${actuel.length ? actuel.map((w) => `${w.emoji} ${w.libelle}`).join(' · ') : '*aucune*'}`,
       ]
         .filter((l) => l !== '')
         .join('\n'),
     );
-  const select = new StringSelectMenuBuilder()
-    .setCustomId(`wl:user:${target.id}`)
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`wl:user:${cible.id}`)
     .setPlaceholder('Quelle whitelist ?')
-    .addOptions(whitelistOptions(guild.id, target.id).filter((o) => canManage(member, getWhitelist(o.value)!)));
-  const components: ActionRowBuilder<MessageActionRowComponentBuilder>[] = select.options.length ? [row(select)] : [];
-  components.push(row(button('wl:home', 'Toutes les whitelists', ButtonStyle.Secondary, '⬅️')));
-  if (!select.options.length) embed.setFooter({ text: 'Tu n’as le droit de modifier aucune whitelist.' });
-  return { embeds: [embed], components };
+    .addOptions(optionsWhitelists(serveur.id, cible.id).filter((o) => peutGerer(membre, lireWhitelist(o.value)!)));
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = menu.options.length ? [rangee(menu)] : [];
+  composants.push(rangee(bouton('wl:home', 'Toutes les whitelists', ButtonStyle.Secondary, '⬅️')));
+  if (!menu.options.length) embed.setFooter({ text: 'Tu n’as le droit de modifier aucune whitelist.' });
+  return { embeds: [embed], components: composants };
 }
 
-export type ToggleResult = { ok: true; added: boolean; text: string } | { ok: false; text: string };
+export type ResultatBascule = { ok: true; ajoute: boolean; text: string } | { ok: false; text: string };
 
 /** Donne ou retire une whitelist, avec contrôle d'accès, journal et resynchronisation des logs. */
-export async function toggleWhitelist(actor: GuildMember, listId: WhitelistId, target: User, force?: 'add' | 'remove'): Promise<ToggleResult> {
-  const def = getWhitelist(listId);
-  if (!def) return { ok: false, text: 'Whitelist inconnue.' };
-  const guild = actor.guild;
-  if (!canManage(actor, def)) return { ok: false, text: `Tu ne peux pas modifier la whitelist **${def.label}**.` };
-  if (target.bot) return { ok: false, text: 'Les bots ne vont pas en whitelist.' };
-  if (listId === 'owner' && isEnvOwner(target.id)) return { ok: false, text: 'Cet owner est fixé dans la configuration du bot.' };
+export async function basculerWhitelist(auteur: GuildMember, listeId: WhitelistId, cible: User, forcer?: 'add' | 'remove'): Promise<ResultatBascule> {
+  const definition = lireWhitelist(listeId);
+  if (!definition) return { ok: false, text: 'Whitelist inconnue.' };
+  const serveur = auteur.guild;
+  if (!peutGerer(auteur, definition)) return { ok: false, text: `Tu ne peux pas modifier la whitelist **${definition.libelle}**.` };
+  if (cible.bot) return { ok: false, text: 'Les bots ne vont pas en whitelist.' };
+  if (listeId === 'owner' && estProprietaireFixe(cible.id)) return { ok: false, text: 'Cet owner est fixé dans la configuration du bot.' };
 
-  const has = isWhitelisted(listId, target.id, guild.id);
-  const add = force ? force === 'add' : !has;
-  if (add === has) return { ok: true, added: add, text: `<@${target.id}> ${add ? 'est déjà' : 'n’est pas'} dans **${def.label}**.` };
+  const possede = estWhitelist(listeId, cible.id, serveur.id);
+  const ajouter = forcer ? forcer === 'add' : !possede;
+  if (ajouter === possede) return { ok: true, ajoute: ajouter, text: `<@${cible.id}> ${ajouter ? 'est déjà' : 'n’est pas'} dans **${definition.libelle}**.` };
 
-  if (add) addToWhitelist(listId, target.id, guild.id, actor.id);
-  else removeFromWhitelist(listId, target.id, guild.id);
+  if (ajouter) ajouterWhitelist(listeId, cible.id, serveur.id, auteur.id);
+  else retirerWhitelist(listeId, cible.id, serveur.id);
 
-  recordLog(guild.id, 'whitelist', add ? 'add' : 'remove', target.id, actor.id, { list: listId });
-  void journal(guild, 'whitelist', {
-    title: add ? 'Whitelist accordée' : 'Whitelist retirée',
-    tone: add ? 'ok' : 'alerte',
-    lines: [`**Whitelist** : ${def.emoji} ${def.label}${def.scope === 'global' ? ' *(globale)*' : ''}`, `**Membre** : <@${target.id}> \`${target.id}\``],
-    by: actor.user,
+  historiser(serveur.id, 'whitelist', ajouter ? 'add' : 'remove', cible.id, auteur.id, { list: listeId });
+  void journal(serveur, 'whitelist', {
+    titre: ajouter ? 'Whitelist accordée' : 'Whitelist retirée',
+    ton: ajouter ? 'ok' : 'alerte',
+    lignes: [`**Whitelist** : ${definition.emoji} ${definition.libelle}${definition.portee === 'global' ? ' *(globale)*' : ''}`, `**Membre** : <@${cible.id}> \`${cible.id}\``],
+    par: auteur.user,
   });
-  if (LOG_RELATED.includes(listId)) void syncLogPermissions(guild).catch(() => undefined);
+  if (LIEES_AUX_JOURNAUX.includes(listeId)) void synchroniserAccesJournaux(serveur).catch(() => undefined);
 
-  return { ok: true, added: add, text: `<@${target.id}> ${add ? 'ajouté à' : 'retiré de'} la whitelist **${def.label}**.` };
+  return { ok: true, ajoute: ajouter, text: `<@${cible.id}> ${ajouter ? 'ajouté à' : 'retiré de'} la whitelist **${definition.libelle}**.` };
 }
 
-export const wlComponent: ComponentHandler = {
-  prefix: 'wl',
-  level: PermLevel.STAFF,
-  async button(interaction: ButtonInteraction<'cached'>, [action]) {
-    if (action === 'home') await interaction.update(wlHome(interaction.guild));
+export const composantWhitelists: GestionnaireComposant = {
+  prefixe: 'wl',
+  niveau: Niveau.STAFF,
+  async bouton(interaction: ButtonInteraction<'cached'>, [action]) {
+    if (action === 'home') await interaction.update(accueilWhitelists(interaction.guild));
   },
-  async select(interaction: AnySelectMenuInteraction<'cached'>, [action, arg]) {
-    const member = interaction.member;
+  async menu(interaction: AnySelectMenuInteraction<'cached'>, [action, argument]) {
+    const membre = interaction.member;
     if (action === 'list' && interaction.isStringSelectMenu()) {
-      const listId = interaction.values[0] as WhitelistId;
-      if (!getWhitelist(listId)) return;
-      await interaction.update(wlList(member, listId));
+      const listeId = interaction.values[0] as WhitelistId;
+      if (!lireWhitelist(listeId)) return;
+      await interaction.update(listeWhitelist(membre, listeId));
       return;
     }
-    if (action === 'add' && interaction.isUserSelectMenu() && arg) {
-      const results: string[] = [];
-      for (const user of interaction.users.values()) {
-        const r = await toggleWhitelist(member, arg as WhitelistId, user, 'add');
-        results.push(`${r.ok ? '✅' : '⛔'} ${r.text}`);
+    if (action === 'add' && interaction.isUserSelectMenu() && argument) {
+      const resultats: string[] = [];
+      for (const utilisateur of interaction.users.values()) {
+        const r = await basculerWhitelist(membre, argument as WhitelistId, utilisateur, 'add');
+        resultats.push(`${r.ok ? '✅' : '⛔'} ${r.text}`);
       }
-      await interaction.update(wlList(member, arg as WhitelistId, results.join('\n')));
+      await interaction.update(listeWhitelist(membre, argument as WhitelistId, resultats.join('\n')));
       return;
     }
-    if (action === 'rm' && interaction.isStringSelectMenu() && arg) {
-      const results: string[] = [];
+    if (action === 'rm' && interaction.isStringSelectMenu() && argument) {
+      const resultats: string[] = [];
       for (const id of interaction.values) {
-        const user = await resolveUser(interaction.client, id);
-        if (!user) {
-          removeFromWhitelist(arg as WhitelistId, id, interaction.guildId);
-          results.push(`✅ \`${id}\` retiré.`);
+        const utilisateur = await resoudreUtilisateur(interaction.client, id);
+        if (!utilisateur) {
+          retirerWhitelist(argument as WhitelistId, id, interaction.guildId);
+          resultats.push(`✅ \`${id}\` retiré.`);
           continue;
         }
-        const r = await toggleWhitelist(member, arg as WhitelistId, user, 'remove');
-        results.push(`${r.ok ? '✅' : '⛔'} ${r.text}`);
+        const r = await basculerWhitelist(membre, argument as WhitelistId, utilisateur, 'remove');
+        resultats.push(`${r.ok ? '✅' : '⛔'} ${r.text}`);
       }
-      await interaction.update(wlList(member, arg as WhitelistId, results.join('\n')));
+      await interaction.update(listeWhitelist(membre, argument as WhitelistId, resultats.join('\n')));
       return;
     }
-    if (action === 'user' && interaction.isStringSelectMenu() && arg) {
-      const target = await resolveUser(interaction.client, arg);
-      if (!target) {
+    if (action === 'user' && interaction.isStringSelectMenu() && argument) {
+      const cible = await resoudreUtilisateur(interaction.client, argument);
+      if (!cible) {
         await interaction.update({ embeds: [erreur(interaction.guild, 'Utilisateur introuvable.')], components: [] });
         return;
       }
-      const r = await toggleWhitelist(member, interaction.values[0] as WhitelistId, target);
-      await interaction.update(wlUser(member, target, `${r.ok ? '✅' : '⛔'} ${r.text}`));
+      const r = await basculerWhitelist(membre, interaction.values[0] as WhitelistId, cible);
+      await interaction.update(whitelistsDe(membre, cible, `${r.ok ? '✅' : '⛔'} ${r.text}`));
     }
   },
 };
 
 /** Raccourcis à préfixe, comme =wlbot / =sys / .owner sur Airline : sans argument, affiche la liste. */
-export function wlPrefixCommands(): PrefixCommand[] {
-  return WHITELISTS.map((def) => ({
-    name: def.shortcut,
-    domain: def.id === 'owner' ? 'owner' : 'general',
-    category: def.id === 'owner' ? 'owner' : 'admin',
-    description: `Whitelist ${def.label} (seul : liste)`,
+export function raccourcisWhitelists(): CommandePrefixe[] {
+  return WHITELISTS.map((definition) => ({
+    nom: definition.raccourci,
+    domaine: definition.id === 'owner' ? 'owner' : 'general',
+    categorie: definition.id === 'owner' ? 'owner' : 'admin',
+    description: `Whitelist ${definition.libelle} (seul : liste)`,
     usage: '[membre]',
-    level: def.id === 'owner' ? PermLevel.BOT_OWNER : PermLevel.STAFF,
-    async execute(message: Message<true>, args: string[]) {
+    niveau: definition.id === 'owner' ? Niveau.PROPRIETAIRE_BOT : Niveau.STAFF,
+    async executer(message: Message<true>, parametres: string[]) {
       if (!message.member) return;
-      if (!args[0]) {
-        await message.reply({ ...wlList(message.member, def.id), components: [], allowedMentions: { repliedUser: false } });
+      if (!parametres[0]) {
+        await message.reply({ ...listeWhitelist(message.member, definition.id), components: [], allowedMentions: { repliedUser: false } });
         return;
       }
-      const target = await resolveUser(message.client, args[0]);
-      if (!target) {
+      const cible = await resoudreUtilisateur(message.client, parametres[0]);
+      if (!cible) {
         await message.reply({ embeds: [erreur(message.guild, 'Identifiant Discord attendu.')], allowedMentions: { repliedUser: false } });
         return;
       }
-      const r = await toggleWhitelist(message.member, def.id, target);
-      const embed = r.ok ? ok(message.guild, r.text, { titre: 'Whitelist', sujet: def.emoji }) : refus(message.guild, r.text);
+      const r = await basculerWhitelist(message.member, definition.id, cible);
+      const embed = r.ok ? ok(message.guild, r.text, { titre: 'Whitelist', sujet: definition.emoji }) : refus(message.guild, r.text);
       await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
     },
   }));

@@ -1,186 +1,186 @@
 import { PermissionFlagsBits, SlashCommandBuilder, type Guild, type GuildMember, type User } from 'discord.js';
-import { all, get, run } from '../../database/db';
-import { brandEmbed } from '../../core/embeds';
-import { getConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { journal, resolveTextChannel } from '../../core/logService';
-import { createLogger } from '../../core/logger';
-import { isModuleEnabled } from '../../core/moduleManager';
-import { linesToPages, paginate } from '../../core/pagination';
-import type { SetupPage } from '../../core/setup';
-import { medal } from '../../core/text';
-import { daysSince } from '../../core/time';
-import { on, type BotModule, type PrefixCommand, type SlashCommand } from '../../core/types';
+import { lireTout, lire, executer } from '../../database/db';
+import { embedEnseigne } from '../../core/embeds';
+import { lireConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { journal, resoudreSalonTexte } from '../../core/logService';
+import { creerRegistre } from '../../core/logger';
+import { moduleActif } from '../../core/moduleManager';
+import { lignesEnPages, paginer } from '../../core/pagination';
+import type { PageReglage } from '../../core/setup';
+import { medaille } from '../../core/text';
+import { joursDepuis } from '../../core/time';
+import { sur, type ModuleBot, type CommandePrefixe, type CommandeSlash } from '../../core/types';
 
-const log = createLogger('invitations');
+const registre = creerRegistre('invitations');
 
 /** Nombre d'utilisations connu par code, par serveur. */
-const snapshots = new Map<string, Map<string, { uses: number; inviterId: string | null }>>();
+const instantanes = new Map<string, Map<string, { uses: number; inviterId: string | null }>>();
 
-async function snapshot(guild: Guild): Promise<Map<string, { uses: number; inviterId: string | null }> | null> {
-  if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageGuild)) return null;
-  const invites = await guild.invites.fetch().catch(() => null);
-  if (!invites) return null;
-  const map = new Map<string, { uses: number; inviterId: string | null }>();
-  for (const inv of invites.values()) map.set(inv.code, { uses: inv.uses ?? 0, inviterId: inv.inviterId });
-  if (guild.vanityURLCode) {
-    const vanity = await guild.fetchVanityData().catch(() => null);
-    if (vanity) map.set(`vanity:${vanity.code}`, { uses: vanity.uses, inviterId: null });
+async function instantane(serveur: Guild): Promise<Map<string, { uses: number; inviterId: string | null }> | null> {
+  if (!serveur.members.me?.permissions.has(PermissionFlagsBits.ManageGuild)) return null;
+  const invitations = await serveur.invites.fetch().catch(() => null);
+  if (!invitations) return null;
+  const correspondance = new Map<string, { uses: number; inviterId: string | null }>();
+  for (const invitationDiscord of invitations.values()) correspondance.set(invitationDiscord.code, { uses: invitationDiscord.uses ?? 0, inviterId: invitationDiscord.inviterId });
+  if (serveur.vanityURLCode) {
+    const lienPerso = await serveur.fetchVanityData().catch(() => null);
+    if (lienPerso) correspondance.set(`vanity:${lienPerso.code}`, { uses: lienPerso.uses, inviterId: null });
   }
-  return map;
+  return correspondance;
 }
 
-function counts(guildId: string, userId: string): { total: number; valid: number; fake: number; left: number } {
-  const r = get<{ total: number; fake: number; left: number }>(
-    'SELECT COUNT(*) AS total, SUM(fake) AS fake, SUM(CASE WHEN left_at IS NOT NULL AND fake = 0 THEN 1 ELSE 0 END) AS left FROM invites WHERE guild_id = ? AND inviter_id = ?',
-    guildId,
-    userId,
+function comptes(serveurId: string, utilisateurId: string): { total: number; valid: number; faux: number; left: number } {
+  const r = lire<{ total: number; faux: number; partis: number }>(
+    'SELECT COUNT(*) AS total, SUM(faux) AS faux, SUM(CASE WHEN parti_le IS NOT NULL AND faux = 0 THEN 1 ELSE 0 END) AS partis FROM invitations WHERE serveur_id = ? AND parrain_id = ?',
+    serveurId,
+    utilisateurId,
   );
   const total = r?.total ?? 0;
-  const fake = r?.fake ?? 0;
-  const left = r?.left ?? 0;
-  return { total, valid: total - fake - left, fake, left };
+  const faux = r?.faux ?? 0;
+  const partis = r?.partis ?? 0;
+  return { total, valid: total - faux - partis, faux, left: partis };
 }
 
-async function onJoin(member: GuildMember): Promise<void> {
-  if (member.user.bot) return;
-  const guild = member.guild;
-  const before = snapshots.get(guild.id);
-  const after = await snapshot(guild);
-  if (!after) return;
-  snapshots.set(guild.id, after);
+async function surArrivee(membre: GuildMember): Promise<void> {
+  if (membre.user.bot) return;
+  const serveur = membre.guild;
+  const avant = instantanes.get(serveur.id);
+  const apres = await instantane(serveur);
+  if (!apres) return;
+  instantanes.set(serveur.id, apres);
   let code: string | null = null;
-  let inviterId: string | null = null;
-  if (before) {
-    for (const [c, data] of after) {
-      if (data.uses > (before.get(c)?.uses ?? 0)) {
+  let parrainId: string | null = null;
+  if (avant) {
+    for (const [c, donnees] of apres) {
+      if (donnees.uses > (avant.get(c)?.uses ?? 0)) {
         code = c;
-        inviterId = data.inviterId;
+        parrainId = donnees.inviterId;
         break;
       }
     }
     // Invitation à usage unique supprimée après utilisation.
     if (!code) {
-      const vanished = [...before.entries()].filter(([c]) => !after.has(c));
-      if (vanished.length === 1) {
-        code = vanished[0]![0];
-        inviterId = vanished[0]![1].inviterId;
+      const disparues = [...avant.entries()].filter(([c]) => !apres.has(c));
+      if (disparues.length === 1) {
+        code = disparues[0]![0];
+        parrainId = disparues[0]![1].inviterId;
       }
     }
   }
-  const fake = daysSince(member.user.createdTimestamp) < getConfig(guild.id).invites.fakeAccountDays || inviterId === member.id ? 1 : 0;
-  run(
-    `INSERT INTO invites (guild_id, invited_id, inviter_id, code, joined_at, fake) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(guild_id, invited_id) DO UPDATE SET inviter_id = excluded.inviter_id, code = excluded.code, joined_at = excluded.joined_at, left_at = NULL, fake = excluded.fake`,
-    guild.id,
-    member.id,
-    inviterId,
+  const faux = joursDepuis(membre.user.createdTimestamp) < lireConfig(serveur.id).invitations.joursCompteFaux || parrainId === membre.id ? 1 : 0;
+  executer(
+    `INSERT INTO invitations (serveur_id, invite_id, parrain_id, code, arrive_le, faux) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(serveur_id, invite_id) DO UPDATE SET parrain_id = excluded.parrain_id, code = excluded.code, arrive_le = excluded.arrive_le, parti_le = NULL, faux = excluded.faux`,
+    serveur.id,
+    membre.id,
+    parrainId,
     code,
     Date.now(),
-    fake,
+    faux,
   );
-  const text = code?.startsWith('vanity:')
-    ? `<@${member.id}> a rejoint via le lien personnalisé **${code.slice(7)}**.`
-    : inviterId
-      ? `<@${member.id}> a été invité par <@${inviterId}> (\`${code}\`) — **${counts(guild.id, inviterId).valid}** invitation(s) valides.`
-      : `<@${member.id}> a rejoint, invitation inconnue.`;
-  void journal(guild, 'invite', { title: 'Invitation utilisée', tone: fake ? 'alerte' : 'ok', lines: [text, fake ? '⚠️ Compte récent : compté comme **fake**.' : null] });
-  const channel = resolveTextChannel(guild, getConfig(guild.id).invites.channelId);
-  if (channel) await channel.send({ content: `📨 ${text}`, allowedMentions: { parse: [] } }).catch(() => undefined);
+  const texte = code?.startsWith('vanity:')
+    ? `<@${membre.id}> a rejoint via le lien personnalisé **${code.slice(7)}**.`
+    : parrainId
+      ? `<@${membre.id}> a été invité par <@${parrainId}> (\`${code}\`) — **${comptes(serveur.id, parrainId).valid}** invitation(s) valides.`
+      : `<@${membre.id}> a rejoint, invitation inconnue.`;
+  void journal(serveur, 'invite', { titre: 'Invitation utilisée', ton: faux ? 'alerte' : 'ok', lignes: [texte, faux ? '⚠️ Compte récent : compté comme **fake**.' : null] });
+  const salon = resoudreSalonTexte(serveur, lireConfig(serveur.id).invitations.channelId);
+  if (salon) await salon.send({ content: `📨 ${texte}`, allowedMentions: { parse: [] } }).catch(() => undefined);
 }
 
-function invitesEmbed(guild: Guild, user: User) {
-  const c = counts(guild.id, user.id);
-  return brandEmbed(guild)
-    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ size: 64 }) })
+function embedInvitations(serveur: Guild, utilisateur: User) {
+  const c = comptes(serveur.id, utilisateur.id);
+  return embedEnseigne(serveur)
+    .setAuthor({ name: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) })
     .setTitle('📨 INVITATIONS')
-    .setDescription([`• Invitations — **${c.total}**`, `• Validées — **${c.valid}**`, `• Fake / parties — **${c.fake + c.left}**`, `-# ${c.fake} fake · ${c.left} parti(s)`].join('\n'));
+    .setDescription([`• Invitations — **${c.total}**`, `• Validées — **${c.valid}**`, `• Fake / parties — **${c.faux + c.left}**`, `-# ${c.faux} fake · ${c.left} parti(s)`].join('\n'));
 }
 
-function leaderboardPages(guild: Guild) {
-  const rows = all<{ inviter_id: string; valid: number }>(
-    'SELECT inviter_id, SUM(CASE WHEN fake = 0 AND left_at IS NULL THEN 1 ELSE 0 END) AS valid FROM invites WHERE guild_id = ? AND inviter_id IS NOT NULL GROUP BY inviter_id HAVING valid > 0 ORDER BY valid DESC LIMIT 100',
-    guild.id,
+function pagesClassement(serveur: Guild) {
+  const rangees = lireTout<{ parrain_id: string; valides: number }>(
+    'SELECT parrain_id, SUM(CASE WHEN faux = 0 AND parti_le IS NULL THEN 1 ELSE 0 END) AS valides FROM invitations WHERE serveur_id = ? AND parrain_id IS NOT NULL GROUP BY parrain_id HAVING valides > 0 ORDER BY valides DESC LIMIT 100',
+    serveur.id,
   );
-  const lines = rows.map((r, i) => `${medal(i + 1)} <@${r.inviter_id}> — **${r.valid}** invitation(s)`);
-  if (!lines.length) lines.push('*Aucune invitation suivie pour l’instant.*');
-  return linesToPages(lines, 10, (content, page, total) => brandEmbed(guild).setTitle('🏆 Classement des invitations').setDescription(content).setFooter({ text: `Page ${page}/${total}` }));
+  const lignes = rangees.map((r, i) => `${medaille(i + 1)} <@${r.parrain_id}> — **${r.valides}** invitation(s)`);
+  if (!lignes.length) lignes.push('*Aucune invitation suivie pour l’instant.*');
+  return lignesEnPages(lignes, 10, (contenu, page, total) => embedEnseigne(serveur).setTitle('🏆 Classement des invitations').setDescription(contenu).setFooter({ text: `Page ${page}/${total}` }));
 }
 
-const invites: SlashCommand = {
-  category: 'community',
-  data: new SlashCommandBuilder()
+const invitations: CommandeSlash = {
+  categorie: 'community',
+  donnees: new SlashCommandBuilder()
     .setName('invites')
     .setDescription('Tes invitations')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)'))
     .addBooleanOption((o) => o.setName('classement').setDescription('Voir le classement')),
-  async execute(interaction) {
-    if (interaction.options.getBoolean('classement')) return paginate(interaction, leaderboardPages(interaction.guild));
-    return reply(interaction, { embeds: [invitesEmbed(interaction.guild, interaction.options.getUser('membre') ?? interaction.user)] });
+  async executer(interaction) {
+    if (interaction.options.getBoolean('classement')) return paginer(interaction, pagesClassement(interaction.guild));
+    return repondre(interaction, { embeds: [embedInvitations(interaction.guild, interaction.options.getUser('membre') ?? interaction.user)] });
   },
 };
 
-const prefixCommands: PrefixCommand[] = [
+const commandesPrefixe: CommandePrefixe[] = [
   {
-    name: 'invites',
-    aliases: ['invs'],
-    domain: 'general',
-    category: 'community',
+    nom: 'invites',
+    alias: ['invs'],
+    domaine: 'general',
+    categorie: 'community',
     description: 'Tes invitations',
     usage: '[membre]',
-    async execute(message, args) {
-      const id = args[0]?.replace(/\D/g, '');
-      const user = id ? await message.client.users.fetch(id).catch(() => message.author) : message.author;
-      await message.reply({ embeds: [invitesEmbed(message.guild, user)], allowedMentions: { repliedUser: false } });
+    async executer(message, parametres) {
+      const id = parametres[0]?.replace(/\D/g, '');
+      const utilisateur = id ? await message.client.users.fetch(id).catch(() => message.author) : message.author;
+      await message.reply({ embeds: [embedInvitations(message.guild, utilisateur)], allowedMentions: { repliedUser: false } });
     },
   },
 ];
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'invites',
   section: 'community',
-  title: 'Invitations',
+  titre: 'Invitations',
   emoji: '📨',
   moduleId: 'invites',
-  order: 12,
+  ordre: 12,
   description: 'Qui a invité qui. Nécessite la permission « Gérer le serveur ». Les comptes trop récents comptent comme fake.',
-  fields: [
-    { kind: 'channel', key: 'channel', label: 'Salon des arrivées (facultatif)', get: (c) => c.invites.channelId, set: (c, v) => void (c.invites.channelId = v) },
-    { kind: 'number', key: 'fake', label: 'Compte « fake » si plus jeune que', min: 0, max: 365, unit: 'j', get: (c) => c.invites.fakeAccountDays, set: (c, v) => void (c.invites.fakeAccountDays = v) },
+  champs: [
+    { kind: 'channel', cle: 'channel', libelle: 'Salon des arrivées (facultatif)', get: (c) => c.invitations.channelId, set: (c, v) => void (c.invitations.channelId = v) },
+    { kind: 'number', cle: 'fake', libelle: 'Compte « fake » si plus jeune que', min: 0, max: 365, unit: 'j', get: (c) => c.invitations.joursCompteFaux, set: (c, v) => void (c.invitations.joursCompteFaux = v) },
   ],
 };
 
-export const invitesModule: BotModule = {
+export const moduleInvitations: ModuleBot = {
   id: 'invites',
-  name: 'Invitations',
+  nom: 'Invitations',
   emoji: '📨',
   description: 'Suivi des invitations, fakes et classement',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [invites],
-  prefixCommands,
-  setupPages: [setupPage],
-  events: [
-    on('guildMemberAdd', (m) => onJoin(m), 30),
-    on('guildMemberRemove', (m) => {
-      run('UPDATE invites SET left_at = ? WHERE guild_id = ? AND invited_id = ?', Date.now(), m.guild.id, m.id);
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [invitations],
+  commandesPrefixe,
+  pagesReglage: [pageReglage],
+  evenements: [
+    sur('guildMemberAdd', (m) => surArrivee(m), 30),
+    sur('guildMemberRemove', (m) => {
+      executer('UPDATE invitations SET parti_le = ? WHERE serveur_id = ? AND invite_id = ?', Date.now(), m.guild.id, m.id);
     }),
-    on('inviteCreate', (invite) => {
-      if (!invite.guild) return;
-      snapshots.get(invite.guild.id)?.set(invite.code, { uses: invite.uses ?? 0, inviterId: invite.inviterId });
+    sur('inviteCreate', (invitation) => {
+      if (!invitation.guild) return;
+      instantanes.get(invitation.guild.id)?.set(invitation.code, { uses: invitation.uses ?? 0, inviterId: invitation.inviterId });
     }),
-    on('inviteDelete', (invite) => {
-      if (!invite.guild) return;
+    sur('inviteDelete', (invitation) => {
+      if (!invitation.guild) return;
       // On garde le code un moment pour détecter les invitations à usage unique.
-      setTimeout(() => snapshots.get(invite.guild!.id)?.delete(invite.code), 10_000).unref();
+      setTimeout(() => instantanes.get(invitation.guild!.id)?.delete(invitation.code), 10_000).unref();
     }),
   ],
-  async onReady(client) {
-    for (const guild of client.guilds.cache.values()) {
-      if (!isModuleEnabled(guild.id, 'invites')) continue;
-      const snap = await snapshot(guild).catch(() => null);
-      if (snap) snapshots.set(guild.id, snap);
+  async auDemarrage(client) {
+    for (const serveur of client.guilds.cache.values()) {
+      if (!moduleActif(serveur.id, 'invites')) continue;
+      const cliche = await instantane(serveur).catch(() => null);
+      if (cliche) instantanes.set(serveur.id, cliche);
     }
-    log.info(`Invitations suivies sur ${snapshots.size} serveur(s).`);
+    registre.info(`Invitations suivies sur ${instantanes.size} serveur(s).`);
   },
 };

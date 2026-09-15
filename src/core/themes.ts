@@ -1,4 +1,4 @@
-export interface ThemeColors {
+export interface CouleursTheme {
   primary: string;
   success: string;
   error: string;
@@ -8,7 +8,7 @@ export interface ThemeColors {
 
 export type ThemeId = 'discord' | 'twitch' | 'gaming' | 'dark' | 'neon' | 'minimal' | 'custom';
 
-export const THEMES: Record<Exclude<ThemeId, 'custom'>, { label: string; emoji: string; colors: ThemeColors }> = {
+export const THEMES: Record<Exclude<ThemeId, 'custom'>, { label: string; emoji: string; colors: CouleursTheme }> = {
   discord: {
     label: 'Discord',
     emoji: '💙',
@@ -41,18 +41,18 @@ export const THEMES: Record<Exclude<ThemeId, 'custom'>, { label: string; emoji: 
   },
 };
 
-const HEX = /^#?([0-9a-f]{6})$/i;
+const HEXA = /^#?([0-9a-f]{6})$/i;
 
-export function isHexColor(value: string): boolean {
-  return HEX.test(value.trim());
+export function estCouleurHexa(valeur: string): boolean {
+  return HEXA.test(valeur.trim());
 }
 
-export function normalizeHex(value: string): string | null {
-  const m = HEX.exec(value.trim());
+export function normaliserHexa(valeur: string): string | null {
+  const m = HEXA.exec(valeur.trim());
   return m ? `#${m[1]!.toUpperCase()}` : null;
 }
 
-export function hexToInt(value: string, fallback = 0x5865f2): number {
-  const m = HEX.exec(value.trim());
-  return m ? Number.parseInt(m[1]!, 16) : fallback;
+export function hexaEnEntier(valeur: string, secours = 0x5865f2): number {
+  const m = HEXA.exec(valeur.trim());
+  return m ? Number.parseInt(m[1]!, 16) : secours;
 }

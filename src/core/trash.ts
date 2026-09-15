@@ -1,26 +1,26 @@
 import { ButtonStyle, MessageFlags } from 'discord.js';
-import { emojiFor } from './brand';
+import { emojiPour } from './brand';
 import { info } from './embeds';
-import { hasLevel } from './permissions';
-import { button, row } from './ui';
-import { PermLevel, type ComponentHandler } from './types';
+import { aNiveau } from './permissions';
+import { bouton, rangee } from './ui';
+import { Niveau, type GestionnaireComposant } from './types';
 
 /** Bouton corbeille (comme sur Airline) : supprime le message, réservé à son auteur ou au staff. */
-export function trashRow(guildId: string | null, ownerId: string) {
-  return row(button(`del:${ownerId}`, '', ButtonStyle.Secondary, emojiFor(guildId, 'corbeille')));
+export function rangeeCorbeille(serveurId: string | null, proprietaireId: string) {
+  return rangee(bouton(`del:${proprietaireId}`, '', ButtonStyle.Secondary, emojiPour(serveurId, 'corbeille')));
 }
 
-export function trashButton(guildId: string | null, ownerId: string) {
-  return button(`del:${ownerId}`, '', ButtonStyle.Secondary, emojiFor(guildId, 'corbeille'));
+export function boutonCorbeille(serveurId: string | null, proprietaireId: string) {
+  return bouton(`del:${proprietaireId}`, '', ButtonStyle.Secondary, emojiPour(serveurId, 'corbeille'));
 }
 
-export const trashComponent: ComponentHandler = {
-  prefix: 'del',
-  async button(interaction, [ownerId]) {
-    const owner = ownerId ?? interaction.message.interactionMetadata?.user.id ?? null;
-    if (owner && interaction.user.id !== owner && !hasLevel(interaction.member, PermLevel.MODERATOR)) {
+export const composantCorbeille: GestionnaireComposant = {
+  prefixe: 'del',
+  async bouton(interaction, [proprietaireId]) {
+    const proprietaire = proprietaireId ?? interaction.message.interactionMetadata?.user.id ?? null;
+    if (proprietaire && interaction.user.id !== proprietaire && !aNiveau(interaction.member, Niveau.MODERATEUR)) {
       await interaction.reply({
-        embeds: [info(interaction.guild, 'Ce message appartient à la personne qui l’a ouvert.', { emoji: emojiFor(interaction.guildId, 'refus') })],
+        embeds: [info(interaction.guild, 'Ce message appartient à la personne qui l’a ouvert.', { emoji: emojiPour(interaction.guildId, 'refus') })],
         flags: MessageFlags.Ephemeral,
       });
       return;

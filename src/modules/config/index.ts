@@ -11,162 +11,162 @@ import {
   type Guild,
   type GuildBasedChannel,
 } from 'discord.js';
-import { run } from '../../database/db';
-import { brandFor } from '../../core/brand';
-import { askConfirmation } from '../../core/confirm';
-import { brandEmbed, brandName, erreur, info, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { getConfig, resetConfigCache, updateConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { ensureLogChannels, LOG_TYPES, logChannelFor } from '../../core/logService';
-import { clearModuleCache, getModuleStates, getModules, isModuleEnabled, setModuleEnabled } from '../../core/moduleManager';
-import { getLevel, levelLabel } from '../../core/permissions';
+import { executer } from '../../database/db';
+import { enseigneDe } from '../../core/brand';
+import { demanderConfirmation } from '../../core/confirm';
+import { embedEnseigne, nomEnseigne, erreur, info, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { lireConfig, viderCacheConfig, modifierConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { creerSalonsJournal, TYPES_JOURNAUX, salonJournalPour } from '../../core/logService';
+import { viderCacheModules, lireEtatsModules, lireModules, moduleActif, activerModule } from '../../core/moduleManager';
+import { lireNiveau, libelleNiveau } from '../../core/permissions';
 import {
-  getSetupPage,
-  handleSetupButton,
-  handleSetupModal,
-  handleSetupSelect,
-  renderHome,
-  renderPage,
-  renderSection,
+  lirePageReglage,
+  traiterBoutonReglage,
+  traiterFenetreReglage,
+  traiterMenuReglage,
+  afficherAccueil,
+  afficherPage,
+  afficherSection,
 } from '../../core/setup';
-import { slugify, truncate } from '../../core/text';
-import { button, row } from '../../core/ui';
-import { PermLevel, PREFIX_DOMAINS, type BotModule, type PrefixCommand, type PrefixDomain, type SlashCommand } from '../../core/types';
-import { customComponent, customHome } from './custom';
-import { configPages } from './pages';
-import { wlComponent, wlHome, wlPrefixCommands, wlUser } from './wl';
+import { identifiantDepuisTexte, tronquer } from '../../core/text';
+import { bouton, rangee } from '../../core/ui';
+import { Niveau, DOMAINES_PREFIXES, type ModuleBot, type CommandePrefixe, type DomainePrefixe, type CommandeSlash } from '../../core/types';
+import { composantEnseignes, accueilEnseignes } from './custom';
+import { pagesAdministration } from './pages';
+import { composantWhitelists, accueilWhitelists, raccourcisWhitelists, whitelistsDe } from './wl';
 
 // ─── /modules ──────────────────────────────────────────────────────────────
 
-const MODULES_PER_MENU = 25;
+const MODULES_PAR_MENU = 25;
 
-export function modulesPanel(guild: Guild, note?: string) {
-  const states = getModuleStates(guild.id).filter((s) => s.module.toggleable);
-  const embed = brandEmbed(guild)
+export function panneauModules(serveur: Guild, note?: string) {
+  const etats = lireEtatsModules(serveur.id).filter((s) => s.module.desactivable);
+  const embed = embedEnseigne(serveur)
     .setTitle('🤖 Modules du serveur')
     .setDescription(
-      [note ?? 'Coche les modules à garder actifs. Un module désactivé ne répond plus, sans casser les autres.', `-# ${states.filter((s) => s.enabled).length}/${states.length} actifs`].join('\n'),
+      [note ?? 'Coche les modules à garder actifs. Un module désactivé ne répond plus, sans casser les autres.', `-# ${etats.filter((s) => s.enabled).length}/${etats.length} actifs`].join('\n'),
     );
-  const half = Math.ceil(states.length / 2);
-  for (const part of [states.slice(0, half), states.slice(half)]) {
-    if (!part.length) continue;
+  const moitie = Math.ceil(etats.length / 2);
+  for (const partie of [etats.slice(0, moitie), etats.slice(moitie)]) {
+    if (!partie.length) continue;
     embed.addFields({
       name: '​',
-      value: truncate(part.map((s) => `${s.module.emoji} ${s.module.name} — ${s.enabled ? '🟢' : '🔴'}`).join('\n'), 1024),
+      value: tronquer(partie.map((s) => `${s.module.emoji} ${s.module.nom} — ${s.enabled ? '🟢' : '🔴'}`).join('\n'), 1024),
       inline: true,
     });
   }
-  const components = [];
-  for (let page = 0; page * MODULES_PER_MENU < states.length && page < 4; page++) {
-    const slice = states.slice(page * MODULES_PER_MENU, (page + 1) * MODULES_PER_MENU);
-    components.push(
-      row(
+  const composants = [];
+  for (let page = 0; page * MODULES_PAR_MENU < etats.length && page < 4; page++) {
+    const tranche = etats.slice(page * MODULES_PAR_MENU, (page + 1) * MODULES_PAR_MENU);
+    composants.push(
+      rangee(
         new StringSelectMenuBuilder()
           .setCustomId(`mods:set:${page}`)
           .setPlaceholder(page === 0 ? 'Modules actifs' : `Modules actifs (suite ${page + 1})`)
           .setMinValues(0)
-          .setMaxValues(slice.length)
+          .setMaxValues(tranche.length)
           .addOptions(
-            slice.map((s) => ({
-              label: s.module.name,
+            tranche.map((s) => ({
+              label: s.module.nom,
               value: s.module.id,
               emoji: s.module.emoji,
-              description: truncate(s.module.description, 100),
+              description: tronquer(s.module.description, 100),
               default: s.enabled,
             })),
           ),
       ),
     );
   }
-  return { embeds: [embed], components };
+  return { embeds: [embed], components: composants };
 }
 
 // ─── /quicksetup ───────────────────────────────────────────────────────────
 
-interface QuickChannel {
-  name: string;
-  readOnly?: boolean;
-  link?: (c: import('../../core/guildConfig').GuildConfig, id: string) => void;
+interface SalonRapide {
+  nom: string;
+  lectureSeule?: boolean;
+  lien?: (c: import('../../core/guildConfig').ConfigServeur, id: string) => void;
 }
 
-const QUICK_STRUCTURE: { category: string; channels: QuickChannel[] }[] = [
+const STRUCTURE_RAPIDE: { categorie: string; channels: SalonRapide[] }[] = [
   {
-    category: '📁 INFORMATION',
+    categorie: '📁 INFORMATION',
     channels: [
-      { name: 'bienvenue', readOnly: true, link: (c, id) => void (c.welcome.channelId ??= id) },
-      { name: 'règlement', readOnly: true, link: (c, id) => void (c.rules.channelId ??= id) },
-      { name: 'annonces', readOnly: true, link: (c, id) => void (c.announcements.defaultChannelId ??= id) },
-      { name: 'lives', readOnly: true, link: (c, id) => void (c.twitch.defaultChannelId ??= id) },
+      { nom: 'bienvenue', lectureSeule: true, lien: (c, id) => void (c.bienvenue.channelId ??= id) },
+      { nom: 'règlement', lectureSeule: true, lien: (c, id) => void (c.reglement.channelId ??= id) },
+      { nom: 'annonces', lectureSeule: true, lien: (c, id) => void (c.annonces.salonDefautId ??= id) },
+      { nom: 'lives', lectureSeule: true, lien: (c, id) => void (c.twitch.salonDefautId ??= id) },
     ],
   },
   {
-    category: '📁 COMMUNAUTÉ',
+    categorie: '📁 COMMUNAUTÉ',
     channels: [
-      { name: 'général' },
-      { name: 'médias' },
-      { name: 'suggestions', link: (c, id) => void (c.suggestions.channelId ??= id) },
+      { nom: 'général' },
+      { nom: 'médias' },
+      { nom: 'suggestions', lien: (c, id) => void (c.suggestions.channelId ??= id) },
     ],
   },
-  { category: '📁 SUPPORT', channels: [{ name: 'tickets', readOnly: true, link: (c, id) => void (c.tickets.panelChannelId ??= id) }] },
-  { category: '📁 GIVEAWAYS', channels: [{ name: 'giveaways', readOnly: true, link: (c, id) => void (c.giveaways.defaultChannelId ??= id) }] },
+  { categorie: '📁 SUPPORT', channels: [{ nom: 'tickets', lectureSeule: true, lien: (c, id) => void (c.tickets.salonPanneauId ??= id) }] },
+  { categorie: '📁 GIVEAWAYS', channels: [{ nom: 'giveaways', lectureSeule: true, lien: (c, id) => void (c.tirages.salonDefautId ??= id) }] },
 ];
 
-function normalizeName(name: string): string {
-  return slugify(name.replace(/^[^\p{L}\p{N}]+/u, ''));
+function normaliserNom(nom: string): string {
+  return identifiantDepuisTexte(nom.replace(/^[^\p{L}\p{N}]+/u, ''));
 }
 
-function findChannel(guild: Guild, name: string, type: ChannelType): GuildBasedChannel | undefined {
-  const target = normalizeName(name);
-  return guild.channels.cache.find((c) => c.type === type && normalizeName(c.name) === target);
+function trouverSalon(serveur: Guild, nom: string, type: ChannelType): GuildBasedChannel | undefined {
+  const cible = normaliserNom(nom);
+  return serveur.channels.cache.find((c) => c.type === type && normaliserNom(c.name) === cible);
 }
 
-async function runQuickSetup(guild: Guild): Promise<string[]> {
-  const report: string[] = [];
-  const links: { link: QuickChannel['link']; id: string }[] = [];
-  const everyone = guild.roles.everyone.id;
-  for (const block of QUICK_STRUCTURE) {
-    let category = findChannel(guild, block.category, ChannelType.GuildCategory) as CategoryChannel | undefined;
-    if (!category) {
-      category = await guild.channels.create({ name: block.category, type: ChannelType.GuildCategory, reason: '/quicksetup' });
-      report.push(`➕ Catégorie **${block.category}**`);
+async function lancerInstallationRapide(serveur: Guild): Promise<string[]> {
+  const signalement: string[] = [];
+  const liens: { link: SalonRapide['lien']; id: string }[] = [];
+  const tousMembres = serveur.roles.everyone.id;
+  for (const groupe of STRUCTURE_RAPIDE) {
+    let categorie = trouverSalon(serveur, groupe.categorie, ChannelType.GuildCategory) as CategoryChannel | undefined;
+    if (!categorie) {
+      categorie = await serveur.channels.create({ name: groupe.categorie, type: ChannelType.GuildCategory, reason: '/quicksetup' });
+      signalement.push(`➕ Catégorie **${groupe.categorie}**`);
     } else {
-      report.push(`✔️ Catégorie **${category.name}** déjà présente`);
+      signalement.push(`✔️ Catégorie **${categorie.name}** déjà présente`);
     }
-    for (const ch of block.channels) {
-      const existing = findChannel(guild, ch.name, ChannelType.GuildText);
-      if (existing) {
-        report.push(`　✔️ <#${existing.id}> déjà présent`);
-        links.push({ link: ch.link, id: existing.id });
+    for (const salonVise of groupe.channels) {
+      const existant = trouverSalon(serveur, salonVise.nom, ChannelType.GuildText);
+      if (existant) {
+        signalement.push(`　✔️ <#${existant.id}> déjà présent`);
+        liens.push({ link: salonVise.lien, id: existant.id });
         continue;
       }
-      const created = await guild.channels.create({
-        name: ch.name,
+      const cree = await serveur.channels.create({
+        name: salonVise.nom,
         type: ChannelType.GuildText,
-        parent: category.id,
+        parent: categorie.id,
         reason: '/quicksetup',
-        permissionOverwrites: ch.readOnly
+        permissionOverwrites: salonVise.lectureSeule
           ? [
-              { id: everyone, deny: [PermissionFlagsBits.SendMessages], type: OverwriteType.Role },
-              { id: guild.members.me!.id, allow: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks], type: OverwriteType.Member },
+              { id: tousMembres, deny: [PermissionFlagsBits.SendMessages], type: OverwriteType.Role },
+              { id: serveur.members.me!.id, allow: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks], type: OverwriteType.Member },
             ]
           : [],
       });
-      report.push(`　➕ <#${created.id}>`);
-      links.push({ link: ch.link, id: created.id });
+      signalement.push(`　➕ <#${cree.id}>`);
+      liens.push({ link: salonVise.lien, id: cree.id });
     }
   }
-  updateConfig(guild.id, (c) => {
-    for (const { link, id } of links) link?.(c, id);
+  modifierConfig(serveur.id, (c) => {
+    for (const { link: lien, id } of liens) lien?.(c, id);
   });
-  const logs = await ensureLogChannels(guild);
-  report.push(`📜 Logs : **${logs.created}** créé(s), **${logs.linked}** relié(s)`);
-  return report;
+  const journaux = await creerSalonsJournal(serveur);
+  signalement.push(`📜 Logs : **${journaux.cree}** créé(s), **${journaux.titreLie}** relié(s)`);
+  return signalement;
 }
 
 // ─── /test ─────────────────────────────────────────────────────────────────
 
-const REQUIRED_PERMISSIONS: [bigint, string][] = [
+const PERMISSIONS_REQUISES: [bigint, string][] = [
   [PermissionFlagsBits.ManageRoles, 'Gérer les rôles'],
   [PermissionFlagsBits.ManageChannels, 'Gérer les salons'],
   [PermissionFlagsBits.ManageMessages, 'Gérer les messages'],
@@ -182,90 +182,90 @@ const REQUIRED_PERMISSIONS: [bigint, string][] = [
   [PermissionFlagsBits.Speak, 'Parler (vocal)'],
 ];
 
-function diagnostic(guild: Guild) {
-  const me = guild.members.me;
-  const lines = REQUIRED_PERMISSIONS.map(([flag, label]) => `${me?.permissions.has(flag) ? '✅' : '❌'} ${label}`);
-  const cfg = getConfig(guild.id);
-  const topRole = me?.roles.highest;
-  const aboveBot = guild.roles.cache.filter((r) => topRole && r.comparePositionTo(topRole) > 0 && !r.managed).size;
-  const missingLogs = LOG_TYPES.filter((t) => !logChannelFor(guild, t.type)).length;
-  const checks = [
-    `${cfg.welcome.channelId ? '✅' : '⚠️'} Salon de bienvenue`,
-    `${cfg.tickets.panelChannelId ? '✅' : '⚠️'} Salon des tickets`,
-    `${missingLogs === 0 ? '✅' : '⚠️'} Salons de logs (${LOG_TYPES.length - missingLogs}/${LOG_TYPES.length})`,
-    `${brandFor(guild.id).key ? '✅' : 'ℹ️'} Enseigne : **${brandName(guild)}**`,
-    `${aboveBot === 0 ? '✅' : '⚠️'} Rôles au-dessus du bot : **${aboveBot}**`,
+function diagnostic(serveur: Guild) {
+  const moi = serveur.members.me;
+  const lignes = PERMISSIONS_REQUISES.map(([drapeau, libelle]) => `${moi?.permissions.has(drapeau) ? '✅' : '❌'} ${libelle}`);
+  const reglages = lireConfig(serveur.id);
+  const roleHaut = moi?.roles.highest;
+  const auDessusDuBot = serveur.roles.cache.filter((r) => roleHaut && r.comparePositionTo(roleHaut) > 0 && !r.managed).size;
+  const journauxManquants = TYPES_JOURNAUX.filter((t) => !salonJournalPour(serveur, t.type)).length;
+  const verifications = [
+    `${reglages.bienvenue.channelId ? '✅' : '⚠️'} Salon de bienvenue`,
+    `${reglages.tickets.salonPanneauId ? '✅' : '⚠️'} Salon des tickets`,
+    `${journauxManquants === 0 ? '✅' : '⚠️'} Salons de logs (${TYPES_JOURNAUX.length - journauxManquants}/${TYPES_JOURNAUX.length})`,
+    `${enseigneDe(serveur.id).cle ? '✅' : 'ℹ️'} Enseigne : **${nomEnseigne(serveur)}**`,
+    `${auDessusDuBot === 0 ? '✅' : '⚠️'} Rôles au-dessus du bot : **${auDessusDuBot}**`,
   ];
-  return brandEmbed(guild)
+  return embedEnseigne(serveur)
     .setTitle('🩺 Diagnostic')
     .addFields(
-      { name: 'Permissions du bot', value: lines.join('\n'), inline: true },
-      { name: 'Configuration', value: checks.join('\n'), inline: true },
+      { name: 'Permissions du bot', value: lignes.join('\n'), inline: true },
+      { name: 'Configuration', value: verifications.join('\n'), inline: true },
     );
 }
 
-function testMenu(guild: Guild) {
-  const tests = getModules()
-    .filter((m) => isModuleEnabled(guild.id, m.id))
+function menuTests(serveur: Guild) {
+  const tests = lireModules()
+    .filter((m) => moduleActif(serveur.id, m.id))
     .flatMap((m) => (m.tests ?? []).map((t) => ({ module: m, test: t })));
-  const select = new StringSelectMenuBuilder()
+  const menu = new StringSelectMenuBuilder()
     .setCustomId('cfgtest:run')
     .setPlaceholder('Que veux-tu tester ?')
     .addOptions([
       { label: 'Diagnostic des permissions', value: 'diag', emoji: '🩺', description: 'Permissions du bot et réglages manquants' },
       ...tests.slice(0, 24).map(({ module, test }) => ({
-        label: truncate(`${module.name} · ${test.label}`, 100),
+        label: tronquer(`${module.nom} · ${test.libelle}`, 100),
         value: `${module.id}:${test.id}`,
         emoji: test.emoji,
-        description: truncate(test.description, 100),
+        description: tronquer(test.description, 100),
       })),
     ]);
-  return row(select);
+  return rangee(menu);
 }
 
 // ─── Commandes ─────────────────────────────────────────────────────────────
 
-const setup: SlashCommand = {
-  category: 'admin',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder().setName('setup').setDescription('Configurer le serveur pas à pas'),
-  async execute(interaction) {
-    await reply(interaction, { ...renderHome(interaction.guild), ephemeral: true });
+const assistant: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder().setName('setup').setDescription('Configurer le serveur pas à pas'),
+  async executer(interaction) {
+    await repondre(interaction, { ...afficherAccueil(interaction.guild), ephemeral: true });
   },
 };
 
-const quicksetup: SlashCommand = {
-  category: 'admin',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder().setName('quicksetup').setDescription('Créer les salons de base en un clic'),
-  async execute(interaction) {
-    const preview = QUICK_STRUCTURE.map((b) => `**${b.category}**\n${b.channels.map((c) => `　#${c.name}`).join('\n')}`).join('\n');
-    await askConfirmation(interaction, {
-      title: 'Créer la structure du serveur ?',
-      description: `${preview}\n**📜 Logs · …** (un salon par type)\n\n-# Aucun salon existant n’est modifié ni écrasé.`,
-      confirmLabel: 'Créer',
-      onConfirm: async (i) => {
+const installationRapide: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder().setName('quicksetup').setDescription('Créer les salons de base en un clic'),
+  async executer(interaction) {
+    const apercu = STRUCTURE_RAPIDE.map((b) => `**${b.categorie}**\n${b.channels.map((c) => `　#${c.nom}`).join('\n')}`).join('\n');
+    await demanderConfirmation(interaction, {
+      titre: 'Créer la structure du serveur ?',
+      description: `${apercu}\n**📜 Logs · …** (un salon par type)\n\n-# Aucun salon existant n’est modifié ni écrasé.`,
+      libelleConfirmation: 'Créer',
+      surConfirmation: async (i) => {
         await i.update({ embeds: [info(i.guild, 'Création en cours…')], components: [] });
-        const report = await runQuickSetup(i.guild);
-        await i.editReply({ embeds: [ok(i.guild, truncate(report.join('\n'), 4000), { titre: 'Structure prête' })] });
+        const signalement = await lancerInstallationRapide(i.guild);
+        await i.editReply({ embeds: [ok(i.guild, tronquer(signalement.join('\n'), 4000), { titre: 'Structure prête' })] });
       },
     });
   },
 };
 
-const modulesCommand: SlashCommand = {
-  category: 'admin',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder().setName('modules').setDescription('Activer ou couper les modules'),
-  async execute(interaction) {
-    await reply(interaction, { ...modulesPanel(interaction.guild), ephemeral: true });
+const commandeModules: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder().setName('modules').setDescription('Activer ou couper les modules'),
+  async executer(interaction) {
+    await repondre(interaction, { ...panneauModules(interaction.guild), ephemeral: true });
   },
 };
 
-const config: SlashCommand = {
-  category: 'admin',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder()
+const config: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder()
     .setName('config')
     .setDescription('Réglages du serveur')
     .addSubcommand((s) => s.setName('voir').setDescription('Résumé des réglages'))
@@ -273,221 +273,221 @@ const config: SlashCommand = {
     .addSubcommand((s) => s.setName('permissions').setDescription('Rôles qui donnent un accès au bot'))
     .addSubcommand((s) => s.setName('prefixes').setDescription('Préfixes et salons de commandes'))
     .addSubcommand((s) => s.setName('reset').setDescription('Tout remettre à zéro')),
-  subLevels: { reset: PermLevel.STREAMER },
-  async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
-    const guild = interaction.guild;
-    if (sub === 'apparence') return reply(interaction, { ...renderPage(guild, getSetupPage('appearance')!), ephemeral: true });
-    if (sub === 'permissions') return reply(interaction, { ...renderSection(guild, 'security'), ephemeral: true });
-    if (sub === 'prefixes') return reply(interaction, { ...renderPage(guild, getSetupPage('prefixes')!), ephemeral: true });
-    if (sub === 'reset') {
-      return askConfirmation(interaction, {
-        title: 'Tout remettre à zéro ?',
+  niveauxSousCommandes: { reset: Niveau.STREAMER },
+  async executer(interaction) {
+    const sousCommande = interaction.options.getSubcommand();
+    const serveur = interaction.guild;
+    if (sousCommande === 'apparence') return repondre(interaction, { ...afficherPage(serveur, lirePageReglage('appearance')!), ephemeral: true });
+    if (sousCommande === 'permissions') return repondre(interaction, { ...afficherSection(serveur, 'security'), ephemeral: true });
+    if (sousCommande === 'prefixes') return repondre(interaction, { ...afficherPage(serveur, lirePageReglage('prefixes')!), ephemeral: true });
+    if (sousCommande === 'reset') {
+      return demanderConfirmation(interaction, {
+        titre: 'Tout remettre à zéro ?',
         description: 'Tous les réglages du bot **sur ce serveur** reviennent à leurs valeurs d’origine, et les modules reprennent leur état par défaut.\nLes données (warns, XP, tickets…) sont conservées.',
-        confirmLabel: 'Réinitialiser',
-        onConfirm: async (i) => {
-          run('DELETE FROM guild_settings WHERE guild_id = ?', i.guildId);
-          run('DELETE FROM guild_modules WHERE guild_id = ?', i.guildId);
-          resetConfigCache(i.guildId);
-          clearModuleCache(i.guildId);
+        libelleConfirmation: 'Réinitialiser',
+        surConfirmation: async (i) => {
+          executer('DELETE FROM reglages_serveurs WHERE serveur_id = ?', i.guildId);
+          executer('DELETE FROM modules_serveurs WHERE serveur_id = ?', i.guildId);
+          viderCacheConfig(i.guildId);
+          viderCacheModules(i.guildId);
           await i.update({ embeds: [ok(i.guild, 'Réglages remis à zéro.')], components: [] });
         },
       });
     }
-    const cfg = getConfig(guild.id);
+    const reglages = lireConfig(serveur.id);
     const roles = (ids: string[]) => (ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : '—');
-    const enabled = getModuleStates(guild.id).filter((s) => s.module.toggleable);
-    const embed = brandEmbed(guild)
+    const actif = lireEtatsModules(serveur.id).filter((s) => s.module.desactivable);
+    const embed = embedEnseigne(serveur)
       .setTitle('⚙️ Réglages du serveur')
       .addFields(
-        { name: 'Enseigne', value: brandName(guild), inline: true },
-        { name: 'Thème', value: cfg.general.theme, inline: true },
-        { name: 'Fuseau', value: cfg.general.timezone, inline: true },
+        { name: 'Enseigne', value: nomEnseigne(serveur), inline: true },
+        { name: 'Thème', value: reglages.general.theme, inline: true },
+        { name: 'Fuseau', value: reglages.general.fuseau, inline: true },
         {
           name: 'Préfixes',
-          value: (Object.keys(PREFIX_DOMAINS) as PrefixDomain[]).map((d) => `${PREFIX_DOMAINS[d].emoji} \`${cfg.prefixes[d]}\``).join(' · '),
+          value: (Object.keys(DOMAINES_PREFIXES) as DomainePrefixe[]).map((d) => `${DOMAINES_PREFIXES[d].emoji} \`${reglages.prefixes[d]}\``).join(' · '),
           inline: false,
         },
         {
           name: 'Rôles d’accès',
           value: [
-            `🎥 Streamer — ${roles(cfg.permissions.streamer)}`,
-            `🛠️ Admin — ${roles(cfg.permissions.admin)}`,
-            `🛡️ Système — ${roles(cfg.permissions.moderator)}`,
-            `⭐ Staff — ${roles(cfg.permissions.staff)}`,
-            `🎫 Support — ${roles(cfg.permissions.support)}`,
+            `🎥 Streamer — ${roles(reglages.permissions.streamer)}`,
+            `🛠️ Admin — ${roles(reglages.permissions.admin)}`,
+            `🛡️ Système — ${roles(reglages.permissions.moderateur)}`,
+            `⭐ Staff — ${roles(reglages.permissions.staff)}`,
+            `🎫 Support — ${roles(reglages.permissions.support)}`,
           ].join('\n'),
           inline: false,
         },
-        { name: 'Modules', value: `${enabled.filter((s) => s.enabled).length}/${enabled.length} actifs`, inline: true },
-        { name: 'Salons de logs', value: `${LOG_TYPES.filter((t) => logChannelFor(guild, t.type)).length}/${LOG_TYPES.length}`, inline: true },
-        { name: 'Ton accès', value: levelLabel(getLevel(interaction.member)), inline: true },
+        { name: 'Modules', value: `${actif.filter((s) => s.enabled).length}/${actif.length} actifs`, inline: true },
+        { name: 'Salons de logs', value: `${TYPES_JOURNAUX.filter((t) => salonJournalPour(serveur, t.type)).length}/${TYPES_JOURNAUX.length}`, inline: true },
+        { name: 'Ton accès', value: libelleNiveau(lireNiveau(interaction.member)), inline: true },
       );
-    return reply(interaction, { embeds: [embed], ephemeral: true });
+    return repondre(interaction, { embeds: [embed], ephemeral: true });
   },
 };
 
-const test: SlashCommand = {
-  category: 'admin',
-  level: PermLevel.ADMIN,
-  data: new SlashCommandBuilder().setName('test').setDescription('Tester les messages et les permissions'),
-  async execute(interaction) {
-    await reply(interaction, { embeds: [diagnostic(interaction.guild)], components: [testMenu(interaction.guild)], ephemeral: true });
+const test: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder().setName('test').setDescription('Tester les messages et les permissions'),
+  async executer(interaction) {
+    await repondre(interaction, { embeds: [diagnostic(interaction.guild)], components: [menuTests(interaction.guild)], ephemeral: true });
   },
 };
 
-const wl: SlashCommand = {
-  category: 'admin',
-  level: PermLevel.STAFF,
-  data: new SlashCommandBuilder()
+const wl: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.STAFF,
+  donnees: new SlashCommandBuilder()
     .setName('wl')
     .setDescription('Donner une whitelist')
     .addUserOption((o) => o.setName('personne').setDescription('Qui')),
-  async execute(interaction) {
-    const target = interaction.options.getUser('personne');
-    const payload = target ? wlUser(interaction.member, target) : wlHome(interaction.guild);
-    await reply(interaction, { ...payload, ephemeral: true });
+  async executer(interaction) {
+    const cible = interaction.options.getUser('personne');
+    const charge = cible ? whitelistsDe(interaction.member, cible) : accueilWhitelists(interaction.guild);
+    await repondre(interaction, { ...charge, ephemeral: true });
   },
 };
 
-const custom: SlashCommand = {
-  category: 'owner',
-  level: PermLevel.BOT_OWNER,
-  data: new SlashCommandBuilder().setName('custom').setDescription('Régler une enseigne'),
-  async execute(interaction) {
-    await reply(interaction, { ...customHome(interaction.client), ephemeral: true });
+const enseignes: CommandeSlash = {
+  categorie: 'owner',
+  niveau: Niveau.PROPRIETAIRE_BOT,
+  donnees: new SlashCommandBuilder().setName('custom').setDescription('Régler une enseigne'),
+  async executer(interaction) {
+    await repondre(interaction, { ...accueilEnseignes(interaction.client), ephemeral: true });
   },
 };
 
 // ─── Préfixes owner ────────────────────────────────────────────────────────
 
-const ownerPrefix: PrefixCommand[] = [
+const prefixesProprietaire: CommandePrefixe[] = [
   {
-    name: 'servers',
-    aliases: ['serveurs'],
-    domain: 'owner',
-    category: 'owner',
+    nom: 'servers',
+    alias: ['serveurs'],
+    domaine: 'owner',
+    categorie: 'owner',
     description: 'Les serveurs du bot',
-    level: PermLevel.BOT_OWNER,
-    async execute(message) {
-      const lines = message.client.guilds.cache
+    niveau: Niveau.PROPRIETAIRE_BOT,
+    async executer(message) {
+      const lignes = message.client.guilds.cache
         .sort((a, b) => b.memberCount - a.memberCount)
-        .map((g) => `• **${truncate(g.name, 40)}** \`${g.id}\` — ${g.memberCount} membres · ${brandFor(g.id).key ? brandFor(g.id).name : '*sans enseigne*'}`);
-      await message.reply({ embeds: [info(message.guild, truncate(lines.join('\n'), 4000), { titre: `Serveurs (${lines.length})`, sujet: '🌐' })], allowedMentions: { repliedUser: false } });
+        .map((g) => `• **${tronquer(g.name, 40)}** \`${g.id}\` — ${g.memberCount} membres · ${enseigneDe(g.id).cle ? enseigneDe(g.id).nom : '*sans enseigne*'}`);
+      await message.reply({ embeds: [info(message.guild, tronquer(lignes.join('\n'), 4000), { titre: `Serveurs (${lignes.length})`, sujet: '🌐' })], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'leave',
-    domain: 'owner',
-    category: 'owner',
+    nom: 'leave',
+    domaine: 'owner',
+    categorie: 'owner',
     description: 'Faire quitter un serveur au bot',
     usage: '<id>',
-    level: PermLevel.BOT_OWNER,
-    async execute(message, args) {
-      const guild = args[0] ? message.client.guilds.cache.get(args[0]) : null;
-      if (!guild) throw new UserError('Identifiant de serveur attendu (voir `.servers`).');
-      const sent = await message.reply({
-        embeds: [info(message.guild, `Quitter **${guild.name}** (\`${guild.id}\`) ?`, { titre: 'Confirmation', sujet: '⚠️' })],
-        components: [row(button(`cfgleave:${guild.id}:${message.author.id}`, 'Quitter', ButtonStyle.Danger, '🚪'))],
+    niveau: Niveau.PROPRIETAIRE_BOT,
+    async executer(message, parametres) {
+      const serveur = parametres[0] ? message.client.guilds.cache.get(parametres[0]) : null;
+      if (!serveur) throw new ErreurUtilisateur('Identifiant de serveur attendu (voir `.servers`).');
+      const envoye = await message.reply({
+        embeds: [info(message.guild, `Quitter **${serveur.name}** (\`${serveur.id}\`) ?`, { titre: 'Confirmation', sujet: '⚠️' })],
+        components: [rangee(bouton(`cfgleave:${serveur.id}:${message.author.id}`, 'Quitter', ButtonStyle.Danger, '🚪'))],
         allowedMentions: { repliedUser: false },
       });
-      setTimeout(() => void sent.edit({ components: [] }).catch(() => undefined), 60_000).unref();
+      setTimeout(() => void envoye.edit({ components: [] }).catch(() => undefined), 60_000).unref();
     },
   },
   {
-    name: 'custom',
-    domain: 'owner',
-    category: 'owner',
+    nom: 'custom',
+    domaine: 'owner',
+    categorie: 'owner',
     description: 'Régler une enseigne',
-    level: PermLevel.BOT_OWNER,
-    async execute(message) {
-      await message.reply({ ...customHome(message.client), allowedMentions: { repliedUser: false } });
+    niveau: Niveau.PROPRIETAIRE_BOT,
+    async executer(message) {
+      await message.reply({ ...accueilEnseignes(message.client), allowedMentions: { repliedUser: false } });
     },
   },
 ];
 
-export const configModule: BotModule = {
+export const moduleAdministration: ModuleBot = {
   id: 'config',
-  name: 'Administration',
+  nom: 'Administration',
   emoji: '⚙️',
   description: 'Setup, modules, whitelists, enseignes',
-  toggleable: false,
-  defaultEnabled: true,
-  commands: [setup, quicksetup, modulesCommand, config, test, wl, custom],
-  prefixCommands: [...wlPrefixCommands(), ...ownerPrefix],
-  setupPages: configPages,
-  components: [
-    wlComponent,
-    customComponent,
+  desactivable: false,
+  actifParDefaut: true,
+  commandes: [assistant, installationRapide, commandeModules, config, test, wl, enseignes],
+  commandesPrefixe: [...raccourcisWhitelists(), ...prefixesProprietaire],
+  pagesReglage: pagesAdministration,
+  composants: [
+    composantWhitelists,
+    composantEnseignes,
     {
-      prefix: 'setup',
-      level: PermLevel.ADMIN,
-      button: (i, args) => handleSetupButton(i, args),
-      select: (i, args) => handleSetupSelect(i, args),
-      modal: (i, args) => handleSetupModal(i, args),
+      prefixe: 'setup',
+      niveau: Niveau.ADMIN,
+      bouton: (i, parametres) => traiterBoutonReglage(i, parametres),
+      menu: (i, parametres) => traiterMenuReglage(i, parametres),
+      fenetre: (i, parametres) => traiterFenetreReglage(i, parametres),
     },
     {
-      prefix: 'mods',
-      level: PermLevel.ADMIN,
-      async select(interaction: AnySelectMenuInteraction<'cached'>, [, pageRaw]) {
-        const page = Number(pageRaw) || 0;
-        const states = getModuleStates(interaction.guildId).filter((s) => s.module.toggleable);
-        const slice = states.slice(page * MODULES_PER_MENU, (page + 1) * MODULES_PER_MENU);
-        const chosen = new Set(interaction.values);
-        const changes: string[] = [];
-        for (const { module, enabled } of slice) {
-          const next = chosen.has(module.id);
-          if (next !== enabled) {
-            setModuleEnabled(interaction.guildId, module.id, next);
-            changes.push(`${next ? '🟢' : '🔴'} ${module.emoji} ${module.name}`);
+      prefixe: 'mods',
+      niveau: Niveau.ADMIN,
+      async menu(interaction: AnySelectMenuInteraction<'cached'>, [, pageBrute]) {
+        const page = Number(pageBrute) || 0;
+        const etats = lireEtatsModules(interaction.guildId).filter((s) => s.module.desactivable);
+        const tranche = etats.slice(page * MODULES_PAR_MENU, (page + 1) * MODULES_PAR_MENU);
+        const choisis = new Set(interaction.values);
+        const changements: string[] = [];
+        for (const { module, enabled: actif } of tranche) {
+          const suivant = choisis.has(module.id);
+          if (suivant !== actif) {
+            activerModule(interaction.guildId, module.id, suivant);
+            changements.push(`${suivant ? '🟢' : '🔴'} ${module.emoji} ${module.nom}`);
           }
         }
-        await interaction.update(modulesPanel(interaction.guild, changes.length ? `✅ ${changes.join(' · ')}` : 'Aucun changement.'));
+        await interaction.update(panneauModules(interaction.guild, changements.length ? `✅ ${changements.join(' · ')}` : 'Aucun changement.'));
       },
     },
     {
-      prefix: 'cfgtest',
-      level: PermLevel.ADMIN,
-      async select(interaction: AnySelectMenuInteraction<'cached'>) {
+      prefixe: 'cfgtest',
+      niveau: Niveau.ADMIN,
+      async menu(interaction: AnySelectMenuInteraction<'cached'>) {
         if (!interaction.isStringSelectMenu()) return;
-        const value = interaction.values[0] ?? 'diag';
-        if (value === 'diag') {
-          await interaction.update({ embeds: [diagnostic(interaction.guild)], components: [testMenu(interaction.guild)] });
+        const valeur = interaction.values[0] ?? 'diag';
+        if (valeur === 'diag') {
+          await interaction.update({ embeds: [diagnostic(interaction.guild)], components: [menuTests(interaction.guild)] });
           return;
         }
-        const [moduleId, testId] = value.split(':');
-        const mod = getModules().find((m) => m.id === moduleId);
-        const t = mod?.tests?.find((x) => x.id === testId);
-        if (!mod || !t) throw new UserError('Ce test n’existe plus.');
+        const [moduleId, testId] = valeur.split(':');
+        const module = lireModules().find((m) => m.id === moduleId);
+        const t = module?.tests?.find((x) => x.id === testId);
+        if (!module || !t) throw new ErreurUtilisateur('Ce test n’existe plus.');
         await interaction.deferUpdate();
-        let result: string;
+        let resultat: string;
         try {
-          result = await t.run(interaction);
-        } catch (err) {
-          result = `❌ ${err instanceof UserError ? err.message : 'Le test a échoué.'}`;
+          resultat = await t.executer(interaction);
+        } catch (echec) {
+          resultat = `❌ ${echec instanceof ErreurUtilisateur ? echec.message : 'Le test a échoué.'}`;
         }
         await interaction.editReply({
-          embeds: [info(interaction.guild, result, { titre: `${mod.name} · ${t.label}`, sujet: t.emoji })],
-          components: [testMenu(interaction.guild)],
+          embeds: [info(interaction.guild, resultat, { titre: `${module.nom} · ${t.libelle}`, sujet: t.emoji })],
+          components: [menuTests(interaction.guild)],
         });
       },
     },
     {
-      prefix: 'cfgleave',
-      level: PermLevel.BOT_OWNER,
-      async button(interaction: ButtonInteraction<'cached'>, [guildId, ownerId]) {
-        if (interaction.user.id !== ownerId) {
+      prefixe: 'cfgleave',
+      niveau: Niveau.PROPRIETAIRE_BOT,
+      async bouton(interaction: ButtonInteraction<'cached'>, [serveurId, proprietaireId]) {
+        if (interaction.user.id !== proprietaireId) {
           await interaction.reply({ embeds: [erreur(interaction.guild, 'Seul l’auteur de la commande peut confirmer.')], flags: 64 });
           return;
         }
-        const guild = interaction.client.guilds.cache.get(guildId ?? '');
-        if (!guild) {
+        const serveur = interaction.client.guilds.cache.get(serveurId ?? '');
+        if (!serveur) {
           await interaction.update({ embeds: [erreur(interaction.guild, 'Le bot n’est plus sur ce serveur.')], components: [] });
           return;
         }
-        const name = guild.name;
-        await guild.leave();
-        await interaction.update({ embeds: [ok(interaction.guild, `Le bot a quitté **${name}**.`)], components: [] });
+        const nom = serveur.name;
+        await serveur.leave();
+        await interaction.update({ embeds: [ok(interaction.guild, `Le bot a quitté **${nom}**.`)], components: [] });
       },
     },
   ],

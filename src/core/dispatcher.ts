@@ -11,63 +11,63 @@ import {
   type ModalSubmitInteraction,
   type RepliableInteraction,
 } from 'discord.js';
-import { run } from '../database/db';
+import { executer } from '../database/db';
 import { erreur, refus } from './embeds';
-import { describeDiscordError, GENERIC_ERROR, UserError } from './errors';
-import { getConfig } from './guildConfig';
-import { handleInteractionError, replyEmbed } from './interactions';
+import { decrireErreurDiscord, ERREUR_GENERIQUE, ErreurUtilisateur } from './errors';
+import { lireConfig } from './guildConfig';
+import { traiterErreurInteraction, repondreEmbed } from './interactions';
 import { journal } from './logService';
-import { createLogger } from './logger';
-import { getModule, isModuleEnabled } from './moduleManager';
-import { getLevel, hasAccess, isBypassed, levelLabel } from './permissions';
-import { Cooldowns, SlidingWindowLimiter } from './rateLimit';
-import { dayKey } from './time';
+import { creerRegistre } from './logger';
+import { lireModule, moduleActif } from './moduleManager';
+import { lireNiveau, aAcces, estExempte, libelleNiveau } from './permissions';
+import { Delais, LimiteurFenetre } from './rateLimit';
+import { cleJour } from './time';
 import {
-  PermLevel,
-  type AnyModuleEvent,
-  type BotModule,
-  type ComponentHandler,
-  type PrefixCommand,
-  type PrefixDomain,
-  type SlashCommand,
+  Niveau,
+  type EvenementModule,
+  type ModuleBot,
+  type GestionnaireComposant,
+  type CommandePrefixe,
+  type DomainePrefixe,
+  type CommandeSlash,
 } from './types';
 
-const log = createLogger('dispatcher');
+const registre = creerRegistre('dispatcher');
 
-export interface CommandEntry {
-  command: SlashCommand;
-  module: BotModule;
+export interface EntreeCommande {
+  commande: CommandeSlash;
+  module: ModuleBot;
 }
 
-export interface PrefixEntry {
-  command: PrefixCommand;
-  module: BotModule;
+export interface EntreePrefixe {
+  commande: CommandePrefixe;
+  module: ModuleBot;
 }
 
-interface ComponentEntry {
-  handler: ComponentHandler;
-  module: BotModule;
+interface EntreeComposant {
+  gestionnaire: GestionnaireComposant;
+  module: ModuleBot;
 }
 
 /** Commandes inconnues (ex : commandes personnalisées) : un module peut les prendre en charge. */
-export type UnknownCommandHandler = (interaction: ChatInputCommandInteraction<'cached'>) => Promise<boolean>;
-export type UnknownPrefixHandler = (message: Message<true>, name: string, args: string[]) => Promise<boolean>;
+export type GestionnaireCommandeInconnue = (interaction: ChatInputCommandInteraction<'cached'>) => Promise<boolean>;
+export type GestionnairePrefixeInconnu = (message: Message<true>, nom: string, parametres: string[]) => Promise<boolean>;
 
-export function requiredLevel(command: SlashCommand, group: string | null, sub: string | null): PermLevel {
-  if (command.subLevels) {
-    const key = group && sub ? `${group} ${sub}` : sub ?? '';
-    const found = command.subLevels[key] ?? (group ? command.subLevels[group] : undefined);
-    if (found !== undefined) return found;
+export function niveauRequis(commande: CommandeSlash, groupe: string | null, sousCommande: string | null): Niveau {
+  if (commande.niveauxSousCommandes) {
+    const cle = groupe && sousCommande ? `${groupe} ${sousCommande}` : sousCommande ?? '';
+    const trouve = commande.niveauxSousCommandes[cle] ?? (groupe ? commande.niveauxSousCommandes[groupe] : undefined);
+    if (trouve !== undefined) return trouve;
   }
-  return command.level ?? PermLevel.MEMBER;
+  return commande.niveau ?? Niveau.MEMBRE;
 }
 
 /** Retrouve le serveur concerné par les arguments d'un événement Discord. */
-export function resolveGuildId(args: unknown[]): string | null {
-  for (const arg of args) {
-    if (!arg || typeof arg !== 'object') continue;
-    if (arg instanceof Guild) return arg.id;
-    const a = arg as { guild?: { id?: string } | null; guildId?: string | null; message?: { guildId?: string | null } };
+export function resoudreServeurId(parametres: unknown[]): string | null {
+  for (const argument of parametres) {
+    if (!argument || typeof argument !== 'object') continue;
+    if (argument instanceof Guild) return argument.id;
+    const a = argument as { guild?: { id?: string } | null; guildId?: string | null; message?: { guildId?: string | null } };
     if (a.guild && typeof a.guild.id === 'string') return a.guild.id;
     if (typeof a.guildId === 'string') return a.guildId;
     if (a.message && typeof a.message.guildId === 'string') return a.message.guildId;
@@ -76,298 +76,298 @@ export function resolveGuildId(args: unknown[]): string | null {
 }
 
 /** Découpe les arguments en respectant les guillemets : `a "b c" d` → [a, b c, d]. */
-export function splitArgs(input: string): string[] {
-  const out: string[] = [];
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+export function decouperArguments(saisie: string): string[] {
+  const sortie: string[] = [];
+  const expression = /"([^"]*)"|'([^']*)'|(\S+)/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(input)) !== null) out.push(m[1] ?? m[2] ?? m[3] ?? '');
-  return out;
+  while ((m = expression.exec(saisie)) !== null) sortie.push(m[1] ?? m[2] ?? m[3] ?? '');
+  return sortie;
 }
 
 /** Trouve le domaine et la commande visés par un message, selon les préfixes du serveur. */
-export function matchPrefix(content: string, prefixes: Record<PrefixDomain, string>): { domain: PrefixDomain; name: string; rest: string } | null {
-  const candidates = (Object.entries(prefixes) as [PrefixDomain, string][])
-    .filter(([, p]) => p && content.toLowerCase().startsWith(p.toLowerCase()))
+export function trouverPrefixe(contenu: string, prefixes: Record<DomainePrefixe, string>): { domain: DomainePrefixe; name: string; rest: string } | null {
+  const candidats = (Object.entries(prefixes) as [DomainePrefixe, string][])
+    .filter(([, p]) => p && contenu.toLowerCase().startsWith(p.toLowerCase()))
     .sort((a, b) => b[1].length - a[1].length);
-  for (const [domain, prefix] of candidates) {
-    const body = content.slice(prefix.length);
-    const m = /^([\p{L}\p{N}_-]+)(?:\s+([\s\S]*))?$/u.exec(body);
-    if (m) return { domain, name: m[1]!.toLowerCase(), rest: (m[2] ?? '').trim() };
+  for (const [domaine, prefixe] of candidats) {
+    const corps = contenu.slice(prefixe.length);
+    const m = /^([\p{L}\p{N}_-]+)(?:\s+([\s\S]*))?$/u.exec(corps);
+    if (m) return { domain: domaine, name: m[1]!.toLowerCase(), rest: (m[2] ?? '').trim() };
   }
   return null;
 }
 
-export class Dispatcher {
-  readonly commands = new Map<string, CommandEntry>();
-  readonly prefixCommands = new Map<string, PrefixEntry>();
-  private readonly components = new Map<string, ComponentEntry>();
-  private readonly events = new Map<keyof ClientEvents, { event: AnyModuleEvent; module: BotModule }[]>();
-  private readonly unknownHandlers: UnknownCommandHandler[] = [];
-  private readonly unknownPrefixHandlers: UnknownPrefixHandler[] = [];
-  private readonly limiter = new SlidingWindowLimiter(10, 10_000);
-  private readonly cooldowns = new Cooldowns();
+export class Aiguilleur {
+  readonly commandes = new Map<string, EntreeCommande>();
+  readonly commandesPrefixe = new Map<string, EntreePrefixe>();
+  private readonly composants = new Map<string, EntreeComposant>();
+  private readonly evenements = new Map<keyof ClientEvents, { event: EvenementModule; module: ModuleBot }[]>();
+  private readonly gestionnairesInconnus: GestionnaireCommandeInconnue[] = [];
+  private readonly gestionnairesPrefixesInconnus: GestionnairePrefixeInconnu[] = [];
+  private readonly limiteur = new LimiteurFenetre(10, 10_000);
+  private readonly delais = new Delais();
 
-  constructor(modules: BotModule[], coreComponents: ComponentHandler[] = []) {
-    const core = modules.find((m) => !m.toggleable);
-    if (!core) throw new Error('Aucun module cœur (toggleable: false) enregistré');
-    for (const handler of coreComponents) this.addComponent(handler, core);
-    for (const mod of modules) {
-      for (const command of mod.commands ?? []) {
-        const name = command.data.name;
-        if (this.commands.has(name)) throw new Error(`Commande en double : /${name} (${mod.id})`);
-        this.commands.set(name, { command, module: mod });
+  constructor(modules: ModuleBot[], composantsCoeur: GestionnaireComposant[] = []) {
+    const coeur = modules.find((m) => !m.desactivable);
+    if (!coeur) throw new Error('Aucun module cœur (toggleable: false) enregistré');
+    for (const gestionnaire of composantsCoeur) this.ajouterComposant(gestionnaire, coeur);
+    for (const module of modules) {
+      for (const commande of module.commandes ?? []) {
+        const nom = commande.donnees.name;
+        if (this.commandes.has(nom)) throw new Error(`Commande en double : /${nom} (${module.id})`);
+        this.commandes.set(nom, { commande, module });
       }
-      for (const command of mod.prefixCommands ?? []) {
-        for (const name of [command.name, ...(command.aliases ?? [])]) {
-          const key = `${command.domain}:${name.toLowerCase()}`;
-          if (this.prefixCommands.has(key)) throw new Error(`Commande à préfixe en double : ${key} (${mod.id})`);
-          this.prefixCommands.set(key, { command, module: mod });
+      for (const commande of module.commandesPrefixe ?? []) {
+        for (const nom of [commande.nom, ...(commande.alias ?? [])]) {
+          const cle = `${commande.domaine}:${nom.toLowerCase()}`;
+          if (this.commandesPrefixe.has(cle)) throw new Error(`Commande à préfixe en double : ${cle} (${module.id})`);
+          this.commandesPrefixe.set(cle, { commande, module });
         }
       }
-      for (const handler of mod.components ?? []) this.addComponent(handler, mod);
-      for (const ev of mod.events ?? []) this.addEvent(ev, mod);
+      for (const gestionnaire of module.composants ?? []) this.ajouterComposant(gestionnaire, module);
+      for (const evt of module.evenements ?? []) this.ajouterEvenement(evt, module);
     }
     // Les commandes à préfixe passent après l'automod (priorité 10) et avant le reste.
-    this.addEvent({ event: 'messageCreate', priority: 50, run: (message: Message) => this.handlePrefix(message) } as AnyModuleEvent, core);
-    for (const list of this.events.values()) list.sort((a, b) => a.event.priority - b.event.priority);
+    this.ajouterEvenement({ evenement: 'messageCreate', priorite: 50, executer: (message: Message) => this.traiterPrefixe(message) } as EvenementModule, coeur);
+    for (const liste of this.evenements.values()) liste.sort((a, b) => a.event.priorite - b.event.priorite);
   }
 
-  private addEvent(ev: AnyModuleEvent, mod: BotModule): void {
-    const list = this.events.get(ev.event) ?? [];
-    list.push({ event: ev, module: mod });
-    this.events.set(ev.event, list);
+  private ajouterEvenement(evt: EvenementModule, module: ModuleBot): void {
+    const liste = this.evenements.get(evt.evenement) ?? [];
+    liste.push({ event: evt, module });
+    this.evenements.set(evt.evenement, liste);
   }
 
-  private addComponent(handler: ComponentHandler, mod: BotModule): void {
-    if (handler.prefix.includes(':')) throw new Error(`Préfixe invalide : ${handler.prefix}`);
-    if (this.components.has(handler.prefix)) throw new Error(`Préfixe de composant en double : ${handler.prefix}`);
-    this.components.set(handler.prefix, { handler, module: mod });
+  private ajouterComposant(gestionnaire: GestionnaireComposant, module: ModuleBot): void {
+    if (gestionnaire.prefixe.includes(':')) throw new Error(`Préfixe invalide : ${gestionnaire.prefixe}`);
+    if (this.composants.has(gestionnaire.prefixe)) throw new Error(`Préfixe de composant en double : ${gestionnaire.prefixe}`);
+    this.composants.set(gestionnaire.prefixe, { gestionnaire, module });
   }
 
-  onUnknownCommand(handler: UnknownCommandHandler): void {
-    this.unknownHandlers.push(handler);
+  surCommandeInconnue(gestionnaire: GestionnaireCommandeInconnue): void {
+    this.gestionnairesInconnus.push(gestionnaire);
   }
 
-  onUnknownPrefix(handler: UnknownPrefixHandler): void {
-    this.unknownPrefixHandlers.push(handler);
+  surPrefixeInconnu(gestionnaire: GestionnairePrefixeInconnu): void {
+    this.gestionnairesPrefixesInconnus.push(gestionnaire);
   }
 
-  attach(client: Client): void {
+  brancher(client: Client): void {
     client.on(Events.InteractionCreate, (interaction) => {
-      void this.handleInteraction(interaction);
+      void this.traiterInteraction(interaction);
     });
-    for (const [eventName, handlers] of this.events) {
-      client.on(eventName, (...args: unknown[]) => {
-        void this.dispatchEvent(eventName, handlers, args);
+    for (const [nomEvenement, gestionnaires] of this.evenements) {
+      client.on(nomEvenement, (...parametres: unknown[]) => {
+        void this.distribuerEvenement(nomEvenement, gestionnaires, parametres);
       });
     }
   }
 
-  private async dispatchEvent(eventName: keyof ClientEvents, handlers: { event: AnyModuleEvent; module: BotModule }[], args: unknown[]): Promise<void> {
-    const guildId = resolveGuildId(args);
-    for (const { event, module } of handlers) {
-      if (guildId && !isModuleEnabled(guildId, module.id)) continue;
+  private async distribuerEvenement(nomEvenement: keyof ClientEvents, gestionnaires: { event: EvenementModule; module: ModuleBot }[], parametres: unknown[]): Promise<void> {
+    const serveurId = resoudreServeurId(parametres);
+    for (const { event: evenement, module } of gestionnaires) {
+      if (serveurId && !moduleActif(serveurId, module.id)) continue;
       try {
-        const result = await (event.run as (...a: unknown[]) => unknown)(...args);
-        if (result === 'stop') break;
-      } catch (err) {
+        const resultat = await (evenement.executer as (...a: unknown[]) => unknown)(...parametres);
+        if (resultat === 'stop') break;
+      } catch (echec) {
         // Isolation : une erreur d'un module n'empêche jamais les autres de s'exécuter.
-        log.error(`Erreur dans ${module.id} (${String(eventName)})`, err);
+        registre.erreur(`Erreur dans ${module.id} (${String(nomEvenement)})`, echec);
       }
     }
   }
 
-  private async handleInteraction(interaction: Interaction): Promise<void> {
+  private async traiterInteraction(interaction: Interaction): Promise<void> {
     try {
-      if (interaction.isChatInputCommand()) return await this.handleCommand(interaction);
-      if (interaction.isAutocomplete()) return await this.handleAutocomplete(interaction);
-      if (interaction.isMessageComponent() || interaction.isModalSubmit()) return await this.handleComponent(interaction);
-    } catch (err) {
-      log.error('Interaction non gérée', err);
+      if (interaction.isChatInputCommand()) return await this.traiterCommande(interaction);
+      if (interaction.isAutocomplete()) return await this.traiterAutocompletion(interaction);
+      if (interaction.isMessageComponent() || interaction.isModalSubmit()) return await this.traiterComposant(interaction);
+    } catch (echec) {
+      registre.erreur('Interaction non gérée', echec);
     }
   }
 
-  private async handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  private async traiterCommande(interaction: ChatInputCommandInteraction): Promise<void> {
     if (!interaction.inCachedGuild()) {
-      await replyEmbed(interaction, erreur(null, 'Les commandes de ce bot s’utilisent sur un serveur.'));
+      await repondreEmbed(interaction, erreur(null, 'Les commandes de ce bot s’utilisent sur un serveur.'));
       return;
     }
-    if (!this.limiter.hit(interaction.user.id)) {
-      await replyEmbed(interaction, refus(interaction.guild, 'Doucement ! Réessaie dans quelques secondes.'));
+    if (!this.limiteur.compter(interaction.user.id)) {
+      await repondreEmbed(interaction, refus(interaction.guild, 'Doucement ! Réessaie dans quelques secondes.'));
       return;
     }
 
-    const entry = this.commands.get(interaction.commandName);
-    if (!entry) {
-      for (const handler of this.unknownHandlers) {
+    const entree = this.commandes.get(interaction.commandName);
+    if (!entree) {
+      for (const gestionnaire of this.gestionnairesInconnus) {
         try {
-          if (await handler(interaction)) return;
-        } catch (err) {
-          await handleInteractionError(interaction, err, `/${interaction.commandName}`);
+          if (await gestionnaire(interaction)) return;
+        } catch (echec) {
+          await traiterErreurInteraction(interaction, echec, `/${interaction.commandName}`);
           return;
         }
       }
-      await replyEmbed(interaction, erreur(interaction.guild, 'Cette commande n’existe plus. Elle disparaîtra de la liste sous peu.'));
+      await repondreEmbed(interaction, erreur(interaction.guild, 'Cette commande n’existe plus. Elle disparaîtra de la liste sous peu.'));
       return;
     }
 
-    const { command, module } = entry;
-    if (!isModuleEnabled(interaction.guildId, module.id)) {
-      await replyEmbed(interaction, refus(interaction.guild, `Le module **${module.emoji} ${module.name}** est désactivé ici.\n-# Un admin peut l’activer avec /modules.`));
+    const { commande, module } = entree;
+    if (!moduleActif(interaction.guildId, module.id)) {
+      await repondreEmbed(interaction, refus(interaction.guild, `Le module **${module.emoji} ${module.nom}** est désactivé ici.\n-# Un admin peut l’activer avec /modules.`));
       return;
     }
 
-    const group = interaction.options.getSubcommandGroup(false);
-    const sub = interaction.options.getSubcommand(false);
-    const needed = requiredLevel(command, group, sub);
-    if (needed > PermLevel.MEMBER && !hasAccess(interaction.member, needed, command.whitelist)) {
-      await replyEmbed(interaction, refus(interaction.guild, `Cette commande ne t’est pas ouverte.\n-# Accès requis : **${levelLabel(needed)}**${command.whitelist ? ` ou whitelist **${command.whitelist}**` : ''}.`));
+    const groupe = interaction.options.getSubcommandGroup(false);
+    const sousCommande = interaction.options.getSubcommand(false);
+    const requis = niveauRequis(commande, groupe, sousCommande);
+    if (requis > Niveau.MEMBRE && !aAcces(interaction.member, requis, commande.whitelist)) {
+      await repondreEmbed(interaction, refus(interaction.guild, `Cette commande ne t’est pas ouverte.\n-# Accès requis : **${libelleNiveau(requis)}**${commande.whitelist ? ` ou whitelist **${commande.whitelist}**` : ''}.`));
       return;
     }
 
-    if (command.cooldownSeconds && getLevel(interaction.member) < PermLevel.MODERATOR) {
-      const left = this.cooldowns.take(`${command.data.name}:${interaction.user.id}`, command.cooldownSeconds * 1000);
-      if (left > 0) {
-        await replyEmbed(interaction, refus(interaction.guild, `Tu pourras la relancer dans **${Math.ceil(left / 1000)} s**.`));
+    if (commande.delaiSecondes && lireNiveau(interaction.member) < Niveau.MODERATEUR) {
+      const partis = this.delais.prendre(`${commande.donnees.name}:${interaction.user.id}`, commande.delaiSecondes * 1000);
+      if (partis > 0) {
+        await repondreEmbed(interaction, refus(interaction.guild, `Tu pourras la relancer dans **${Math.ceil(partis / 1000)} s**.`));
         return;
       }
     }
 
     try {
-      bumpCommandStat(interaction.guildId);
-      await command.execute(interaction);
-      if (needed >= PermLevel.STAFF) {
+      compterCommande(interaction.guildId);
+      await commande.executer(interaction);
+      if (requis >= Niveau.STAFF) {
         void journal(interaction.guild, 'command', {
-          title: 'Commande utilisée',
-          lines: [`**/${[command.data.name, group, sub].filter(Boolean).join(' ')}** dans <#${interaction.channelId}>`],
-          by: interaction.user,
+          titre: 'Commande utilisée',
+          lignes: [`**/${[commande.donnees.name, groupe, sousCommande].filter(Boolean).join(' ')}** dans <#${interaction.channelId}>`],
+          par: interaction.user,
         });
       }
-    } catch (err) {
-      await handleInteractionError(interaction, err, `/${command.data.name}${sub ? ` ${sub}` : ''}`);
+    } catch (echec) {
+      await traiterErreurInteraction(interaction, echec, `/${commande.donnees.name}${sousCommande ? ` ${sousCommande}` : ''}`);
     }
   }
 
-  private async handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  private async traiterAutocompletion(interaction: AutocompleteInteraction): Promise<void> {
     if (!interaction.inCachedGuild()) return;
-    const entry = this.commands.get(interaction.commandName);
-    if (!entry?.command.autocomplete || !isModuleEnabled(interaction.guildId, entry.module.id)) {
+    const entree = this.commandes.get(interaction.commandName);
+    if (!entree?.commande.autocompletion || !moduleActif(interaction.guildId, entree.module.id)) {
       await interaction.respond([]).catch(() => undefined);
       return;
     }
     try {
-      await entry.command.autocomplete(interaction);
-    } catch (err) {
-      log.warn(`Autocomplete /${interaction.commandName} en échec`, err);
+      await entree.commande.autocompletion(interaction);
+    } catch (echec) {
+      registre.avertir(`Autocomplete /${interaction.commandName} en échec`, echec);
       await interaction.respond([]).catch(() => undefined);
     }
   }
 
-  private async handleComponent(raw: MessageComponentInteraction | ModalSubmitInteraction): Promise<void> {
-    const interaction = raw as RepliableInteraction & (MessageComponentInteraction | ModalSubmitInteraction);
+  private async traiterComposant(brut: MessageComponentInteraction | ModalSubmitInteraction): Promise<void> {
+    const interaction = brut as RepliableInteraction & (MessageComponentInteraction | ModalSubmitInteraction);
     if (!interaction.inCachedGuild()) return;
-    const [prefix = '', ...args] = interaction.customId.split(':');
-    const entry = this.components.get(prefix);
-    if (!entry) {
-      await replyEmbed(interaction, erreur(interaction.guild, 'Ce bouton n’est plus actif. Relance la commande.'));
+    const [prefixe = '', ...parametres] = interaction.customId.split(':');
+    const entree = this.composants.get(prefixe);
+    if (!entree) {
+      await repondreEmbed(interaction, erreur(interaction.guild, 'Ce bouton n’est plus actif. Relance la commande.'));
       return;
     }
-    if (!this.limiter.hit(interaction.user.id)) {
-      await replyEmbed(interaction, refus(interaction.guild, 'Doucement ! Réessaie dans quelques secondes.'));
+    if (!this.limiteur.compter(interaction.user.id)) {
+      await repondreEmbed(interaction, refus(interaction.guild, 'Doucement ! Réessaie dans quelques secondes.'));
       return;
     }
-    const { handler, module } = entry;
-    if (!isModuleEnabled(interaction.guildId, module.id)) {
-      await replyEmbed(interaction, refus(interaction.guild, `Le module **${module.emoji} ${module.name}** est désactivé ici.`));
+    const { gestionnaire, module } = entree;
+    if (!moduleActif(interaction.guildId, module.id)) {
+      await repondreEmbed(interaction, refus(interaction.guild, `Le module **${module.emoji} ${module.nom}** est désactivé ici.`));
       return;
     }
-    const needed = handler.level ?? PermLevel.MEMBER;
-    if (needed > PermLevel.MEMBER && !hasAccess(interaction.member, needed, handler.whitelist)) {
-      await replyEmbed(interaction, refus(interaction.guild, `Cette action ne t’est pas ouverte.\n-# Accès requis : **${levelLabel(needed)}**.`));
+    const requis = gestionnaire.niveau ?? Niveau.MEMBRE;
+    if (requis > Niveau.MEMBRE && !aAcces(interaction.member, requis, gestionnaire.whitelist)) {
+      await repondreEmbed(interaction, refus(interaction.guild, `Cette action ne t’est pas ouverte.\n-# Accès requis : **${libelleNiveau(requis)}**.`));
       return;
     }
     try {
-      if (interaction.isButton() && handler.button) await handler.button(interaction, args);
-      else if (interaction.isAnySelectMenu() && handler.select) await handler.select(interaction, args);
-      else if (interaction.isModalSubmit() && handler.modal) await handler.modal(interaction, args);
-      else await replyEmbed(interaction, erreur(interaction.guild, 'Ce bouton n’est plus actif.'));
-    } catch (err) {
-      await handleInteractionError(interaction, err, `composant ${prefix}`);
+      if (interaction.isButton() && gestionnaire.bouton) await gestionnaire.bouton(interaction, parametres);
+      else if (interaction.isAnySelectMenu() && gestionnaire.menu) await gestionnaire.menu(interaction, parametres);
+      else if (interaction.isModalSubmit() && gestionnaire.fenetre) await gestionnaire.fenetre(interaction, parametres);
+      else await repondreEmbed(interaction, erreur(interaction.guild, 'Ce bouton n’est plus actif.'));
+    } catch (echec) {
+      await traiterErreurInteraction(interaction, echec, `composant ${prefixe}`);
     }
   }
 
   /** Commandes à préfixe : + sanctions, & salons, = général, . owner, m! musique (préfixes réglables par serveur). */
-  private async handlePrefix(message: Message): Promise<void> {
+  private async traiterPrefixe(message: Message): Promise<void> {
     if (!message.inGuild() || message.author.bot || !message.content || !message.member) return;
-    const cfg = getConfig(message.guildId);
-    const match = matchPrefix(message.content, cfg.prefixes);
-    if (!match) return;
+    const reglages = lireConfig(message.guildId);
+    const correspondance = trouverPrefixe(message.content, reglages.prefixes);
+    if (!correspondance) return;
 
-    const entry = this.prefixCommands.get(`${match.domain}:${match.name}`);
-    const args = splitArgs(match.rest);
-    if (!entry) {
-      for (const handler of this.unknownPrefixHandlers) {
+    const entree = this.commandesPrefixe.get(`${correspondance.domain}:${correspondance.name}`);
+    const parametres = decouperArguments(correspondance.rest);
+    if (!entree) {
+      for (const gestionnaire of this.gestionnairesPrefixesInconnus) {
         try {
-          if (await handler(message, match.name, args)) return;
-        } catch (err) {
-          log.warn('Commande personnalisée en échec', err);
+          if (await gestionnaire(message, correspondance.name, parametres)) return;
+        } catch (echec) {
+          registre.avertir('Commande personnalisée en échec', echec);
           return;
         }
       }
       return;
     }
 
-    const { command, module } = entry;
-    if (!isModuleEnabled(message.guildId, module.id)) return;
-    const needed = command.level ?? PermLevel.MEMBER;
-    if (needed > PermLevel.MEMBER && !hasAccess(message.member, needed, command.whitelist)) {
+    const { commande, module } = entree;
+    if (!moduleActif(message.guildId, module.id)) return;
+    const requis = commande.niveau ?? Niveau.MEMBRE;
+    if (requis > Niveau.MEMBRE && !aAcces(message.member, requis, commande.whitelist)) {
       // Comme sur Airline : un accès refusé ne répond rien en public, il est seulement tracé.
-      log.debug(`Accès refusé ${match.domain}:${match.name} pour ${message.author.tag}`);
+      registre.debogage(`Accès refusé ${correspondance.domain}:${correspondance.name} pour ${message.author.tag}`);
       return;
     }
-    if (cfg.commands.allowedChannels.length && !cfg.commands.allowedChannels.includes(message.channelId) && !isBypassed(message.member)) {
+    if (reglages.commandes.salonsAutorises.length && !reglages.commandes.salonsAutorises.includes(message.channelId) && !estExempte(message.member)) {
       return;
     }
-    if (!this.limiter.hit(message.author.id)) return;
+    if (!this.limiteur.compter(message.author.id)) return;
 
     try {
-      bumpCommandStat(message.guildId);
-      await command.execute(message, args);
-      if (cfg.commands.deleteTrigger) await message.delete().catch(() => undefined);
-      if (needed >= PermLevel.STAFF) {
+      compterCommande(message.guildId);
+      await commande.executer(message, parametres);
+      if (reglages.commandes.effacerCommande) await message.delete().catch(() => undefined);
+      if (requis >= Niveau.STAFF) {
         void journal(message.guild, 'command', {
-          title: 'Commande utilisée',
-          lines: [`**${cfg.prefixes[match.domain]}${match.name}** ${truncateArgs(match.rest)} dans <#${message.channelId}>`],
-          by: message.author,
+          titre: 'Commande utilisée',
+          lignes: [`**${reglages.prefixes[correspondance.domain]}${correspondance.name}** ${tronquerArguments(correspondance.rest)} dans <#${message.channelId}>`],
+          par: message.author,
         });
       }
-    } catch (err) {
-      const text = err instanceof UserError ? err.message : describeDiscordError(err) ?? GENERIC_ERROR;
-      if (!(err instanceof UserError) && !describeDiscordError(err)) log.error(`Préfixe ${match.domain}:${match.name}`, err);
-      await message.reply({ embeds: [erreur(message.guild, text)], allowedMentions: { repliedUser: false } }).catch(() => undefined);
+    } catch (echec) {
+      const texte = echec instanceof ErreurUtilisateur ? echec.message : decrireErreurDiscord(echec) ?? ERREUR_GENERIQUE;
+      if (!(echec instanceof ErreurUtilisateur) && !decrireErreurDiscord(echec)) registre.erreur(`Préfixe ${correspondance.domain}:${correspondance.name}`, echec);
+      await message.reply({ embeds: [erreur(message.guild, texte)], allowedMentions: { repliedUser: false } }).catch(() => undefined);
     }
   }
 }
 
-function truncateArgs(value: string): string {
-  return value.length > 120 ? `${value.slice(0, 119)}…` : value;
+function tronquerArguments(valeur: string): string {
+  return valeur.length > 120 ? `${valeur.slice(0, 119)}…` : valeur;
 }
 
-function bumpCommandStat(guildId: string): void {
+function compterCommande(serveurId: string): void {
   try {
-    const day = dayKey(Date.now(), getConfig(guildId).general.timezone);
-    run(
-      `INSERT INTO stats_daily (guild_id, day, commands) VALUES (?, ?, 1)
-       ON CONFLICT(guild_id, day) DO UPDATE SET commands = commands + 1`,
-      guildId,
-      day,
+    const jour = cleJour(Date.now(), lireConfig(serveurId).general.fuseau);
+    executer(
+      `INSERT INTO statistiques_jour (serveur_id, jour, commandes) VALUES (?, ?, 1)
+       ON CONFLICT(serveur_id, jour) DO UPDATE SET commandes = commandes + 1`,
+      serveurId,
+      jour,
     );
   } catch {
     /* statistique non critique */
   }
 }
 
-export function moduleOfCommand(dispatcher: Dispatcher, name: string): BotModule | undefined {
-  const entry = dispatcher.commands.get(name);
-  return entry ? getModule(entry.module.id) : undefined;
+export function moduleDeCommande(aiguilleur: Aiguilleur, nom: string): ModuleBot | undefined {
+  const entree = aiguilleur.commandes.get(nom);
+  return entree ? lireModule(entree.module.id) : undefined;
 }

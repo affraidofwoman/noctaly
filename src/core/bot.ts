@@ -1,24 +1,24 @@
 import type { Client } from 'discord.js';
-import type { Dispatcher } from './dispatcher';
+import type { Aiguilleur } from './dispatcher';
 
-interface BotState {
+interface EtatBot {
   client: Client<true> | null;
-  dispatcher: Dispatcher | null;
-  startedAt: number;
+  aiguilleur: Aiguilleur | null;
+  debutLe: number;
 }
 
-export const botState: BotState = {
+export const etatBot: EtatBot = {
   client: null,
-  dispatcher: null,
-  startedAt: Date.now(),
+  aiguilleur: null,
+  debutLe: Date.now(),
 };
 
-export function getClient(): Client<true> {
-  if (!botState.client) throw new Error('Client Discord non prêt');
-  return botState.client;
+export function lireClient(): Client<true> {
+  if (!etatBot.client) throw new Error('Client Discord non prêt');
+  return etatBot.client;
 }
 
-export function getDispatcher(): Dispatcher {
-  if (!botState.dispatcher) throw new Error('Dispatcher non initialisé');
-  return botState.dispatcher;
+export function lireAiguilleur(): Aiguilleur {
+  if (!etatBot.aiguilleur) throw new Error('Dispatcher non initialisé');
+  return etatBot.aiguilleur;
 }

@@ -1,4 +1,4 @@
-import { all, get, parseJson, run, transaction } from '../database/db';
+import { lireTout, lire, lireJson, executer, transaction } from '../database/db';
 
 /**
  * ENSEIGNES STREAMERS
@@ -6,9 +6,9 @@ import { all, get, parseJson, run, transaction } from '../database/db';
  * et la liste des serveurs qui la portent. Les messages du bot prennent celle du serveur où ils sont envoyés.
  */
 
-export const DEFAULT_COLOR = 0x9146ff;
+export const COULEUR_DEFAUT = 0x9146ff;
 
-export const EMOJI_KEYS = {
+export const CLES_EMOJIS = {
   valide: '✅',
   probleme: '❌',
   refus: '⛔',
@@ -43,9 +43,9 @@ export const EMOJI_KEYS = {
   suggestion: '💡',
 } as const;
 
-export type EmojiKey = keyof typeof EMOJI_KEYS;
+export type CleEmoji = keyof typeof CLES_EMOJIS;
 
-export interface StreamerLinks {
+export interface LiensEnseigne {
   twitch?: string;
   youtube?: string;
   x?: string;
@@ -54,57 +54,57 @@ export interface StreamerLinks {
   discord?: string;
 }
 
-export interface Brand {
-  key: string | null;
-  name: string;
-  color: number;
-  hasCustomColor: boolean;
-  footer: string | null;
+export interface Enseigne {
+  cle: string | null;
+  nom: string;
+  couleur: number;
+  couleurPerso: boolean;
+  pied: string | null;
   logo: string | null;
-  background: string | null;
-  twitchLogin: string | null;
-  links: StreamerLinks;
-  emojis: Partial<Record<EmojiKey, string>>;
+  fond: string | null;
+  pseudoTwitch: string | null;
+  liens: LiensEnseigne;
+  emojis: Partial<Record<CleEmoji, string>>;
 }
 
-export interface StreamerRow {
-  key: string;
-  name: string;
-  color: number | null;
-  footer: string | null;
+export interface LigneEnseigne {
+  cle: string;
+  nom: string;
+  couleur: number | null;
+  pied: string | null;
   logo: string | null;
-  background: string | null;
-  twitch_login: string | null;
-  links: string;
+  fond: string | null;
+  pseudo_twitch: string | null;
+  liens: string;
   emojis: string;
-  created_at: number;
-  updated_at: number;
+  cree_le: number;
+  modifie_le: number;
 }
 
-export const KEY_PATTERN = /^[a-z0-9_-]{2,32}$/;
-const IMAGE_PATTERN = /^https:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i;
-const CUSTOM_EMOJI_PATTERN = /^<a?:[A-Za-z0-9_]{2,32}:\d{15,25}>$/;
+export const MOTIF_CLE = /^[a-z0-9_-]{2,32}$/;
+const MOTIF_IMAGE = /^https:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i;
+const MOTIF_EMOJI_PERSO = /^<a?:[A-Za-z0-9_]{2,32}:\d{15,25}>$/;
 
-export function isImageUrl(value: string): boolean {
-  return IMAGE_PATTERN.test(value.trim());
+export function estLienImage(valeur: string): boolean {
+  return MOTIF_IMAGE.test(valeur.trim());
 }
 
 /** Un émoji personnalisé Discord ou un émoji unicode court. */
-export function isEmojiValue(value: string): boolean {
-  const v = value.trim();
-  if (CUSTOM_EMOJI_PATTERN.test(v)) return true;
+export function estEmoji(valeur: string): boolean {
+  const v = valeur.trim();
+  if (MOTIF_EMOJI_PERSO.test(v)) return true;
   return v.length > 0 && v.length <= 8 && /\p{Extended_Pictographic}/u.test(v);
 }
 
-export function parseColor(value: string | number | null | undefined): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'number') return Number.isInteger(value) && value >= 0 && value <= 0xffffff ? value : null;
-  const m = /^#?([0-9a-f]{6})$/i.exec(value.trim());
+export function lireCouleur(valeur: string | number | null | undefined): number | null {
+  if (valeur === null || valeur === undefined || valeur === '') return null;
+  if (typeof valeur === 'number') return Number.isInteger(valeur) && valeur >= 0 && valeur <= 0xffffff ? valeur : null;
+  const m = /^#?([0-9a-f]{6})$/i.exec(valeur.trim());
   return m ? Number.parseInt(m[1]!, 16) : null;
 }
 
-export function toHex(color: number): string {
-  return `#${color.toString(16).padStart(6, '0').toUpperCase()}`;
+export function enHexa(couleur: number): string {
+  return `#${couleur.toString(16).padStart(6, '0').toUpperCase()}`;
 }
 
 /** Palettes proposées dans /custom, lisibles sur le fond sombre de Discord. */
@@ -112,7 +112,7 @@ export const PALETTES = [
   {
     name: 'Twitch',
     description: 'Violets et tons néon',
-    tones: [
+    tons: [
       { name: 'Twitch', color: 0x9146ff },
       { name: 'Lavande', color: 0xbf94ff },
       { name: 'Aubergine', color: 0x5c16c5 },
@@ -124,7 +124,7 @@ export const PALETTES = [
   {
     name: 'Pastel',
     description: 'Douces et chaleureuses',
-    tones: [
+    tons: [
       { name: 'Dragée', color: 0xf2b8cd },
       { name: 'Brume', color: 0xb8d4f2 },
       { name: 'Menthe', color: 0xb8f2d8 },
@@ -136,7 +136,7 @@ export const PALETTES = [
   {
     name: 'Vif',
     description: 'Lumineuses, elles sautent aux yeux',
-    tones: [
+    tons: [
       { name: 'Cyan', color: 0x46c8ff },
       { name: 'Citron', color: 0xe8e83a },
       { name: 'Corail', color: 0xff6f5f },
@@ -148,7 +148,7 @@ export const PALETTES = [
   {
     name: 'Profond',
     description: 'Saturées et franches',
-    tones: [
+    tons: [
       { name: 'Encre', color: 0x2f4f8f },
       { name: 'Sapin', color: 0x1f6f4f },
       { name: 'Grenat', color: 0x8f2f4f },
@@ -159,128 +159,128 @@ export const PALETTES = [
   },
 ];
 
-const guildCache = new Map<string, { brand: Brand; expires: number }>();
-const CACHE_MS = 5 * 60_000;
+const cacheServeurs = new Map<string, { enseigne: Enseigne; expires: number }>();
+const DUREE_CACHE_MS = 5 * 60_000;
 
-export function defaultBrand(): Brand {
+export function enseigneParDefaut(): Enseigne {
   return {
-    key: null,
-    name: process.env.BOT_BRAND_NAME?.trim() || 'Twitch Community',
-    color: DEFAULT_COLOR,
-    hasCustomColor: false,
-    footer: null,
+    cle: null,
+    nom: process.env.BOT_BRAND_NAME?.trim() || 'Twitch Community',
+    couleur: COULEUR_DEFAUT,
+    couleurPerso: false,
+    pied: null,
     logo: null,
-    background: null,
-    twitchLogin: null,
-    links: {},
+    fond: null,
+    pseudoTwitch: null,
+    liens: {},
     emojis: {},
   };
 }
 
-function toBrand(row: StreamerRow): Brand {
-  const emojis: Partial<Record<EmojiKey, string>> = {};
-  for (const [k, v] of Object.entries(parseJson<Record<string, string>>(row.emojis, {}))) {
-    if (k in EMOJI_KEYS && typeof v === 'string' && isEmojiValue(v)) emojis[k as EmojiKey] = v;
+function versEnseigne(rangee: LigneEnseigne): Enseigne {
+  const emojis: Partial<Record<CleEmoji, string>> = {};
+  for (const [k, v] of Object.entries(lireJson<Record<string, string>>(rangee.emojis, {}))) {
+    if (k in CLES_EMOJIS && typeof v === 'string' && estEmoji(v)) emojis[k as CleEmoji] = v;
   }
   return {
-    key: row.key,
-    name: row.name,
-    color: row.color ?? DEFAULT_COLOR,
-    hasCustomColor: row.color !== null,
-    footer: row.footer,
-    logo: row.logo,
-    background: row.background,
-    twitchLogin: row.twitch_login,
-    links: parseJson<StreamerLinks>(row.links, {}),
+    cle: rangee.cle,
+    nom: rangee.nom,
+    couleur: rangee.couleur ?? COULEUR_DEFAUT,
+    couleurPerso: rangee.couleur !== null,
+    pied: rangee.pied,
+    logo: rangee.logo,
+    fond: rangee.fond,
+    pseudoTwitch: rangee.pseudo_twitch,
+    liens: lireJson<LiensEnseigne>(rangee.liens, {}),
     emojis,
   };
 }
 
-export function brandFor(guildId: string | null | undefined): Brand {
-  if (!guildId) return defaultBrand();
-  const cached = guildCache.get(guildId);
-  if (cached && cached.expires > Date.now()) return cached.brand;
-  const row = get<StreamerRow>(
-    'SELECT s.* FROM streamers s JOIN streamer_guilds g ON g.streamer_key = s.key WHERE g.guild_id = ?',
-    guildId,
+export function enseigneDe(serveurId: string | null | undefined): Enseigne {
+  if (!serveurId) return enseigneParDefaut();
+  const enCache = cacheServeurs.get(serveurId);
+  if (enCache && enCache.expires > Date.now()) return enCache.enseigne;
+  const rangee = lire<LigneEnseigne>(
+    'SELECT s.* FROM enseignes s JOIN serveurs_enseignes g ON g.enseigne_cle = s.cle WHERE g.serveur_id = ?',
+    serveurId,
   );
-  const brand = row ? toBrand(row) : defaultBrand();
-  guildCache.set(guildId, { brand, expires: Date.now() + CACHE_MS });
-  return brand;
+  const enseigne = rangee ? versEnseigne(rangee) : enseigneParDefaut();
+  cacheServeurs.set(serveurId, { enseigne, expires: Date.now() + DUREE_CACHE_MS });
+  return enseigne;
 }
 
-export function emojiFor(guildId: string | null | undefined, key: EmojiKey): string {
-  return brandFor(guildId).emojis[key] ?? EMOJI_KEYS[key];
+export function emojiPour(serveurId: string | null | undefined, cle: CleEmoji): string {
+  return enseigneDe(serveurId).emojis[cle] ?? CLES_EMOJIS[cle];
 }
 
-export function forgetBrands(): void {
-  guildCache.clear();
+export function oublierEnseignes(): void {
+  cacheServeurs.clear();
 }
 
-export function listStreamers(): (StreamerRow & { guilds: string[] })[] {
-  const rows = all<StreamerRow>('SELECT * FROM streamers ORDER BY name COLLATE NOCASE');
-  const links = all<{ guild_id: string; streamer_key: string }>('SELECT guild_id, streamer_key FROM streamer_guilds');
-  return rows.map((r) => ({ ...r, guilds: links.filter((l) => l.streamer_key === r.key).map((l) => l.guild_id) }));
+export function listerEnseignes(): (LigneEnseigne & { guilds: string[] })[] {
+  const rangees = lireTout<LigneEnseigne>('SELECT * FROM enseignes ORDER BY nom COLLATE NOCASE');
+  const liens = lireTout<{ serveur_id: string; enseigne_cle: string }>('SELECT serveur_id, enseigne_cle FROM serveurs_enseignes');
+  return rangees.map((r) => ({ ...r, guilds: liens.filter((l) => l.enseigne_cle === r.cle).map((l) => l.serveur_id) }));
 }
 
-export function getStreamer(key: string): (StreamerRow & { guilds: string[] }) | null {
-  const row = get<StreamerRow>('SELECT * FROM streamers WHERE key = ?', key);
-  if (!row) return null;
-  const guilds = all<{ guild_id: string }>('SELECT guild_id FROM streamer_guilds WHERE streamer_key = ?', key).map((g) => g.guild_id);
-  return { ...row, guilds };
+export function lireEnseigne(cle: string): (LigneEnseigne & { guilds: string[] }) | null {
+  const rangee = lire<LigneEnseigne>('SELECT * FROM enseignes WHERE cle = ?', cle);
+  if (!rangee) return null;
+  const serveurs = lireTout<{ serveur_id: string }>('SELECT serveur_id FROM serveurs_enseignes WHERE enseigne_cle = ?', cle).map((g) => g.serveur_id);
+  return { ...rangee, guilds: serveurs };
 }
 
-export function createStreamer(key: string, name: string): void {
-  if (!KEY_PATTERN.test(key)) throw new Error('clé invalide');
-  const now = Date.now();
-  run('INSERT INTO streamers (key, name, created_at, updated_at) VALUES (?, ?, ?, ?)', key, name.slice(0, 64), now, now);
-  forgetBrands();
+export function creerEnseigne(cle: string, nom: string): void {
+  if (!MOTIF_CLE.test(cle)) throw new Error('clé invalide');
+  const maintenant = Date.now();
+  executer('INSERT INTO enseignes (cle, nom, cree_le, modifie_le) VALUES (?, ?, ?, ?)', cle, nom.slice(0, 64), maintenant, maintenant);
+  oublierEnseignes();
 }
 
-export type StreamerPatch = Partial<{
-  name: string;
-  color: number | null;
-  footer: string | null;
+export type CorrectifEnseigne = Partial<{
+  nom: string;
+  couleur: number | null;
+  pied: string | null;
   logo: string | null;
-  background: string | null;
-  twitch_login: string | null;
-  links: StreamerLinks;
-  emojis: Partial<Record<EmojiKey, string>>;
+  fond: string | null;
+  pseudo_twitch: string | null;
+  liens: LiensEnseigne;
+  emojis: Partial<Record<CleEmoji, string>>;
 }>;
 
-export function updateStreamer(key: string, patch: StreamerPatch): void {
-  const current = getStreamer(key);
-  if (!current) throw new Error('enseigne introuvable');
-  run(
-    `UPDATE streamers SET name = ?, color = ?, footer = ?, logo = ?, background = ?, twitch_login = ?, links = ?, emojis = ?, updated_at = ? WHERE key = ?`,
-    (patch.name ?? current.name).slice(0, 64),
-    patch.color !== undefined ? patch.color : current.color,
-    patch.footer !== undefined ? patch.footer?.slice(0, 128) ?? null : current.footer,
-    patch.logo !== undefined ? patch.logo : current.logo,
-    patch.background !== undefined ? patch.background : current.background,
-    patch.twitch_login !== undefined ? patch.twitch_login : current.twitch_login,
-    JSON.stringify(patch.links ?? parseJson(current.links, {})),
-    JSON.stringify(patch.emojis ?? parseJson(current.emojis, {})),
+export function modifierEnseigne(cle: string, correctif: CorrectifEnseigne): void {
+  const actuel = lireEnseigne(cle);
+  if (!actuel) throw new Error('enseigne introuvable');
+  executer(
+    `UPDATE enseignes SET nom = ?, couleur = ?, pied = ?, logo = ?, fond = ?, pseudo_twitch = ?, liens = ?, emojis = ?, modifie_le = ? WHERE cle = ?`,
+    (correctif.nom ?? actuel.nom).slice(0, 64),
+    correctif.couleur !== undefined ? correctif.couleur : actuel.couleur,
+    correctif.pied !== undefined ? correctif.pied?.slice(0, 128) ?? null : actuel.pied,
+    correctif.logo !== undefined ? correctif.logo : actuel.logo,
+    correctif.fond !== undefined ? correctif.fond : actuel.fond,
+    correctif.pseudo_twitch !== undefined ? correctif.pseudo_twitch : actuel.pseudo_twitch,
+    JSON.stringify(correctif.liens ?? lireJson(actuel.liens, {})),
+    JSON.stringify(correctif.emojis ?? lireJson(actuel.emojis, {})),
     Date.now(),
-    key,
+    cle,
   );
-  forgetBrands();
+  oublierEnseignes();
 }
 
-export function setStreamerGuilds(key: string, guildIds: string[]): void {
+export function poserServeursEnseigne(cle: string, serveurIds: string[]): void {
   transaction(() => {
-    run('DELETE FROM streamer_guilds WHERE streamer_key = ?', key);
-    for (const id of [...new Set(guildIds)].slice(0, 100)) {
+    executer('DELETE FROM serveurs_enseignes WHERE enseigne_cle = ?', cle);
+    for (const id of [...new Set(serveurIds)].slice(0, 100)) {
       // Un serveur n'appartient qu'à une seule enseigne : il est retiré de l'ancienne.
-      run('INSERT INTO streamer_guilds (guild_id, streamer_key) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET streamer_key = excluded.streamer_key', id, key);
+      executer('INSERT INTO serveurs_enseignes (serveur_id, enseigne_cle) VALUES (?, ?) ON CONFLICT(serveur_id) DO UPDATE SET enseigne_cle = excluded.enseigne_cle', id, cle);
     }
   });
-  forgetBrands();
+  oublierEnseignes();
 }
 
-export function deleteStreamer(key: string): boolean {
-  const r = run('DELETE FROM streamers WHERE key = ?', key);
-  run('DELETE FROM streamer_guilds WHERE streamer_key = ?', key);
-  forgetBrands();
+export function supprimerEnseigne(cle: string): boolean {
+  const r = executer('DELETE FROM enseignes WHERE cle = ?', cle);
+  executer('DELETE FROM serveurs_enseignes WHERE enseigne_cle = ?', cle);
+  oublierEnseignes();
   return r.changes > 0;
 }

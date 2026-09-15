@@ -9,33 +9,33 @@ import type {
   ModalSubmitInteraction,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
-import type { SetupPage } from './setup';
+import type { PageReglage } from './setup';
 
 /**
  * Niveaux d'accès, du plus bas au plus haut.
  * Chaque niveau garde tout ce que donnent les précédents.
  */
-export enum PermLevel {
-  MEMBER = 0,
+export enum Niveau {
+  MEMBRE = 0,
   SUPPORT = 1,
   STAFF = 2,
-  MODERATOR = 3,
+  MODERATEUR = 3,
   ADMIN = 4,
   STREAMER = 5,
-  BOT_OWNER = 6,
+  PROPRIETAIRE_BOT = 6,
 }
 
-export const PERM_LEVEL_LABELS: Record<PermLevel, string> = {
-  [PermLevel.MEMBER]: 'Membre',
-  [PermLevel.SUPPORT]: 'Support',
-  [PermLevel.STAFF]: 'Staff',
-  [PermLevel.MODERATOR]: 'Système',
-  [PermLevel.ADMIN]: 'Admin',
-  [PermLevel.STREAMER]: 'Streamer',
-  [PermLevel.BOT_OWNER]: 'Owner bot',
+export const LIBELLES_NIVEAUX: Record<Niveau, string> = {
+  [Niveau.MEMBRE]: 'Membre',
+  [Niveau.SUPPORT]: 'Support',
+  [Niveau.STAFF]: 'Staff',
+  [Niveau.MODERATEUR]: 'Système',
+  [Niveau.ADMIN]: 'Admin',
+  [Niveau.STREAMER]: 'Streamer',
+  [Niveau.PROPRIETAIRE_BOT]: 'Owner bot',
 };
 
-export type HelpCategory =
+export type CategorieAide =
   | 'general'
   | 'moderation'
   | 'salons'
@@ -50,7 +50,7 @@ export type HelpCategory =
   | 'admin'
   | 'owner';
 
-export const HELP_CATEGORIES: Record<HelpCategory, { label: string; emoji: string }> = {
+export const CATEGORIES_AIDE: Record<CategorieAide, { label: string; emoji: string }> = {
   general: { label: 'Pour tout le monde', emoji: '📌' },
   community: { label: 'Communauté', emoji: '⭐' },
   economy: { label: 'Économie & jeux', emoji: '💰' },
@@ -66,111 +66,111 @@ export const HELP_CATEGORIES: Record<HelpCategory, { label: string; emoji: strin
   owner: { label: 'Réglages du bot', emoji: '👑' },
 };
 
-export interface CommandData {
+export interface DonneesCommande {
   name: string;
   toJSON(): RESTPostAPIChatInputApplicationCommandsJSONBody;
 }
 
-export interface SlashCommand {
-  data: CommandData;
-  category: HelpCategory;
+export interface CommandeSlash {
+  donnees: DonneesCommande;
+  categorie: CategorieAide;
   /** Niveau minimum requis pour la commande (défaut : MEMBER). */
-  level?: PermLevel;
+  niveau?: Niveau;
   /** Niveau par sous-commande : clé "sub" ou "groupe sub". Prioritaire sur `level`. */
-  subLevels?: Record<string, PermLevel>;
+  niveauxSousCommandes?: Record<string, Niveau>;
   /** Whitelist qui donne accès à la commande même sans le niveau requis. */
   whitelist?: string;
-  cooldownSeconds?: number;
-  execute(interaction: ChatInputCommandInteraction<'cached'>): Promise<unknown>;
-  autocomplete?(interaction: AutocompleteInteraction<'cached'>): Promise<unknown>;
+  delaiSecondes?: number;
+  executer(interaction: ChatInputCommandInteraction<'cached'>): Promise<unknown>;
+  autocompletion?(interaction: AutocompleteInteraction<'cached'>): Promise<unknown>;
 }
 
 /** Domaines de préfixes, à la manière du bot Airline : + sanctions, & salons, = général, . owner, m! musique. */
-export type PrefixDomain = 'sanction' | 'salon' | 'general' | 'owner' | 'music';
+export type DomainePrefixe = 'sanction' | 'salon' | 'general' | 'owner' | 'music';
 
-export const PREFIX_DOMAINS: Record<PrefixDomain, { label: string; emoji: string; defaultPrefix: string }> = {
-  sanction: { label: 'Sanctions', emoji: '🛡️', defaultPrefix: '+' },
-  salon: { label: 'Salons', emoji: '🔑', defaultPrefix: '&' },
-  general: { label: 'Général', emoji: '📌', defaultPrefix: '=' },
-  owner: { label: 'Owner', emoji: '👑', defaultPrefix: '.' },
-  music: { label: 'Musique', emoji: '🎵', defaultPrefix: 'm!' },
+export const DOMAINES_PREFIXES: Record<DomainePrefixe, { label: string; emoji: string; prefixeParDefaut: string }> = {
+  sanction: { label: 'Sanctions', emoji: '🛡️', prefixeParDefaut: '+' },
+  salon: { label: 'Salons', emoji: '🔑', prefixeParDefaut: '&' },
+  general: { label: 'Général', emoji: '📌', prefixeParDefaut: '=' },
+  owner: { label: 'Owner', emoji: '👑', prefixeParDefaut: '.' },
+  music: { label: 'Musique', emoji: '🎵', prefixeParDefaut: 'm!' },
 };
 
-export interface PrefixCommand {
-  name: string;
-  aliases?: string[];
-  domain: PrefixDomain;
-  category: HelpCategory;
+export interface CommandePrefixe {
+  nom: string;
+  alias?: string[];
+  domaine: DomainePrefixe;
+  categorie: CategorieAide;
   description: string;
   usage?: string;
-  level?: PermLevel;
+  niveau?: Niveau;
   whitelist?: string;
-  execute(message: Message<true>, args: string[]): Promise<unknown>;
+  executer(message: Message<true>, parametres: string[]): Promise<unknown>;
 }
 
-export interface ComponentHandler {
+export interface GestionnaireComposant {
   /** Préfixe du customId (avant le premier ":"). Doit être unique. */
-  prefix: string;
+  prefixe: string;
   /** Niveau minimum pour utiliser le composant (défaut : MEMBER). */
-  level?: PermLevel;
+  niveau?: Niveau;
   whitelist?: string;
-  button?(interaction: ButtonInteraction<'cached'>, args: string[]): Promise<unknown>;
-  select?(interaction: AnySelectMenuInteraction<'cached'>, args: string[]): Promise<unknown>;
-  modal?(interaction: ModalSubmitInteraction<'cached'>, args: string[]): Promise<unknown>;
+  bouton?(interaction: ButtonInteraction<'cached'>, parametres: string[]): Promise<unknown>;
+  menu?(interaction: AnySelectMenuInteraction<'cached'>, parametres: string[]): Promise<unknown>;
+  fenetre?(interaction: ModalSubmitInteraction<'cached'>, parametres: string[]): Promise<unknown>;
 }
 
-export type EventResult = void | 'stop';
+export type ResultatEvenement = void | 'stop';
 
-export interface ModuleEvent<K extends keyof ClientEvents> {
-  event: K;
+export interface EvenementModuleUnique<K extends keyof ClientEvents> {
+  evenement: K;
   /** Priorité d'exécution : plus petit = plus tôt (défaut 100). */
-  priority: number;
+  priorite: number;
   /** Retourner "stop" interrompt les modules suivants pour cet événement. */
-  run(...args: ClientEvents[K]): unknown;
+  executer(...parametres: ClientEvents[K]): unknown;
 }
 
-export type AnyModuleEvent = { [K in keyof ClientEvents]: ModuleEvent<K> }[keyof ClientEvents];
+export type EvenementModule = { [K in keyof ClientEvents]: EvenementModuleUnique<K> }[keyof ClientEvents];
 
-export function on<K extends keyof ClientEvents>(
-  event: K,
-  run: (...args: ClientEvents[K]) => unknown,
-  priority = 100,
-): AnyModuleEvent {
-  return { event, run, priority } as unknown as AnyModuleEvent;
+export function sur<K extends keyof ClientEvents>(
+  evenement: K,
+  executer: (...parametres: ClientEvents[K]) => unknown,
+  priorite = 100,
+): EvenementModule {
+  return { event: evenement, run: executer, priority: priorite } as unknown as EvenementModule;
 }
 
-export interface ScheduledTask {
-  name: string;
-  intervalMs: number;
-  runOnStart?: boolean;
-  run(client: Client<true>): Promise<void>;
+export interface TachePlanifiee {
+  nom: string;
+  intervalleMs: number;
+  auDemarrage?: boolean;
+  executer(client: Client<true>): Promise<void>;
 }
 
 /** Test déclenchable depuis /test (ex : envoyer un faux message de bienvenue). */
-export interface ModuleTest {
+export interface TestModule {
   id: string;
-  label: string;
+  libelle: string;
   emoji: string;
   description: string;
   /** Retourne un court compte rendu affiché à l'administrateur. */
-  run(interaction: AnySelectMenuInteraction<'cached'>): Promise<string>;
+  executer(interaction: AnySelectMenuInteraction<'cached'>): Promise<string>;
 }
 
-export interface BotModule {
+export interface ModuleBot {
   id: string;
-  name: string;
+  nom: string;
   emoji: string;
   description: string;
   /** false = module cœur, toujours actif. */
-  toggleable: boolean;
-  defaultEnabled: boolean;
-  commands?: SlashCommand[];
-  prefixCommands?: PrefixCommand[];
-  components?: ComponentHandler[];
-  events?: AnyModuleEvent[];
-  tasks?: ScheduledTask[];
-  setupPages?: SetupPage[];
-  tests?: ModuleTest[];
-  onReady?(client: Client<true>): Promise<void>;
-  onShutdown?(): Promise<void> | void;
+  desactivable: boolean;
+  actifParDefaut: boolean;
+  commandes?: CommandeSlash[];
+  commandesPrefixe?: CommandePrefixe[];
+  composants?: GestionnaireComposant[];
+  evenements?: EvenementModule[];
+  taches?: TachePlanifiee[];
+  pagesReglage?: PageReglage[];
+  tests?: TestModule[];
+  auDemarrage?(client: Client<true>): Promise<void>;
+  aLArret?(): Promise<void> | void;
 }

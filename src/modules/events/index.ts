@@ -9,108 +9,108 @@ import {
   type Guild,
   type GuildTextBasedChannel,
 } from 'discord.js';
-import { all, get, run } from '../../database/db';
-import { colorFor, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { getConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { journal, resolveTextChannel } from '../../core/logService';
-import type { SetupPage } from '../../core/setup';
-import { mentionListShort, neutralizeMentions, truncate } from './helpers';
-import { parseDateTime, ts } from '../../core/time';
-import { button, isHttpUrl, row } from '../../core/ui';
-import { PermLevel, type BotModule, type SlashCommand } from '../../core/types';
+import { lireTout, lire, executer } from '../../database/db';
+import { couleurPour, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { lireConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { journal, resoudreSalonTexte } from '../../core/logService';
+import type { PageReglage } from '../../core/setup';
+import { listeMentionsCourte, neutralizeMentions, truncate } from './helpers';
+import { lireDateHeure, marqueTemps } from '../../core/time';
+import { bouton, estLienHttp, rangee } from '../../core/ui';
+import { Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
 
-interface EventRow {
+interface LigneEvenement {
   id: number;
-  guild_id: string;
-  channel_id: string;
+  serveur_id: string;
+  salon_id: string;
   message_id: string | null;
-  creator_id: string;
-  name: string;
+  createur_id: string;
+  nom: string;
   description: string;
-  game: string | null;
+  jeu: string | null;
   image: string | null;
-  starts_at: number;
-  status: 'scheduled' | 'started' | 'cancelled' | 'ended';
-  reminded: number;
-  created_at: number;
+  debut_le: number;
+  statut: 'scheduled' | 'started' | 'cancelled' | 'ended';
+  rappele: number;
+  cree_le: number;
 }
 
-type Rsvp = 'yes' | 'maybe' | 'no';
-const RSVP: Record<Rsvp, { label: string; emoji: string }> = {
+type ReponseRsvp = 'yes' | 'maybe' | 'no';
+const RSVP: Record<ReponseRsvp, { label: string; emoji: string }> = {
   yes: { label: 'Présent', emoji: '✅' },
   maybe: { label: 'Peut-être', emoji: '❓' },
   no: { label: 'Absent', emoji: '❌' },
 };
 
-function rsvps(eventId: number): Record<Rsvp, string[]> {
-  const out: Record<Rsvp, string[]> = { yes: [], maybe: [], no: [] };
-  for (const r of all<{ user_id: string; status: Rsvp }>('SELECT user_id, status FROM event_rsvps WHERE event_id = ? ORDER BY updated_at', eventId)) {
-    out[r.status]?.push(r.user_id);
+function reponsesRsvp(evenementId: number): Record<ReponseRsvp, string[]> {
+  const sortie: Record<ReponseRsvp, string[]> = { yes: [], maybe: [], no: [] };
+  for (const r of lireTout<{ utilisateur_id: string; statut: ReponseRsvp }>('SELECT utilisateur_id, statut FROM reponses_evenements WHERE evenement_id = ? ORDER BY modifie_le', evenementId)) {
+    sortie[r.statut]?.push(r.utilisateur_id);
   }
-  return out;
+  return sortie;
 }
 
-function render(guild: Guild, e: EventRow) {
-  const list = rsvps(e.id);
-  const closed = e.status === 'cancelled' || e.status === 'ended';
+function afficher(serveur: Guild, e: LigneEvenement) {
+  const liste = reponsesRsvp(e.id);
+  const ferme = e.statut === 'cancelled' || e.statut === 'ended';
   const embed = new EmbedBuilder()
-    .setColor(colorFor(guild, e.status === 'cancelled' ? 'error' : 'primary'))
-    .setTitle(`🎮 ${truncate(e.name.toUpperCase(), 240)}`)
+    .setColor(couleurPour(serveur, e.statut === 'cancelled' ? 'error' : 'primary'))
+    .setTitle(`🎮 ${truncate(e.nom.toUpperCase(), 240)}`)
     .setDescription(
       [
-        e.game ? `**${e.game}**` : null,
+        e.jeu ? `**${e.jeu}**` : null,
         e.description || null,
         '',
-        `📅 ${ts(e.starts_at, 'F')}`,
-        `🕘 ${ts(e.starts_at, 'R')}`,
-        e.status === 'cancelled' ? '\n**❌ Événement annulé**' : e.status === 'started' ? '\n**🔴 C’est parti !**' : null,
+        `📅 ${marqueTemps(e.debut_le, 'F')}`,
+        `🕘 ${marqueTemps(e.debut_le, 'R')}`,
+        e.statut === 'cancelled' ? '\n**❌ Événement annulé**' : e.statut === 'started' ? '\n**🔴 C’est parti !**' : null,
       ]
         .filter((l) => l !== null)
         .join('\n'),
     )
     .addFields(
-      (Object.keys(RSVP) as Rsvp[]).map((k) => ({
-        name: `${RSVP[k].emoji} ${RSVP[k].label} (${list[k].length})`,
-        value: list[k].length ? mentionListShort(list[k], 15) : '—',
+      (Object.keys(RSVP) as ReponseRsvp[]).map((k) => ({
+        name: `${RSVP[k].emoji} ${RSVP[k].label} (${liste[k].length})`,
+        value: liste[k].length ? listeMentionsCourte(liste[k], 15) : '—',
         inline: true,
       })),
     )
-    .setFooter({ text: `Événement #${e.id} · organisé par ${guild.members.cache.get(e.creator_id)?.displayName ?? 'le staff'}` });
+    .setFooter({ text: `Événement #${e.id} · organisé par ${serveur.members.cache.get(e.createur_id)?.displayName ?? 'le staff'}` });
   if (e.image) embed.setImage(e.image);
   return {
     embeds: [embed],
-    components: closed
+    components: ferme
       ? []
       : [
-          row(
-            button(`ev:rsvp:${e.id}:yes`, 'Je participe', ButtonStyle.Success, '✅'),
-            button(`ev:rsvp:${e.id}:maybe`, 'Peut-être', ButtonStyle.Secondary, '❓'),
-            button(`ev:rsvp:${e.id}:no`, 'Absent', ButtonStyle.Secondary, '❌'),
+          rangee(
+            bouton(`ev:rsvp:${e.id}:yes`, 'Je participe', ButtonStyle.Success, '✅'),
+            bouton(`ev:rsvp:${e.id}:maybe`, 'Peut-être', ButtonStyle.Secondary, '❓'),
+            bouton(`ev:rsvp:${e.id}:no`, 'Absent', ButtonStyle.Secondary, '❌'),
           ),
         ],
   };
 }
 
-function requireEvent(guildId: string, id: number | string | undefined): EventRow {
-  const e = get<EventRow>('SELECT * FROM events WHERE id = ? AND guild_id = ?', Number(id), guildId);
-  if (!e) throw new UserError('Événement introuvable.');
+function exigerEvenement(serveurId: string, id: number | string | undefined): LigneEvenement {
+  const e = lire<LigneEvenement>('SELECT * FROM evenements WHERE id = ? AND serveur_id = ?', Number(id), serveurId);
+  if (!e) throw new ErreurUtilisateur('Événement introuvable.');
   return e;
 }
 
-async function refresh(client: Client, e: EventRow): Promise<void> {
-  const guild = client.guilds.cache.get(e.guild_id);
-  const channel = guild ? resolveTextChannel(guild, e.channel_id) : null;
-  if (!guild || !channel || !e.message_id) return;
-  const message = await channel.messages.fetch(e.message_id).catch(() => null);
-  await message?.edit(render(guild, e)).catch(() => undefined);
+async function rafraichir(client: Client, e: LigneEvenement): Promise<void> {
+  const serveur = client.guilds.cache.get(e.serveur_id);
+  const salon = serveur ? resoudreSalonTexte(serveur, e.salon_id) : null;
+  if (!serveur || !salon || !e.message_id) return;
+  const message = await salon.messages.fetch(e.message_id).catch(() => null);
+  await message?.edit(afficher(serveur, e)).catch(() => undefined);
 }
 
-const eventCommand: SlashCommand = {
-  category: 'community',
-  level: PermLevel.STAFF,
-  data: new SlashCommandBuilder()
+const commandeEvenement: CommandeSlash = {
+  categorie: 'community',
+  niveau: Niveau.STAFF,
+  donnees: new SlashCommandBuilder()
     .setName('event')
     .setDescription('Les événements communautaires')
     .addSubcommand((s) =>
@@ -132,115 +132,115 @@ const eventCommand: SlashCommand = {
         .addIntegerOption((o) => o.setName('evenement').setDescription('L’événement').setRequired(true).setAutocomplete(true)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('Les événements à venir')),
-  subLevels: { list: PermLevel.MEMBER },
-  async autocomplete(interaction) {
-    const rows = all<EventRow>("SELECT * FROM events WHERE guild_id = ? AND status IN ('scheduled','started') ORDER BY starts_at LIMIT 25", interaction.guildId);
-    await interaction.respond(rows.map((e) => ({ name: truncate(`#${e.id} · ${e.name}`, 100), value: e.id })));
+  niveauxSousCommandes: { list: Niveau.MEMBRE },
+  async autocompletion(interaction) {
+    const rangees = lireTout<LigneEvenement>("SELECT * FROM evenements WHERE serveur_id = ? AND statut IN ('scheduled','started') ORDER BY debut_le LIMIT 25", interaction.guildId);
+    await interaction.respond(rangees.map((e) => ({ name: truncate(`#${e.id} · ${e.nom}`, 100), value: e.id })));
   },
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const sub = interaction.options.getSubcommand();
-    if (sub === 'list') {
-      const rows = all<EventRow>("SELECT * FROM events WHERE guild_id = ? AND status IN ('scheduled','started') ORDER BY starts_at LIMIT 20", guild.id);
-      const lines = rows.map((e) => `🎮 **${truncate(e.name, 80)}** — ${ts(e.starts_at, 'f')} (${ts(e.starts_at, 'R')}) · ✅ ${rsvps(e.id).yes.length}${e.message_id ? ` · [voir](https://discord.com/channels/${e.guild_id}/${e.channel_id}/${e.message_id})` : ''}`);
-      return reply(interaction, { embeds: [new EmbedBuilder().setColor(colorFor(guild)).setTitle('📅 Événements à venir').setDescription(lines.join('\n') || '*Aucun événement prévu.*')], ephemeral: true });
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const sousCommande = interaction.options.getSubcommand();
+    if (sousCommande === 'list') {
+      const rangees = lireTout<LigneEvenement>("SELECT * FROM evenements WHERE serveur_id = ? AND statut IN ('scheduled','started') ORDER BY debut_le LIMIT 20", serveur.id);
+      const lignes = rangees.map((e) => `🎮 **${truncate(e.nom, 80)}** — ${marqueTemps(e.debut_le, 'f')} (${marqueTemps(e.debut_le, 'R')}) · ✅ ${reponsesRsvp(e.id).yes.length}${e.message_id ? ` · [voir](https://discord.com/channels/${e.serveur_id}/${e.salon_id}/${e.message_id})` : ''}`);
+      return repondre(interaction, { embeds: [new EmbedBuilder().setColor(couleurPour(serveur)).setTitle('📅 Événements à venir').setDescription(lignes.join('\n') || '*Aucun événement prévu.*')], ephemeral: true });
     }
-    if (sub === 'cancel') {
-      const e = requireEvent(guild.id, interaction.options.getInteger('evenement', true));
-      run("UPDATE events SET status = 'cancelled' WHERE id = ?", e.id);
-      await refresh(interaction.client, { ...e, status: 'cancelled' });
-      return reply(interaction, { embeds: [ok(guild, `Événement **${e.name}** annulé.`)], ephemeral: true });
+    if (sousCommande === 'cancel') {
+      const e = exigerEvenement(serveur.id, interaction.options.getInteger('evenement', true));
+      executer("UPDATE evenements SET statut = 'cancelled' WHERE id = ?", e.id);
+      await rafraichir(interaction.client, { ...e, statut: 'cancelled' });
+      return repondre(interaction, { embeds: [ok(serveur, `Événement **${e.nom}** annulé.`)], ephemeral: true });
     }
-    const tz = getConfig(guild.id).general.timezone;
-    const startsAt = parseDateTime(interaction.options.getString('date', true), interaction.options.getString('heure', true), tz);
-    if (!startsAt) throw new UserError('Date ou heure invalide : exemples `25/12` et `21h`.');
-    if (startsAt < Date.now()) throw new UserError('Cette date est déjà passée.');
+    const fuseau = lireConfig(serveur.id).general.fuseau;
+    const debutLe = lireDateHeure(interaction.options.getString('date', true), interaction.options.getString('heure', true), fuseau);
+    if (!debutLe) throw new ErreurUtilisateur('Date ou heure invalide : exemples `25/12` et `21h`.');
+    if (debutLe < Date.now()) throw new ErreurUtilisateur('Cette date est déjà passée.');
     const image = interaction.options.getString('image');
-    if (image && !isHttpUrl(image)) throw new UserError('Lien d’image invalide.');
-    const channel = (interaction.options.getChannel('salon') ?? resolveTextChannel(guild, getConfig(guild.id).events.defaultChannelId) ?? interaction.channel) as GuildTextBasedChannel | null;
-    if (!channel) throw new UserError('Salon introuvable.');
-    const r = run(
-      'INSERT INTO events (guild_id, channel_id, creator_id, name, description, game, image, starts_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      guild.id,
-      channel.id,
+    if (image && !estLienHttp(image)) throw new ErreurUtilisateur('Lien d’image invalide.');
+    const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(serveur, lireConfig(serveur.id).evenements.salonDefautId) ?? interaction.channel) as GuildTextBasedChannel | null;
+    if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
+    const r = executer(
+      'INSERT INTO evenements (serveur_id, salon_id, createur_id, nom, description, jeu, image, debut_le, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      serveur.id,
+      salon.id,
       interaction.user.id,
       neutralizeMentions(interaction.options.getString('nom', true)),
       neutralizeMentions(interaction.options.getString('description') ?? ''),
       interaction.options.getString('jeu'),
       image,
-      startsAt,
+      debutLe,
       Date.now(),
     );
-    const e = requireEvent(guild.id, r.lastInsertRowid);
-    const ping = getConfig(guild.id).events.pingRoleId;
-    const message = await channel.send({ content: ping ? `<@&${ping}>` : undefined, ...render(guild, e), allowedMentions: { roles: ping ? [ping] : [] } });
-    run('UPDATE events SET message_id = ? WHERE id = ?', message.id, e.id);
-    void journal(guild, 'community', { title: 'Événement créé', tone: 'info', lines: [`**${e.name}** — ${ts(startsAt, 'F')}`, `[voir](${message.url})`], by: interaction.user });
-    return reply(interaction, { embeds: [ok(guild, `Événement publié : ${message.url}`)], ephemeral: true });
+    const e = exigerEvenement(serveur.id, r.lastInsertRowid);
+    const ping = lireConfig(serveur.id).evenements.roleMentionId;
+    const message = await salon.send({ content: ping ? `<@&${ping}>` : undefined, ...afficher(serveur, e), allowedMentions: { roles: ping ? [ping] : [] } });
+    executer('UPDATE evenements SET message_id = ? WHERE id = ?', message.id, e.id);
+    void journal(serveur, 'community', { titre: 'Événement créé', ton: 'info', lignes: [`**${e.nom}** — ${marqueTemps(debutLe, 'F')}`, `[voir](${message.url})`], par: interaction.user });
+    return repondre(interaction, { embeds: [ok(serveur, `Événement publié : ${message.url}`)], ephemeral: true });
   },
 };
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'events',
   section: 'community',
-  title: 'Événements',
+  titre: 'Événements',
   emoji: '📅',
   moduleId: 'events',
-  order: 4,
+  ordre: 4,
   description: 'Les événements communautaires avec inscription ✅ / ❓ / ❌ et rappel aux participants avant le début.',
-  fields: [
-    { kind: 'channel', key: 'channel', label: 'Salon des événements', get: (c) => c.events.defaultChannelId, set: (c, v) => void (c.events.defaultChannelId = v) },
-    { kind: 'role', key: 'ping', label: 'Rôle mentionné', get: (c) => c.events.pingRoleId, set: (c, v) => void (c.events.pingRoleId = v) },
-    { kind: 'number', key: 'reminder', label: 'Rappel avant le début', min: 0, max: 1440, unit: 'min', get: (c) => c.events.reminderMinutes, set: (c, v) => void (c.events.reminderMinutes = v) },
+  champs: [
+    { kind: 'channel', cle: 'channel', libelle: 'Salon des événements', get: (c) => c.evenements.salonDefautId, set: (c, v) => void (c.evenements.salonDefautId = v) },
+    { kind: 'role', cle: 'ping', libelle: 'Rôle mentionné', get: (c) => c.evenements.roleMentionId, set: (c, v) => void (c.evenements.roleMentionId = v) },
+    { kind: 'number', cle: 'reminder', libelle: 'Rappel avant le début', min: 0, max: 1440, unit: 'min', get: (c) => c.evenements.rappelMinutes, set: (c, v) => void (c.evenements.rappelMinutes = v) },
   ],
 };
 
-export const eventsModule: BotModule = {
+export const moduleEvenements: ModuleBot = {
   id: 'events',
-  name: 'Événements',
+  nom: 'Événements',
   emoji: '📅',
   description: 'Événements communautaires avec RSVP et rappels',
-  toggleable: true,
-  defaultEnabled: true,
-  commands: [eventCommand],
-  setupPages: [setupPage],
-  components: [
+  desactivable: true,
+  actifParDefaut: true,
+  commandes: [commandeEvenement],
+  pagesReglage: [pageReglage],
+  composants: [
     {
-      prefix: 'ev',
-      async button(interaction: ButtonInteraction<'cached'>, [action, id, status]) {
+      prefixe: 'ev',
+      async bouton(interaction: ButtonInteraction<'cached'>, [action, id, statut]) {
         if (action !== 'rsvp') return;
-        const e = requireEvent(interaction.guildId, id);
-        if (e.status === 'cancelled' || e.status === 'ended') throw new UserError('Cet événement est terminé.');
-        if (!(status! in RSVP)) return;
-        run('INSERT OR REPLACE INTO event_rsvps (event_id, user_id, status, updated_at) VALUES (?, ?, ?, ?)', e.id, interaction.user.id, status, Date.now());
-        await interaction.update(render(interaction.guild, e));
-        await interaction.followUp({ embeds: [ok(interaction.guild, `${RSVP[status as Rsvp].emoji} Réponse enregistrée : **${RSVP[status as Rsvp].label}** pour **${e.name}**.`)], flags: MessageFlags.Ephemeral });
+        const e = exigerEvenement(interaction.guildId, id);
+        if (e.statut === 'cancelled' || e.statut === 'ended') throw new ErreurUtilisateur('Cet événement est terminé.');
+        if (!(statut! in RSVP)) return;
+        executer('INSERT OR REPLACE INTO reponses_evenements (evenement_id, utilisateur_id, statut, modifie_le) VALUES (?, ?, ?, ?)', e.id, interaction.user.id, statut, Date.now());
+        await interaction.update(afficher(interaction.guild, e));
+        await interaction.followUp({ embeds: [ok(interaction.guild, `${RSVP[statut as ReponseRsvp].emoji} Réponse enregistrée : **${RSVP[statut as ReponseRsvp].label}** pour **${e.nom}**.`)], flags: MessageFlags.Ephemeral });
       },
     },
   ],
-  tasks: [
+  taches: [
     {
-      name: 'events',
-      intervalMs: 30_000,
-      runOnStart: true,
-      async run(client) {
-        const now = Date.now();
-        for (const e of all<EventRow>("SELECT * FROM events WHERE status = 'scheduled' AND reminded = 0 LIMIT 50")) {
-          const minutes = getConfig(e.guild_id).events.reminderMinutes;
-          if (!minutes || e.starts_at - minutes * 60_000 > now) continue;
-          run('UPDATE events SET reminded = 1 WHERE id = ?', e.id);
-          for (const userId of [...rsvps(e.id).yes, ...rsvps(e.id).maybe].slice(0, 100)) {
-            const user = await client.users.fetch(userId).catch(() => null);
-            await user?.send({ embeds: [new EmbedBuilder().setColor(colorFor(e.guild_id)).setTitle('📅 Ça commence bientôt !').setDescription(`**${e.name}** commence ${ts(e.starts_at, 'R')}.`)] }).catch(() => undefined);
+      nom: 'events',
+      intervalleMs: 30_000,
+      auDemarrage: true,
+      async executer(client) {
+        const maintenant = Date.now();
+        for (const e of lireTout<LigneEvenement>("SELECT * FROM evenements WHERE statut = 'scheduled' AND rappele = 0 LIMIT 50")) {
+          const minutes = lireConfig(e.serveur_id).evenements.rappelMinutes;
+          if (!minutes || e.debut_le - minutes * 60_000 > maintenant) continue;
+          executer('UPDATE evenements SET rappele = 1 WHERE id = ?', e.id);
+          for (const utilisateurId of [...reponsesRsvp(e.id).yes, ...reponsesRsvp(e.id).maybe].slice(0, 100)) {
+            const utilisateur = await client.users.fetch(utilisateurId).catch(() => null);
+            await utilisateur?.send({ embeds: [new EmbedBuilder().setColor(couleurPour(e.serveur_id)).setTitle('📅 Ça commence bientôt !').setDescription(`**${e.nom}** commence ${marqueTemps(e.debut_le, 'R')}.`)] }).catch(() => undefined);
           }
         }
-        for (const e of all<EventRow>("SELECT * FROM events WHERE status = 'scheduled' AND starts_at <= ? LIMIT 20", now)) {
-          run("UPDATE events SET status = 'started' WHERE id = ?", e.id);
-          await refresh(client, { ...e, status: 'started' });
+        for (const e of lireTout<LigneEvenement>("SELECT * FROM evenements WHERE statut = 'scheduled' AND debut_le <= ? LIMIT 20", maintenant)) {
+          executer("UPDATE evenements SET statut = 'started' WHERE id = ?", e.id);
+          await rafraichir(client, { ...e, statut: 'started' });
         }
-        for (const e of all<EventRow>("SELECT * FROM events WHERE status = 'started' AND starts_at <= ? LIMIT 20", now - 6 * 3_600_000)) {
-          run("UPDATE events SET status = 'ended' WHERE id = ?", e.id);
-          await refresh(client, { ...e, status: 'ended' });
+        for (const e of lireTout<LigneEvenement>("SELECT * FROM evenements WHERE statut = 'started' AND debut_le <= ? LIMIT 20", maintenant - 6 * 3_600_000)) {
+          executer("UPDATE evenements SET statut = 'ended' WHERE id = ?", e.id);
+          await rafraichir(client, { ...e, statut: 'ended' });
         }
       },
     },

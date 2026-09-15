@@ -10,167 +10,167 @@ import {
   type Message,
   type User,
 } from 'discord.js';
-import { brandEmbed, info, ok } from '../../core/embeds';
-import { UserError } from '../../core/errors';
-import { getConfig } from '../../core/guildConfig';
-import { reply } from '../../core/interactions';
-import { journal, resolveTextChannel } from '../../core/logService';
-import { linesToPages, paginate } from '../../core/pagination';
-import { canBotManageRole } from '../../core/permissions';
-import type { SetupPage } from '../../core/setup';
-import { formatNumber, medal, truncate } from '../../core/text';
-import { dayKey, previousDayKey, ts } from '../../core/time';
-import { button, row } from '../../core/ui';
-import { on, PermLevel, type BotModule, type PrefixCommand, type SlashCommand } from '../../core/types';
-import { emitActivity } from '../../services/activity';
-import { getBadge, grantBadge } from '../../services/badges';
-import { addCoins, buy, inventory, richest, setDaily, shopItem, shopItems, transfer, wallet, type ShopItem } from '../../services/economy';
-import { run } from '../../database/db';
+import { embedEnseigne, info, ok } from '../../core/embeds';
+import { ErreurUtilisateur } from '../../core/errors';
+import { lireConfig } from '../../core/guildConfig';
+import { repondre } from '../../core/interactions';
+import { journal, resoudreSalonTexte } from '../../core/logService';
+import { lignesEnPages, paginer } from '../../core/pagination';
+import { botPeutGererRole } from '../../core/permissions';
+import type { PageReglage } from '../../core/setup';
+import { formaterNombre, medaille, tronquer } from '../../core/text';
+import { cleJour, cleJourPrecedent, marqueTemps } from '../../core/time';
+import { bouton, rangee } from '../../core/ui';
+import { sur, Niveau, type ModuleBot, type CommandePrefixe, type CommandeSlash } from '../../core/types';
+import { emettreActivite } from '../../services/activity';
+import { lireBadge, donnerBadge } from '../../services/badges';
+import { ajouterPieces, acheter, inventaire, plusRiches, noterQuotidien, articleBoutique, articlesBoutique, transferer, portefeuille, type ArticleBoutique } from '../../services/economy';
+import { executer } from '../../database/db';
 
-const messageCooldowns = new Map<string, number>();
+const delaisMessages = new Map<string, number>();
 
-function coins(guildId: string, amount: number): string {
-  const eco = getConfig(guildId).economy;
-  return `**${formatNumber(amount)}** ${eco.currencyEmoji} ${eco.currencyName}`;
+function pieces(serveurId: string, montant: number): string {
+  const economie = lireConfig(serveurId).economie;
+  return `**${formaterNombre(montant)}** ${economie.emojiMonnaie} ${economie.nomMonnaie}`;
 }
 
-function balanceEmbed(guild: Guild, user: User) {
-  const w = wallet(guild.id, user.id);
-  const eco = getConfig(guild.id).economy;
-  return brandEmbed(guild)
-    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ size: 64 }) })
-    .setTitle(`${eco.currencyEmoji} Porte-monnaie`)
+function embedSolde(serveur: Guild, utilisateur: User) {
+  const w = portefeuille(serveur.id, utilisateur.id);
+  const economie = lireConfig(serveur.id).economie;
+  return embedEnseigne(serveur)
+    .setAuthor({ name: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) })
+    .setTitle(`${economie.emojiMonnaie} Porte-monnaie`)
     .setDescription(
       [
-        `• Solde — ${coins(guild.id, w.balance)}`,
-        `• Gagné au total — **${formatNumber(w.total_earned)}**`,
-        `• Série de /daily — **${w.daily_streak}** jour${w.daily_streak > 1 ? 's' : ''}`,
+        `• Solde — ${pieces(serveur.id, w.solde)}`,
+        `• Gagné au total — **${formaterNombre(w.total_gagne)}**`,
+        `• Série de /daily — **${w.serie_quotidien}** jour${w.serie_quotidien > 1 ? 's' : ''}`,
         '',
         '-# Monnaie purement virtuelle, sans aucune valeur réelle.',
       ].join('\n'),
     );
 }
 
-function claimDaily(member: GuildMember): string {
-  const guild = member.guild;
-  const eco = getConfig(guild.id).economy;
-  const tz = getConfig(guild.id).general.timezone;
-  const w = wallet(guild.id, member.id);
-  const today = dayKey(Date.now(), tz);
-  const last = w.last_daily ? dayKey(w.last_daily, tz) : null;
-  if (last === today) throw new UserError('Tu as déjà récupéré ta récompense aujourd’hui. Reviens demain !');
-  const streak = last === previousDayKey(today) ? w.daily_streak + 1 : 1;
-  const amount = eco.dailyAmount + Math.min(streak - 1, 30) * eco.streakBonus;
-  const balance = addCoins(guild.id, member.id, amount, 'daily');
-  setDaily(guild.id, member.id, Date.now(), streak);
-  emitActivity({ guildId: guild.id, userId: member.id, type: 'daily', amount: 1 });
-  return `🎁 Tu reçois ${coins(guild.id, amount)} !\n🔥 Série : **${streak}** jour${streak > 1 ? 's' : ''}${streak > 1 ? ` (+${Math.min(streak - 1, 30) * eco.streakBonus} de bonus)` : ''}\n-# Nouveau solde : ${formatNumber(balance)}`;
+function recupererQuotidien(membre: GuildMember): string {
+  const serveur = membre.guild;
+  const economie = lireConfig(serveur.id).economie;
+  const fuseau = lireConfig(serveur.id).general.fuseau;
+  const w = portefeuille(serveur.id, membre.id);
+  const aujourdhui = cleJour(Date.now(), fuseau);
+  const dernier = w.dernier_quotidien ? cleJour(w.dernier_quotidien, fuseau) : null;
+  if (dernier === aujourdhui) throw new ErreurUtilisateur('Tu as déjà récupéré ta récompense aujourd’hui. Reviens demain !');
+  const serie = dernier === cleJourPrecedent(aujourdhui) ? w.serie_quotidien + 1 : 1;
+  const montant = economie.montantQuotidien + Math.min(serie - 1, 30) * economie.bonusSerie;
+  const solde = ajouterPieces(serveur.id, membre.id, montant, 'daily');
+  noterQuotidien(serveur.id, membre.id, Date.now(), serie);
+  emettreActivite({ serveurId: serveur.id, utilisateurId: membre.id, type: 'daily', montant: 1 });
+  return `🎁 Tu reçois ${pieces(serveur.id, montant)} !\n🔥 Série : **${serie}** jour${serie > 1 ? 's' : ''}${serie > 1 ? ` (+${Math.min(serie - 1, 30) * economie.bonusSerie} de bonus)` : ''}\n-# Nouveau solde : ${formaterNombre(solde)}`;
 }
 
-function richPages(guild: Guild) {
-  const lines = richest(guild.id, 200).map((r, i) => `${medal(i + 1)} <@${r.user_id}> — ${coins(guild.id, r.balance)}`);
-  if (!lines.length) lines.push('*Personne n’a encore de pièces.*');
-  return linesToPages(lines, 10, (content, page, total) => brandEmbed(guild).setTitle('🏆 Les plus riches').setDescription(content).setFooter({ text: `Page ${page}/${total}` }));
+function pagesRiches(serveur: Guild) {
+  const lignes = plusRiches(serveur.id, 200).map((r, i) => `${medaille(i + 1)} <@${r.utilisateur_id}> — ${pieces(serveur.id, r.solde)}`);
+  if (!lignes.length) lignes.push('*Personne n’a encore de pièces.*');
+  return lignesEnPages(lignes, 10, (contenu, page, total) => embedEnseigne(serveur).setTitle('🏆 Les plus riches').setDescription(contenu).setFooter({ text: `Page ${page}/${total}` }));
 }
 
 // ─── Boutique ──────────────────────────────────────────────────────────────
 
-const TYPE_LABEL: Record<ShopItem['type'], string> = { role: 'Rôle', badge: 'Badge', item: 'Article' };
+const LIBELLE_TYPE: Record<ArticleBoutique['type'], string> = { role: 'Rôle', badge: 'Badge', item: 'Article' };
 
-function shopPayload(guild: Guild, userId: string, note?: string) {
-  const items = shopItems(guild.id);
-  const embed = brandEmbed(guild)
+function affichageBoutique(serveur: Guild, utilisateurId: string, note?: string) {
+  const articles = articlesBoutique(serveur.id);
+  const embed = embedEnseigne(serveur)
     .setTitle('🛒 Boutique communautaire')
     .setDescription(
       [
         note,
-        `Ton solde : ${coins(guild.id, wallet(guild.id, userId).balance)}`,
+        `Ton solde : ${pieces(serveur.id, portefeuille(serveur.id, utilisateurId).solde)}`,
         '',
-        items.length
-          ? items.map((i) => `${i.emoji} **${i.name}** — ${coins(guild.id, i.price)}${i.stock !== null ? ` · stock ${i.stock}` : ''}\n-# ${TYPE_LABEL[i.type]}${i.description ? ` · ${truncate(i.description, 80)}` : ''}`).join('\n')
+        articles.length
+          ? articles.map((i) => `${i.emoji} **${i.nom}** — ${pieces(serveur.id, i.prix)}${i.stock !== null ? ` · stock ${i.stock}` : ''}\n-# ${LIBELLE_TYPE[i.type]}${i.description ? ` · ${tronquer(i.description, 80)}` : ''}`).join('\n')
           : '*La boutique est vide pour le moment.*',
       ]
         .filter((l) => l !== undefined)
         .join('\n'),
     );
-  const components = items.length
+  const composants = articles.length
     ? [
-        row(
+        rangee(
           new StringSelectMenuBuilder()
-            .setCustomId(`shop:pick:${userId}`)
+            .setCustomId(`shop:pick:${utilisateurId}`)
             .setPlaceholder('Acheter un article')
-            .addOptions(items.slice(0, 25).map((i) => ({ label: truncate(i.name, 100), value: String(i.id), emoji: i.emoji, description: truncate(`${i.price} · ${TYPE_LABEL[i.type]}`, 100) }))),
+            .addOptions(articles.slice(0, 25).map((i) => ({ label: tronquer(i.nom, 100), value: String(i.id), emoji: i.emoji, description: tronquer(`${i.prix} · ${LIBELLE_TYPE[i.type]}`, 100) }))),
         ),
       ]
     : [];
-  return { embeds: [embed], components };
+  return { embeds: [embed], components: composants };
 }
 
-async function deliver(member: GuildMember, item: ShopItem): Promise<string> {
-  const guild = member.guild;
-  if (item.type === 'role' && item.value) {
-    const role = guild.roles.cache.get(item.value);
-    if (!role || !canBotManageRole(guild, role)) throw new UserError('Ce rôle ne peut plus être donné. Préviens le staff.');
-    if (member.roles.cache.has(role.id)) throw new UserError('Tu as déjà ce rôle.');
-    await member.roles.add(role, `Achat boutique : ${item.name}`);
+async function livrer(membre: GuildMember, article: ArticleBoutique): Promise<string> {
+  const serveur = membre.guild;
+  if (article.type === 'role' && article.valeur) {
+    const role = serveur.roles.cache.get(article.valeur);
+    if (!role || !botPeutGererRole(serveur, role)) throw new ErreurUtilisateur('Ce rôle ne peut plus être donné. Préviens le staff.');
+    if (membre.roles.cache.has(role.id)) throw new ErreurUtilisateur('Tu as déjà ce rôle.');
+    await membre.roles.add(role, `Achat boutique : ${article.nom}`);
     return `Le rôle <@&${role.id}> t’a été donné.`;
   }
-  if (item.type === 'badge' && item.value) {
-    if (!grantBadge(guild.id, member.id, item.value)) throw new UserError('Tu as déjà ce badge.');
-    return `Le badge ${getBadge(guild.id, item.value)?.emoji ?? ''} **${getBadge(guild.id, item.value)?.name ?? item.value}** est sur ton profil.`;
+  if (article.type === 'badge' && article.valeur) {
+    if (!donnerBadge(serveur.id, membre.id, article.valeur)) throw new ErreurUtilisateur('Tu as déjà ce badge.');
+    return `Le badge ${lireBadge(serveur.id, article.valeur)?.emoji ?? ''} **${lireBadge(serveur.id, article.valeur)?.nom ?? article.valeur}** est sur ton profil.`;
   }
-  const staff = resolveTextChannel(guild, getConfig(guild.id).general.staffChannelId);
-  await staff?.send({ embeds: [info(guild, `🛒 <@${member.id}> a acheté **${item.name}** (${item.price}). À livrer !`)], allowedMentions: { parse: [] } }).catch(() => undefined);
+  const staff = resoudreSalonTexte(serveur, lireConfig(serveur.id).general.salonStaffId);
+  await staff?.send({ embeds: [info(serveur, `🛒 <@${membre.id}> a acheté **${article.nom}** (${article.prix}). À livrer !`)], allowedMentions: { parse: [] } }).catch(() => undefined);
   return staff ? 'Le staff a été prévenu pour te le remettre.' : 'Ouvre un ticket pour le récupérer.';
 }
 
 // ─── Commandes ─────────────────────────────────────────────────────────────
 
-const balance: SlashCommand = {
-  category: 'economy',
-  data: new SlashCommandBuilder()
+const solde: CommandeSlash = {
+  categorie: 'economy',
+  donnees: new SlashCommandBuilder()
     .setName('balance')
     .setDescription('Ton porte-monnaie')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)'))
     .addBooleanOption((o) => o.setName('classement').setDescription('Voir le classement des plus riches')),
-  async execute(interaction) {
-    if (interaction.options.getBoolean('classement')) return paginate(interaction, richPages(interaction.guild));
-    return reply(interaction, { embeds: [balanceEmbed(interaction.guild, interaction.options.getUser('membre') ?? interaction.user)] });
+  async executer(interaction) {
+    if (interaction.options.getBoolean('classement')) return paginer(interaction, pagesRiches(interaction.guild));
+    return repondre(interaction, { embeds: [embedSolde(interaction.guild, interaction.options.getUser('membre') ?? interaction.user)] });
   },
 };
 
-const daily: SlashCommand = {
-  category: 'economy',
-  data: new SlashCommandBuilder().setName('daily').setDescription('Ta récompense quotidienne'),
-  async execute(interaction) {
-    await reply(interaction, { embeds: [ok(interaction.guild, claimDaily(interaction.member), { titre: 'Récompense du jour' })] });
+const quotidien: CommandeSlash = {
+  categorie: 'economy',
+  donnees: new SlashCommandBuilder().setName('daily').setDescription('Ta récompense quotidienne'),
+  async executer(interaction) {
+    await repondre(interaction, { embeds: [ok(interaction.guild, recupererQuotidien(interaction.member), { titre: 'Récompense du jour' })] });
   },
 };
 
-const give: SlashCommand = {
-  category: 'economy',
-  cooldownSeconds: 5,
-  data: new SlashCommandBuilder()
+const donner: CommandeSlash = {
+  categorie: 'economy',
+  delaiSecondes: 5,
+  donnees: new SlashCommandBuilder()
     .setName('give')
     .setDescription('Donner des pièces')
     .addUserOption((o) => o.setName('membre').setDescription('À qui').setRequired(true))
     .addIntegerOption((o) => o.setName('montant').setDescription('Combien').setRequired(true).setMinValue(1).setMaxValue(1_000_000)),
-  async execute(interaction) {
-    const target = interaction.options.getUser('membre', true);
-    const amount = interaction.options.getInteger('montant', true);
-    if (target.bot || target.id === interaction.user.id) throw new UserError('Choisis un autre membre (pas toi, pas un bot).');
+  async executer(interaction) {
+    const cible = interaction.options.getUser('membre', true);
+    const montant = interaction.options.getInteger('montant', true);
+    if (cible.bot || cible.id === interaction.user.id) throw new ErreurUtilisateur('Choisis un autre membre (pas toi, pas un bot).');
     try {
-      transfer(interaction.guildId, interaction.user.id, target.id, amount);
+      transferer(interaction.guildId, interaction.user.id, cible.id, montant);
     } catch {
-      throw new UserError('Solde insuffisant.');
+      throw new ErreurUtilisateur('Solde insuffisant.');
     }
-    await reply(interaction, { embeds: [ok(interaction.guild, `<@${interaction.user.id}> donne ${coins(interaction.guildId, amount)} à <@${target.id}>.`)], allowedMentions: { users: [target.id] } });
+    await repondre(interaction, { embeds: [ok(interaction.guild, `<@${interaction.user.id}> donne ${pieces(interaction.guildId, montant)} à <@${cible.id}>.`)], allowedMentions: { users: [cible.id] } });
   },
 };
 
-const shop: SlashCommand = {
-  category: 'economy',
-  data: new SlashCommandBuilder()
+const boutique: CommandeSlash = {
+  categorie: 'economy',
+  donnees: new SlashCommandBuilder()
     .setName('shop')
     .setDescription('La boutique')
     .addSubcommand((s) => s.setName('voir').setDescription('Ouvrir la boutique'))
@@ -201,163 +201,163 @@ const shop: SlashCommand = {
         .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
         .addIntegerOption((o) => o.setName('montant').setDescription('Négatif pour retirer').setRequired(true).setMinValue(-10_000_000).setMaxValue(10_000_000)),
     ),
-  subLevels: { ajouter: PermLevel.ADMIN, retirer: PermLevel.ADMIN, crediter: PermLevel.ADMIN },
-  async autocomplete(interaction) {
-    await interaction.respond(shopItems(interaction.guildId).slice(0, 25).map((i) => ({ name: truncate(`${i.name} — ${i.price}`, 100), value: i.id })));
+  niveauxSousCommandes: { ajouter: Niveau.ADMIN, retirer: Niveau.ADMIN, crediter: Niveau.ADMIN },
+  async autocompletion(interaction) {
+    await interaction.respond(articlesBoutique(interaction.guildId).slice(0, 25).map((i) => ({ name: tronquer(`${i.nom} — ${i.prix}`, 100), value: i.id })));
   },
-  async execute(interaction) {
-    const guild = interaction.guild;
-    const sub = interaction.options.getSubcommand();
-    if (sub === 'voir') return reply(interaction, { ...shopPayload(guild, interaction.user.id), ephemeral: true });
-    if (sub === 'inventaire') {
-      const items = inventory(guild.id, interaction.user.id);
-      return reply(interaction, { embeds: [info(guild, items.map((i) => `• **${i.item_name}** — ${i.price} · ${ts(i.bought_at, 'd')}`).join('\n') || 'Aucun achat.', { titre: 'Ton inventaire', sujet: '🎒' })], ephemeral: true });
+  async executer(interaction) {
+    const serveur = interaction.guild;
+    const sousCommande = interaction.options.getSubcommand();
+    if (sousCommande === 'voir') return repondre(interaction, { ...affichageBoutique(serveur, interaction.user.id), ephemeral: true });
+    if (sousCommande === 'inventaire') {
+      const articles = inventaire(serveur.id, interaction.user.id);
+      return repondre(interaction, { embeds: [info(serveur, articles.map((i) => `• **${i.article_nom}** — ${i.prix} · ${marqueTemps(i.achete_le, 'd')}`).join('\n') || 'Aucun achat.', { titre: 'Ton inventaire', sujet: '🎒' })], ephemeral: true });
     }
-    if (sub === 'retirer') {
-      run('DELETE FROM shop_items WHERE guild_id = ? AND id = ?', guild.id, interaction.options.getInteger('article', true));
-      return reply(interaction, { embeds: [ok(guild, 'Article retiré de la boutique.')], ephemeral: true });
+    if (sousCommande === 'retirer') {
+      executer('DELETE FROM articles_boutique WHERE serveur_id = ? AND id = ?', serveur.id, interaction.options.getInteger('article', true));
+      return repondre(interaction, { embeds: [ok(serveur, 'Article retiré de la boutique.')], ephemeral: true });
     }
-    if (sub === 'crediter') {
-      const user = interaction.options.getUser('membre', true);
-      const amount = interaction.options.getInteger('montant', true);
-      let balanceAfter: number;
+    if (sousCommande === 'crediter') {
+      const utilisateur = interaction.options.getUser('membre', true);
+      const montant = interaction.options.getInteger('montant', true);
+      let soldeApres: number;
       try {
-        balanceAfter = addCoins(guild.id, user.id, amount, 'admin');
+        soldeApres = ajouterPieces(serveur.id, utilisateur.id, montant, 'admin');
       } catch {
-        throw new UserError('Le solde ne peut pas devenir négatif.');
+        throw new ErreurUtilisateur('Le solde ne peut pas devenir négatif.');
       }
-      void journal(guild, 'community', { title: 'Pièces modifiées', tone: 'info', lines: [`**Membre** : <@${user.id}>`, `**Montant** : ${amount}`, `**Nouveau solde** : ${balanceAfter}`], by: interaction.user });
-      return reply(interaction, { embeds: [ok(guild, `<@${user.id}> : ${amount >= 0 ? '+' : ''}${formatNumber(amount)} → ${coins(guild.id, balanceAfter)}.`)], ephemeral: true });
+      void journal(serveur, 'community', { titre: 'Pièces modifiées', ton: 'info', lignes: [`**Membre** : <@${utilisateur.id}>`, `**Montant** : ${montant}`, `**Nouveau solde** : ${soldeApres}`], par: interaction.user });
+      return repondre(interaction, { embeds: [ok(serveur, `<@${utilisateur.id}> : ${montant >= 0 ? '+' : ''}${formaterNombre(montant)} → ${pieces(serveur.id, soldeApres)}.`)], ephemeral: true });
     }
-    const type = interaction.options.getString('type', true) as ShopItem['type'];
-    let value: string | null = null;
+    const type = interaction.options.getString('type', true) as ArticleBoutique['type'];
+    let valeur: string | null = null;
     if (type === 'role') {
       const role = interaction.options.getRole('role');
-      if (!role) throw new UserError('Choisis le rôle à vendre (option `role`).');
-      if (!canBotManageRole(guild, guild.roles.cache.get(role.id)!)) throw new UserError('Je ne peux pas donner ce rôle : place mon rôle au-dessus.');
-      value = role.id;
+      if (!role) throw new ErreurUtilisateur('Choisis le rôle à vendre (option `role`).');
+      if (!botPeutGererRole(serveur, serveur.roles.cache.get(role.id)!)) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle : place mon rôle au-dessus.');
+      valeur = role.id;
     } else if (type === 'badge') {
-      value = interaction.options.getString('badge');
-      if (!value || !getBadge(guild.id, value)) throw new UserError('Badge introuvable (voir `/badge liste`).');
+      valeur = interaction.options.getString('badge');
+      if (!valeur || !lireBadge(serveur.id, valeur)) throw new ErreurUtilisateur('Badge introuvable (voir `/badge liste`).');
     }
-    if (shopItems(guild.id).length >= 25) throw new UserError('25 articles maximum.');
-    run(
-      'INSERT INTO shop_items (guild_id, name, description, emoji, price, type, value, stock, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      guild.id,
+    if (articlesBoutique(serveur.id).length >= 25) throw new ErreurUtilisateur('25 articles maximum.');
+    executer(
+      'INSERT INTO articles_boutique (serveur_id, nom, description, emoji, prix, type, valeur, stock, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      serveur.id,
       interaction.options.getString('nom', true),
       interaction.options.getString('description') ?? '',
       interaction.options.getString('emoji') ?? (type === 'role' ? '🎨' : type === 'badge' ? '💎' : '🎟️'),
       interaction.options.getInteger('prix', true),
       type,
-      value,
+      valeur,
       interaction.options.getInteger('stock'),
       Date.now(),
     );
-    return reply(interaction, { embeds: [ok(guild, 'Article ajouté à la boutique.')], ephemeral: true });
+    return repondre(interaction, { embeds: [ok(serveur, 'Article ajouté à la boutique.')], ephemeral: true });
   },
 };
 
-const prefixCommands: PrefixCommand[] = [
+const commandesPrefixe: CommandePrefixe[] = [
   {
-    name: 'bal',
-    aliases: ['balance', 'coins'],
-    domain: 'general',
-    category: 'economy',
+    nom: 'bal',
+    alias: ['balance', 'coins'],
+    domaine: 'general',
+    categorie: 'economy',
     description: 'Ton porte-monnaie',
     usage: '[membre]',
-    async execute(message, args) {
-      const id = args[0]?.replace(/\D/g, '');
-      const user = id ? await message.client.users.fetch(id).catch(() => message.author) : message.author;
-      await message.reply({ embeds: [balanceEmbed(message.guild, user)], allowedMentions: { repliedUser: false } });
+    async executer(message, parametres) {
+      const id = parametres[0]?.replace(/\D/g, '');
+      const utilisateur = id ? await message.client.users.fetch(id).catch(() => message.author) : message.author;
+      await message.reply({ embeds: [embedSolde(message.guild, utilisateur)], allowedMentions: { repliedUser: false } });
     },
   },
   {
-    name: 'daily',
-    domain: 'general',
-    category: 'economy',
+    nom: 'daily',
+    domaine: 'general',
+    categorie: 'economy',
     description: 'Ta récompense quotidienne',
-    async execute(message) {
+    async executer(message) {
       if (!message.member) return;
-      await message.reply({ embeds: [ok(message.guild, claimDaily(message.member), { titre: 'Récompense du jour' })], allowedMentions: { repliedUser: false } });
+      await message.reply({ embeds: [ok(message.guild, recupererQuotidien(message.member), { titre: 'Récompense du jour' })], allowedMentions: { repliedUser: false } });
     },
   },
 ];
 
-const setupPage: SetupPage = {
+const pageReglage: PageReglage = {
   id: 'economy',
   section: 'community',
-  title: 'Économie',
+  titre: 'Économie',
   emoji: '💰',
   moduleId: 'economy',
-  order: 9,
+  ordre: 9,
   description: 'Une monnaie **purement virtuelle** gagnée en participant (messages, /daily, quêtes), à dépenser dans la boutique (`/shop ajouter`).',
-  fields: [
-    { kind: 'text', key: 'name', label: 'Nom de la monnaie', maxLength: 30, required: true, get: (c) => c.economy.currencyName, set: (c, v) => void (c.economy.currencyName = v) },
-    { kind: 'text', key: 'emoji', label: 'Émoji de la monnaie', maxLength: 64, required: true, get: (c) => c.economy.currencyEmoji, set: (c, v) => void (c.economy.currencyEmoji = v) },
-    { kind: 'number', key: 'daily', label: 'Récompense /daily', min: 0, max: 1_000_000, get: (c) => c.economy.dailyAmount, set: (c, v) => void (c.economy.dailyAmount = v) },
-    { kind: 'number', key: 'bonus', label: 'Bonus par jour de série', min: 0, max: 100_000, get: (c) => c.economy.streakBonus, set: (c, v) => void (c.economy.streakBonus = v) },
-    { kind: 'number', key: 'message', label: 'Pièces par message (cooldown 60 s)', min: 0, max: 1000, get: (c) => c.economy.perMessage, set: (c, v) => void (c.economy.perMessage = v) },
+  champs: [
+    { kind: 'text', cle: 'name', libelle: 'Nom de la monnaie', maxLength: 30, required: true, get: (c) => c.economie.nomMonnaie, set: (c, v) => void (c.economie.nomMonnaie = v) },
+    { kind: 'text', cle: 'emoji', libelle: 'Émoji de la monnaie', maxLength: 64, required: true, get: (c) => c.economie.emojiMonnaie, set: (c, v) => void (c.economie.emojiMonnaie = v) },
+    { kind: 'number', cle: 'daily', libelle: 'Récompense /daily', min: 0, max: 1_000_000, get: (c) => c.economie.montantQuotidien, set: (c, v) => void (c.economie.montantQuotidien = v) },
+    { kind: 'number', cle: 'bonus', libelle: 'Bonus par jour de série', min: 0, max: 100_000, get: (c) => c.economie.bonusSerie, set: (c, v) => void (c.economie.bonusSerie = v) },
+    { kind: 'number', cle: 'message', libelle: 'Pièces par message (cooldown 60 s)', min: 0, max: 1000, get: (c) => c.economie.parMessage, set: (c, v) => void (c.economie.parMessage = v) },
   ],
 };
 
-export const economyModule: BotModule = {
+export const moduleEconomie: ModuleBot = {
   id: 'economy',
-  name: 'Économie',
+  nom: 'Économie',
   emoji: '💰',
   description: 'Monnaie virtuelle, /daily, dons et boutique',
-  toggleable: true,
-  defaultEnabled: false,
-  commands: [balance, daily, give, shop],
-  prefixCommands,
-  setupPages: [setupPage],
-  components: [
+  desactivable: true,
+  actifParDefaut: false,
+  commandes: [solde, quotidien, donner, boutique],
+  commandesPrefixe,
+  pagesReglage: [pageReglage],
+  composants: [
     {
-      prefix: 'shop',
-      async select(interaction: AnySelectMenuInteraction<'cached'>, [, ownerId]) {
+      prefixe: 'shop',
+      async menu(interaction: AnySelectMenuInteraction<'cached'>, [, proprietaireId]) {
         if (!interaction.isStringSelectMenu()) return;
-        if (ownerId !== interaction.user.id) return interaction.reply({ ...shopPayload(interaction.guild, interaction.user.id), flags: MessageFlags.Ephemeral });
-        const item = shopItem(interaction.guildId, Number(interaction.values[0]));
-        if (!item) throw new UserError('Cet article n’existe plus.');
+        if (proprietaireId !== interaction.user.id) return interaction.reply({ ...affichageBoutique(interaction.guild, interaction.user.id), flags: MessageFlags.Ephemeral });
+        const article = articleBoutique(interaction.guildId, Number(interaction.values[0]));
+        if (!article) throw new ErreurUtilisateur('Cet article n’existe plus.');
         await interaction.update({
-          ...shopPayload(interaction.guild, interaction.user.id, `Acheter ${item.emoji} **${item.name}** pour ${coins(interaction.guildId, item.price)} ?`),
-          components: [row(button(`shop:buy:${interaction.user.id}:${item.id}`, 'Acheter', ButtonStyle.Success, '🛒'), button(`shop:back:${interaction.user.id}`, 'Retour', ButtonStyle.Secondary, '⬅️'))],
+          ...affichageBoutique(interaction.guild, interaction.user.id, `Acheter ${article.emoji} **${article.nom}** pour ${pieces(interaction.guildId, article.prix)} ?`),
+          components: [rangee(bouton(`shop:buy:${interaction.user.id}:${article.id}`, 'Acheter', ButtonStyle.Success, '🛒'), bouton(`shop:back:${interaction.user.id}`, 'Retour', ButtonStyle.Secondary, '⬅️'))],
         });
       },
-      async button(interaction: ButtonInteraction<'cached'>, [action, ownerId, itemId]) {
-        if (ownerId !== interaction.user.id) throw new UserError('Cette boutique appartient à quelqu’un d’autre : lance `/shop voir`.');
-        if (action === 'back') return interaction.update(shopPayload(interaction.guild, interaction.user.id));
-        const item = shopItem(interaction.guildId, Number(itemId));
-        if (!item) throw new UserError('Cet article n’existe plus.');
-        let balanceAfter: number;
+      async bouton(interaction: ButtonInteraction<'cached'>, [action, proprietaireId, articleId]) {
+        if (proprietaireId !== interaction.user.id) throw new ErreurUtilisateur('Cette boutique appartient à quelqu’un d’autre : lance `/shop voir`.');
+        if (action === 'back') return interaction.update(affichageBoutique(interaction.guild, interaction.user.id));
+        const article = articleBoutique(interaction.guildId, Number(articleId));
+        if (!article) throw new ErreurUtilisateur('Cet article n’existe plus.');
+        let soldeApres: number;
         try {
-          balanceAfter = buy(interaction.guildId, interaction.user.id, item);
-        } catch (err) {
-          throw new UserError((err as Error).message === 'rupture de stock' ? 'Rupture de stock.' : 'Solde insuffisant.');
+          soldeApres = acheter(interaction.guildId, interaction.user.id, article);
+        } catch (echec) {
+          throw new ErreurUtilisateur((echec as Error).message === 'rupture de stock' ? 'Rupture de stock.' : 'Solde insuffisant.');
         }
         try {
-          const text = await deliver(interaction.member, item);
-          await interaction.update(shopPayload(interaction.guild, interaction.user.id, `✅ Acheté : ${item.emoji} **${item.name}**. ${text}\n-# Nouveau solde : ${formatNumber(balanceAfter)}`));
-        } catch (err) {
+          const texte = await livrer(interaction.member, article);
+          await interaction.update(affichageBoutique(interaction.guild, interaction.user.id, `✅ Acheté : ${article.emoji} **${article.nom}**. ${texte}\n-# Nouveau solde : ${formaterNombre(soldeApres)}`));
+        } catch (echec) {
           // Livraison impossible : remboursement.
-          addCoins(interaction.guildId, interaction.user.id, item.price, 'refund');
-          run('DELETE FROM inventory WHERE id = (SELECT MAX(id) FROM inventory WHERE guild_id = ? AND user_id = ? AND item_id = ?)', interaction.guildId, interaction.user.id, item.id);
-          if (item.stock !== null) run('UPDATE shop_items SET stock = stock + 1 WHERE id = ?', item.id);
-          await interaction.update(shopPayload(interaction.guild, interaction.user.id, `⚠️ ${(err as Error).message} Tu as été remboursé.`));
+          ajouterPieces(interaction.guildId, interaction.user.id, article.prix, 'refund');
+          executer('DELETE FROM inventaire WHERE id = (SELECT MAX(id) FROM inventaire WHERE serveur_id = ? AND utilisateur_id = ? AND article_id = ?)', interaction.guildId, interaction.user.id, article.id);
+          if (article.stock !== null) executer('UPDATE articles_boutique SET stock = stock + 1 WHERE id = ?', article.id);
+          await interaction.update(affichageBoutique(interaction.guild, interaction.user.id, `⚠️ ${(echec as Error).message} Tu as été remboursé.`));
         }
       },
     },
   ],
-  events: [
-    on('messageCreate', (message: Message) => {
+  evenements: [
+    sur('messageCreate', (message: Message) => {
       if (!message.inGuild() || message.author.bot) return;
-      const eco = getConfig(message.guildId).economy;
-      if (eco.perMessage <= 0) return;
-      const key = `${message.guildId}:${message.author.id}`;
-      const now = Date.now();
-      if ((messageCooldowns.get(key) ?? 0) > now) return;
-      messageCooldowns.set(key, now + eco.messageCooldownSeconds * 1000);
-      if (messageCooldowns.size > 20_000) for (const [k, v] of messageCooldowns) if (v < now) messageCooldowns.delete(k);
-      addCoins(message.guildId, message.author.id, eco.perMessage, 'message');
+      const economie = lireConfig(message.guildId).economie;
+      if (economie.parMessage <= 0) return;
+      const cle = `${message.guildId}:${message.author.id}`;
+      const maintenant = Date.now();
+      if ((delaisMessages.get(cle) ?? 0) > maintenant) return;
+      delaisMessages.set(cle, maintenant + economie.delaiMessageSecondes * 1000);
+      if (delaisMessages.size > 20_000) for (const [k, v] of delaisMessages) if (v < maintenant) delaisMessages.delete(k);
+      ajouterPieces(message.guildId, message.author.id, economie.parMessage, 'message');
     }, 180),
   ],
 };
