@@ -138,9 +138,25 @@ export function classementPeriode(serveurId: string, type: TypeClassement, perio
 }
 
 export function positionPeriode(serveurId: string, type: TypeClassement, periode: Periode, utilisateurId: string): number | null {
-  const tous = classementPeriode(serveurId, type, periode, 100_000);
-  const i = tous.findIndex((r) => r.utilisateur_id === utilisateurId);
-  return i < 0 ? null : i + 1;
+  const debut = debutPeriode(periode, Date.now(), fuseauDe(serveurId)) ?? '0000-00-00';
+  let source: string;
+  const parametres: (string | number)[] = [serveurId];
+  if (type === 'reputation') {
+    source = 'SELECT receveur_id AS utilisateur_id, COUNT(*) AS valeur FROM reputations WHERE serveur_id = ? AND jour >= ? GROUP BY receveur_id';
+    parametres.push(debut);
+  } else if (periode === 'total' && type === 'xp') source = 'SELECT utilisateur_id, xp AS valeur FROM xp WHERE serveur_id = ?';
+  else if (periode === 'total' && type === 'gold') source = 'SELECT utilisateur_id, solde AS valeur FROM economie WHERE serveur_id = ?';
+  else {
+    source = `SELECT utilisateur_id, SUM(${COLONNES[type]}) AS valeur FROM activite_jour WHERE serveur_id = ? AND jour >= ? GROUP BY utilisateur_id`;
+    parametres.push(debut);
+  }
+  const ligne = lire<{ valeur: number | null; devant: number }>(
+    `WITH t AS (${source}) SELECT (SELECT valeur FROM t WHERE utilisateur_id = ?) AS valeur, (SELECT COUNT(*) FROM t WHERE valeur > (SELECT valeur FROM t WHERE utilisateur_id = ?)) AS devant`,
+    ...parametres,
+    utilisateurId,
+    utilisateurId,
+  );
+  return ligne?.valeur ? ligne.devant + 1 : null;
 }
 
 // - Joueurs -
@@ -488,8 +504,8 @@ async function surMessage(message: Message): Promise<void> {
 
 surTempsVocal((credit, client) => {
   if (!moduleActif(credit.serveurId, 'progression')) return;
-  noterActivite(credit.serveurId, credit.utilisateurId, { secondes_vocal: credit.secondes });
   if (credit.inactif) return;
+  noterActivite(credit.serveurId, credit.utilisateurId, { secondes_vocal: credit.secondes });
   const reglages = lireConfig(credit.serveurId);
   const minutes = credit.secondes / 60;
   avancerQuetes(client, credit.serveurId, credit.utilisateurId, 'vocal', Math.floor(minutes));
@@ -864,7 +880,23 @@ async function membreVise(message: Message<true>, argument: string | undefined):
   return { utilisateur, membre };
 }
 
-const repondreMessage = (message: Message<true>, ecran: Ecran) => message.reply({ ...ecran, allowedMentions: { repliedUser: false } });
+// - Rythme des rendus -
+// Une image par membre toutes les deux secondes : les cartes coûtent du calcul.
+const derniersRendus = new Map<string, number>();
+
+function limiterRendu(serveurId: string, utilisateurId: string): void {
+  const cle = `${serveurId}:${utilisateurId}`;
+  const maintenant = Date.now();
+  if ((derniersRendus.get(cle) ?? 0) > maintenant) throw new ErreurUtilisateur('Doucement, une carte à la fois !');
+  derniersRendus.set(cle, maintenant + 2_000);
+  if (derniersRendus.size > 5_000) for (const [k, v] of derniersRendus) if (v < maintenant) derniersRendus.delete(k);
+}
+
+const repondreMessage = async (message: Message<true>, construire: () => Ecran | Promise<Ecran>) => {
+  limiterRendu(message.guildId, message.author.id);
+  await message.channel.sendTyping().catch(() => undefined);
+  return message.reply({ ...(await construire()), allowedMentions: { repliedUser: false } });
+};
 
 const commandes: CommandeSlash[] = [
   {
@@ -1095,25 +1127,25 @@ function poserBio(membre: GuildMember, bio: string): void {
 const commandesPrefixe: CommandePrefixe[] = [
   { nom: 'lvl', alias: ['rank', 'niveau', 'statut', 'profil'], domaine: 'general', categorie: 'progression', description: 'Ton statut', usage: '[membre]', async executer(message, parametres) {
     const { utilisateur, membre } = await membreVise(message, parametres[0]);
-    await repondreMessage(message, await ecranStatut(message.guild, utilisateur, membre, message.author.id));
+    await repondreMessage(message, () => ecranStatut(message.guild, utilisateur, membre, message.author.id));
   } },
   { nom: 'lb', alias: ['top', 'classement'], domaine: 'general', categorie: 'progression', description: 'Classements', async executer(message) {
-    await repondreMessage(message, await ecranClassement(message.guild, message.author.id, 'xp', 'semaine'));
+    await repondreMessage(message, () => ecranClassement(message.guild, message.author.id, 'xp', 'semaine'));
   } },
   { nom: 'rangs', alias: ['paliers'], domaine: 'general', categorie: 'progression', description: 'Paliers de rang', async executer(message) {
-    await repondreMessage(message, await ecranRangs(message.member!));
+    await repondreMessage(message, () => ecranRangs(message.member!));
   } },
   { nom: 'quest', alias: ['quetes', 'quests'], domaine: 'general', categorie: 'progression', description: 'Tes quêtes', async executer(message) {
-    await repondreMessage(message, await ecranQuetes(message.member!));
+    await repondreMessage(message, () => ecranQuetes(message.member!));
   } },
   { nom: 'avatar', alias: ['perso'], domaine: 'general', categorie: 'progression', description: 'Ton personnage', async executer(message) {
-    await repondreMessage(message, await ecranAvatar(message.member!));
+    await repondreMessage(message, () => ecranAvatar(message.member!));
   } },
   { nom: 'inv', alias: ['inventaire'], domaine: 'general', categorie: 'progression', description: 'Ton inventaire', async executer(message) {
-    await repondreMessage(message, await ecranInventaire(message.member!));
+    await repondreMessage(message, () => ecranInventaire(message.member!));
   } },
   { nom: 'shop', alias: ['boutique', 'coffres'], domaine: 'general', categorie: 'progression', description: 'Coffres et articles', async executer(message) {
-    await repondreMessage(message, await ecranBoutique(message.member!));
+    await repondreMessage(message, () => ecranBoutique(message.member!));
   } },
   { nom: 'daily', alias: ['quotidien'], domaine: 'general', categorie: 'progression', description: 'Bonus quotidien', async executer(message) {
     await message.reply({ embeds: [ok(message.guild, recupererQuotidien(message.member!), { titre: 'Bonus du jour' })], allowedMentions: { repliedUser: false } });
@@ -1140,10 +1172,10 @@ const commandesPrefixe: CommandePrefixe[] = [
     await message.reply({ embeds: [ok(message.guild, parametres.length ? 'Bio mise à jour.' : 'Bio effacée.')], allowedMentions: { repliedUser: false } });
   } },
   { nom: 'settings', alias: ['parametres', 'bonus'], domaine: 'general', categorie: 'progression', description: 'Paramètres et bonus', async executer(message) {
-    await repondreMessage(message, ecranParametres(message.member!));
+    await repondreMessage(message, () => ecranParametres(message.member!));
   } },
   { nom: 'jeu', alias: ['commandes', 'cmds'], domaine: 'general', categorie: 'progression', description: 'Centre de commandes', async executer(message) {
-    await repondreMessage(message, await ecranCommandes(message.member!));
+    await repondreMessage(message, () => ecranCommandes(message.member!));
   } },
 ];
 
@@ -1157,22 +1189,23 @@ const composant: GestionnaireComposant = {
       await interaction.reply({ content: 'Ces boutons ne sont pas à toi : lance `=avatar` ou `=lvl` pour les tiens.', flags: 64 });
       return;
     }
-    const mettreAJour = async (ecran: Ecran | Promise<Ecran>) => {
+    const mettreAJour = async (construire: () => Ecran | Promise<Ecran>) => {
+      limiterRendu(interaction.guildId, interaction.user.id);
       await interaction.deferUpdate();
-      const e = await ecran;
+      const e = await construire();
       await interaction.editReply({ content: e.content ?? null, embeds: e.embeds ?? [], files: e.files ?? [], attachments: [], components: e.components ?? [] });
     };
     switch (action) {
       case 'statut':
-        return mettreAJour(ecranStatut(interaction.guild, interaction.user, membre, interaction.user.id));
+        return mettreAJour(() => ecranStatut(interaction.guild, interaction.user, membre, interaction.user.id));
       case 'avatar':
-        return mettreAJour(ecranAvatar(membre));
+        return mettreAJour(() => ecranAvatar(membre));
       case 'inventaire':
-        return mettreAJour(ecranInventaire(membre));
+        return mettreAJour(() => ecranInventaire(membre));
       case 'boutique':
-        return mettreAJour(ecranBoutique(membre));
+        return mettreAJour(() => ecranBoutique(membre));
       case 'quetes':
-        return mettreAJour(ecranQuetes(membre));
+        return mettreAJour(() => ecranQuetes(membre));
       case 'classement':
         if (proprietaire !== interaction.user.id) {
           await interaction.deferReply({ flags: 64 });
@@ -1180,39 +1213,45 @@ const composant: GestionnaireComposant = {
           await interaction.editReply({ embeds: e.embeds ?? [], files: e.files ?? [], components: e.components ?? [] });
           return;
         }
-        return mettreAJour(ecranClassement(interaction.guild, interaction.user.id, (a ?? 'xp') as TypeClassement, (b ?? 'semaine') as Periode));
+        return mettreAJour(() => ecranClassement(interaction.guild, interaction.user.id, (a ?? 'xp') as TypeClassement, (b ?? 'semaine') as Periode));
       case 'categorie':
-        return mettreAJour(a === 'yeux' ? ecranTeintes(membre, 'yeux', null) : ecranModeles(membre, a as 'cheveux' | 'tenues'));
+        return mettreAJour(() => a === 'yeux' ? ecranTeintes(membre, 'yeux', null) : ecranModeles(membre, a as 'cheveux' | 'tenues'));
       case 'modele':
-        return mettreAJour(ecranTeintes(membre, a as Categorie, b ?? null));
+        return mettreAJour(() => ecranTeintes(membre, a as Categorie, b ?? null));
       case 'equiper': {
         const cle = [a, b, interaction.customId.split(':')[5]].filter(Boolean).join(':');
-        equiper(interaction.guildId, interaction.user.id, cle);
-        return mettreAJour(ecranAvatar(membre));
+        return mettreAJour(() => {
+          equiper(interaction.guildId, interaction.user.id, cle);
+          return ecranAvatar(membre);
+        });
       }
       case 'coffre':
-        return mettreAJour(ecranCoffre(membre, a as Categorie));
+        return mettreAJour(() => ecranCoffre(membre, a as Categorie));
       case 'valider': {
-        const gains = validerHebdo(interaction.client, interaction.guildId, interaction.user.id);
-        return mettreAJour(ecranQuetes(membre, gains ? `🏅 Récompense récupérée : **${gains}**` : 'Aucune quête hebdo à valider pour l’instant.'));
+        return mettreAJour(() => {
+          const gains = validerHebdo(interaction.client, interaction.guildId, interaction.user.id);
+          return ecranQuetes(membre, gains ? `🏅 Récompense récupérée : **${gains}**` : 'Aucune quête hebdo à valider pour l’instant.');
+        });
       }
       case 'genre': {
-        if (lireJoueur(interaction.guildId, interaction.user.id)) return mettreAJour(ecranAvatar(membre));
+        if (lireJoueur(interaction.guildId, interaction.user.id)) return mettreAJour(() => ecranAvatar(membre));
         const impose = genreImpose(membre);
-        return mettreAJour(ecranCreation(membre, impose ?? (a as Genre)));
+        return mettreAJour(() => ecranCreation(membre, impose ?? (a as Genre)));
       }
       case 'teint': {
         const genre = genreImpose(membre) ?? (a as Genre);
         if (!TEINTS.some((t) => t.id === b) || (genre !== 'homme' && genre !== 'femme')) return;
-        creerJoueur(interaction.guildId, interaction.user.id, genre, b as Teint);
-        return mettreAJour(ecranAvatar(membre));
+        return mettreAJour(() => {
+          creerJoueur(interaction.guildId, interaction.user.id, genre, b as Teint);
+          return ecranAvatar(membre);
+        });
       }
       case 'notifications':
         executer('UPDATE joueurs SET notifications = 1 - notifications WHERE serveur_id = ? AND utilisateur_id = ?', interaction.guildId, interaction.user.id);
         await interaction.update({ ...ecranParametres(membre), attachments: [] });
         return;
       case 'articles':
-        return mettreAJour(ecranArticles(membre));
+        return mettreAJour(() => ecranArticles(membre));
       case 'acheter': {
         const article = articleBoutique(interaction.guildId, Number(a));
         if (!article) throw new ErreurUtilisateur('Cet article n’existe plus.');
@@ -1224,10 +1263,10 @@ const composant: GestionnaireComposant = {
         }
         try {
           const texte = await livrer(membre, article);
-          return mettreAJour(ecranArticles(membre, `✅ ${article.emoji} **${article.nom}** acheté. ${texte}\n-# Nouveau solde : ${formaterNombre(solde)}`));
+          return mettreAJour(() => ecranArticles(membre, `✅ ${article.emoji} **${article.nom}** acheté. ${texte}\n-# Nouveau solde : ${formaterNombre(solde)}`));
         } catch (echec) {
           rembourser(interaction.guildId, interaction.user.id, article);
-          return mettreAJour(ecranArticles(membre, `⚠️ ${(echec as Error).message} Tu as été remboursé.`));
+          return mettreAJour(() => ecranArticles(membre, `⚠️ ${(echec as Error).message} Tu as été remboursé.`));
         }
       }
     }
