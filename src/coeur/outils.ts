@@ -575,7 +575,7 @@ export const CATEGORIES_AIDE: Record<CategorieAide, { label: string; emoji: stri
   general: { label: 'Pour tout le monde', emoji: '📌' },
   community: { label: 'Communauté', emoji: '⭐' },
   progression: { label: 'Progression', emoji: '🌟' },
-  economy: { label: 'Économie & jeux', emoji: '💰' },
+  economy: { label: 'Mini-jeux', emoji: '🎲' },
   music: { label: 'Musique', emoji: '🎵' },
   twitch: { label: 'Twitch', emoji: '🔴' },
   tickets: { label: 'Tickets', emoji: '🎫' },
