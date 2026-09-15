@@ -343,7 +343,7 @@ export async function surFenetreRedaction(interaction: ModalSubmitInteraction<'c
 const annonce: CommandeSlash = {
   categorie: 'customization',
   niveau: Niveau.STAFF,
-  donnees: new SlashCommandBuilder().setName('announce').setDescription('Rédiger une annonce avec aperçu'),
+  donnees: new SlashCommandBuilder().setName('announce').setDescription('Rédiger une annonce'),
   async executer(interaction) {
     const brouillon = nouveauBrouillon(interaction.guild, interaction.user.id, 'announce');
     brouillon.salonId = lireConfig(interaction.guildId).annonces.salonDefautId;
@@ -402,8 +402,8 @@ const embed: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('edit')
-        .setDescription('Modifier un embed envoyé par le bot')
-        .addStringOption((o) => o.setName('lien').setDescription('Lien du message (clic droit → Copier le lien)').setRequired(true)),
+        .setDescription('Modifier un embed')
+        .addStringOption((o) => o.setName('lien').setDescription('Lien du message').setRequired(true)),
     ),
   async executer(interaction) {
     const serveur = interaction.guild;
@@ -506,8 +506,8 @@ const commandePerso: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('add')
-        .setDescription('Créer ou modifier une commande')
-        .addStringOption((o) => o.setName('nom').setDescription('Ex : twitter (lettres, chiffres, - et _)').setRequired(true).setMaxLength(32))
+        .setDescription('Écrire une commande')
+        .addStringOption((o) => o.setName('nom').setDescription('Nom du lien').setRequired(true).setMaxLength(32))
         .addBooleanOption((o) => o.setName('embed').setDescription('Répondre dans un embed')),
     )
     .addSubcommand((s) =>
@@ -516,7 +516,7 @@ const commandePerso: CommandeSlash = {
         .setDescription('Supprimer une commande')
         .addStringOption((o) => o.setName('nom').setDescription('La commande').setRequired(true).setAutocomplete(true)),
     )
-    .addSubcommand((s) => s.setName('list').setDescription('Les commandes personnalisées')),
+    .addSubcommand((s) => s.setName('list').setDescription('Commandes perso')),
   async autocompletion(interaction) {
     const saisie = String(interaction.options.getFocused()).toLowerCase();
     const rangees = lireTout<LigneCommandePerso>('SELECT * FROM commandes_perso WHERE serveur_id = ? ORDER BY nom', interaction.guildId);
@@ -710,7 +710,7 @@ const reponseAuto: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('add')
-        .setDescription('Ajouter une réponse automatique')
+        .setDescription('Nouvelle réponse')
         .addStringOption((o) => o.setName('declencheur').setDescription('Ex : youtube').setRequired(true).setMaxLength(100))
         .addStringOption((o) =>
           o
@@ -722,7 +722,7 @@ const reponseAuto: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('remove')
-        .setDescription('Supprimer une réponse automatique')
+        .setDescription('Retirer une réponse')
         .addIntegerOption((o) => o.setName('reponse').setDescription('La réponse').setRequired(true).setAutocomplete(true)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('Les réponses automatiques')),
@@ -951,16 +951,16 @@ const panneauRoles: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('ajouter')
-        .setDescription('Ajouter un rôle à un panneau')
+        .setDescription('Ajouter un rôle')
         .addIntegerOption((o) => o.setName('panneau').setDescription('Le panneau').setRequired(true).setAutocomplete(true))
         .addRoleOption((o) => o.setName('role').setDescription('Le rôle').setRequired(true))
-        .addStringOption((o) => o.setName('label').setDescription('Texte du bouton (nom du rôle par défaut)').setMaxLength(80))
-        .addStringOption((o) => o.setName('emoji').setDescription('Émoji (obligatoire pour les réactions)').setMaxLength(64)),
+        .addStringOption((o) => o.setName('label').setDescription('Texte du bouton').setMaxLength(80))
+        .addStringOption((o) => o.setName('emoji').setDescription('Émoji').setMaxLength(64)),
     )
     .addSubcommand((s) =>
       s
         .setName('retirer')
-        .setDescription('Retirer un rôle d’un panneau')
+        .setDescription('Retirer un rôle')
         .addIntegerOption((o) => o.setName('panneau').setDescription('Le panneau').setRequired(true).setAutocomplete(true))
         .addRoleOption((o) => o.setName('role').setDescription('Le rôle').setRequired(true)),
     )
@@ -1035,7 +1035,7 @@ const roleNotifications: CommandeSlash = {
   niveau: Niveau.ADMIN,
   donnees: new SlashCommandBuilder()
     .setName('notificationrole')
-    .setDescription('Panneau 🔔 notifications en un clic')
+    .setDescription('Rôles de notification')
     .addRoleOption((o) => o.setName('lives').setDescription('Rôle 🔴 Lives Twitch'))
     .addRoleOption((o) => o.setName('youtube').setDescription('Rôle 🎥 YouTube'))
     .addRoleOption((o) => o.setName('giveaways').setDescription('Rôle 🎉 Giveaways'))

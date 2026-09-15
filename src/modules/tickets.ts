@@ -783,7 +783,7 @@ const commandeTicket: CommandeSlash = {
     .setName('ticket')
     .setDescription('Les tickets')
     .addSubcommand((s) => s.setName('setup').setDescription('Régler les tickets'))
-    .addSubcommand((s) => s.setName('config').setDescription('Catégories et qui voit les tickets'))
+    .addSubcommand((s) => s.setName('config').setDescription('Réglages tickets'))
     .addSubcommand((s) =>
       s
         .setName('panneau')
@@ -795,16 +795,16 @@ const commandeTicket: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('add')
-        .setDescription('Ajouter quelqu’un au ticket')
+        .setDescription('Ajouter au ticket')
         .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)),
     )
     .addSubcommand((s) =>
       s
         .setName('remove')
-        .setDescription('Retirer quelqu’un du ticket')
+        .setDescription('Retirer du ticket')
         .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)),
     )
-    .addSubcommand((s) => s.setName('claim').setDescription('Prendre ce ticket en charge'))
+    .addSubcommand((s) => s.setName('claim').setDescription('Prendre le ticket'))
     .addSubcommand((s) => s.setName('transcript').setDescription('Le transcript de ce ticket'))
     .addSubcommand((s) =>
       s

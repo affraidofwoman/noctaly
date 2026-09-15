@@ -142,7 +142,7 @@ const suggerer: CommandeSlash = {
   donnees: new SlashCommandBuilder()
     .setName('suggest')
     .setDescription('Proposer une idée')
-    .addStringOption((o) => o.setName('idee').setDescription('Ta suggestion (vide = formulaire)').setMaxLength(2000)),
+    .addStringOption((o) => o.setName('idee').setDescription('Ton idée').setMaxLength(2000)),
   async executer(interaction) {
     const idee = interaction.options.getString('idee');
     if (!idee) {
@@ -330,8 +330,8 @@ const sondage: CommandeSlash = {
     .setName('poll')
     .setDescription('Créer un sondage')
     .addStringOption((o) => o.setName('question').setDescription('La question').setRequired(true).setMaxLength(250))
-    .addStringOption((o) => o.setName('choix').setDescription('Les choix séparés par | (2 à 10). Vide = Oui | Non').setMaxLength(1000))
-    .addStringOption((o) => o.setName('duree').setDescription('Ex : 1h, 2j (vide = sans fin)'))
+    .addStringOption((o) => o.setName('choix').setDescription('Choix séparés par |').setMaxLength(1000))
+    .addStringOption((o) => o.setName('duree').setDescription('Durée'))
     .addBooleanOption((o) => o.setName('multiple').setDescription('Autoriser plusieurs choix')),
   async executer(interaction) {
     const brut = interaction.options.getString('choix');
@@ -460,10 +460,10 @@ const signalement: CommandeSlash = {
   delaiSecondes: 60,
   donnees: new SlashCommandBuilder()
     .setName('report')
-    .setDescription('Signaler un membre au staff')
+    .setDescription('Signaler')
     .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
     .addStringOption((o) => o.setName('raison').setDescription('Ce qui s’est passé').setRequired(true).setMaxLength(1000))
-    .addStringOption((o) => o.setName('preuve').setDescription('Lien vers un message ou une capture').setMaxLength(500)),
+    .addStringOption((o) => o.setName('preuve').setDescription('Lien de preuve').setMaxLength(500)),
   async executer(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const texte = await envoyerSignalement(interaction.member, interaction.options.getUser('membre', true), interaction.options.getString('raison', true), interaction.options.getString('preuve'));
@@ -659,7 +659,7 @@ const reglement: CommandeSlash = {
   donnees: new SlashCommandBuilder()
     .setName('rules')
     .setDescription('Le panneau du règlement')
-    .addChannelOption((o) => o.setName('salon').setDescription('Où le poster (salon réglé par défaut)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
+    .addChannelOption((o) => o.setName('salon').setDescription('Salon').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
   async executer(interaction) {
     const reglages = lireConfig(interaction.guildId).reglement;
     const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(interaction.guild, reglages.channelId) ?? interaction.channel) as GuildTextBasedChannel | null;

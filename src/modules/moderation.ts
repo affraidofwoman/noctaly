@@ -524,7 +524,7 @@ const retirerAvertissement: CommandeSlash = {
     .setName('unwarn')
     .setDescription('Retirer un avertissement')
     .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addIntegerOption((o) => o.setName('numero').setDescription('Numéro du warn (le dernier par défaut)').setMinValue(1))
+    .addIntegerOption((o) => o.setName('numero').setDescription('Numéro du warn').setMinValue(1))
     .addStringOption((o) => optionRaison(o)),
   async executer(i) {
     await sanctionParCommande(i, 'unwarn', i.options.getUser('membre', true), i.options.getString('raison'), undefined, i.options.getInteger('numero') ?? undefined);
@@ -536,7 +536,7 @@ const avertissements: CommandeSlash = {
   niveau: Niveau.STAFF,
   donnees: new SlashCommandBuilder()
     .setName('warnings')
-    .setDescription('Les avertissements d’un membre')
+    .setDescription('Ses avertissements')
     .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)),
   async executer(i) {
     await paginer(i, pagesAvertissements(i.guild, i.options.getUser('membre', true)), true);
@@ -550,7 +550,7 @@ const exclure: CommandeSlash = {
     .setName('timeout')
     .setDescription('Rendre muet temporairement')
     .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-    .addStringOption((o) => o.setName('duree').setDescription('Ex : 10m, 2h, 1j (28 j max)').setRequired(true))
+    .addStringOption((o) => o.setName('duree').setDescription('Durée (28 j max)').setRequired(true))
     .addStringOption((o) => optionRaison(o)),
   async executer(i) {
     const duree = lireDuree(i.options.getString('duree', true));
@@ -618,7 +618,7 @@ const listeNoire: CommandeSlash = {
   niveau: Niveau.MODERATEUR,
   donnees: new SlashCommandBuilder()
     .setName('blacklist')
-    .setDescription('Blacklist du serveur (re-ban automatique)')
+    .setDescription('Blacklist du serveur')
     .addSubcommand((s) =>
       s
         .setName('ajouter')
@@ -696,8 +696,8 @@ const modeLent: CommandeSlash = {
   donnees: new SlashCommandBuilder()
     .setName('slowmode')
     .setDescription('Mode lent du salon')
-    .addStringOption((o) => o.setName('duree').setDescription('Ex : 5s, 1m, 0 pour couper (6 h max)').setRequired(true))
-    .addChannelOption((o) => o.setName('salon').setDescription('Le salon (celui-ci par défaut)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)),
+    .addStringOption((o) => o.setName('duree').setDescription('Délai (0 = coupé)').setRequired(true))
+    .addChannelOption((o) => o.setName('salon').setDescription('Salon').addChannelTypes(ChannelType.GuildText, ChannelType.GuildVoice)),
   async executer(i) {
     const brut = i.options.getString('duree', true).trim();
     const secondes = brut === '0' ? 0 : Math.round((lireDuree(/^\d+$/.test(brut) ? `${brut}s` : brut) ?? -1000) / 1000);
@@ -716,7 +716,7 @@ const commandeVerrouiller: CommandeSlash = {
   donnees: new SlashCommandBuilder()
     .setName('lock')
     .setDescription('Fermer un salon')
-    .addChannelOption((o) => o.setName('salon').setDescription('Le salon (celui-ci par défaut)'))
+    .addChannelOption((o) => o.setName('salon').setDescription('Salon'))
     .addStringOption((o) => optionRaison(o)),
   async executer(i) {
     const salon = i.options.getChannel('salon') ?? i.channel;
@@ -732,7 +732,7 @@ const commandeDeverrouiller: CommandeSlash = {
   donnees: new SlashCommandBuilder()
     .setName('unlock')
     .setDescription('Rouvrir un salon')
-    .addChannelOption((o) => o.setName('salon').setDescription('Le salon (celui-ci par défaut)')),
+    .addChannelOption((o) => o.setName('salon').setDescription('Salon')),
   async executer(i) {
     const salon = i.options.getChannel('salon') ?? i.channel;
     if (!salon) return;
@@ -746,7 +746,7 @@ const verrouillage: CommandeSlash = {
   niveau: Niveau.ADMIN,
   donnees: new SlashCommandBuilder()
     .setName('lockdown')
-    .setDescription('Bloquer les messages des membres')
+    .setDescription('Tout fermer')
     .addSubcommand((s) =>
       s
         .setName('start')
@@ -1041,7 +1041,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     nom: 'bl',
     domaine: 'salon',
     categorie: 'moderation',
-    description: 'Blacklist (seul : liste)',
+    description: 'Blacklist',
     usage: '[id] [raison]',
     niveau: Niveau.MODERATEUR,
     async executer(message, parametres) {
@@ -1078,7 +1078,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     nom: 'gbl',
     domaine: 'owner',
     categorie: 'owner',
-    description: 'Blacklist globale (seul : liste)',
+    description: 'Blacklist partout',
     usage: '[id] [raison]',
     niveau: Niveau.PROPRIETAIRE_BOT,
     async executer(message, parametres) {
@@ -1113,7 +1113,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     nom: 'ungbl',
     domaine: 'owner',
     categorie: 'owner',
-    description: 'Retire de la blacklist globale',
+    description: 'Retirer partout',
     usage: '<id>',
     niveau: Niveau.PROPRIETAIRE_BOT,
     async executer(message, parametres) {

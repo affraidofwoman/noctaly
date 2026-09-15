@@ -473,7 +473,7 @@ export function raccourcisWhitelists(): CommandePrefixe[] {
     nom: definition.raccourci,
     domaine: definition.id === 'owner' ? 'owner' : 'general',
     categorie: definition.id === 'owner' ? 'owner' : 'admin',
-    description: `Whitelist ${definition.libelle} (seul : liste)`,
+    description: `Whitelist ${definition.libelle}`,
     usage: '[membre]',
     niveau: definition.id === 'owner' ? Niveau.PROPRIETAIRE_BOT : Niveau.STAFF,
     async executer(message: Message<true>, parametres: string[]) {
@@ -1059,7 +1059,7 @@ function menuTests(serveur: Guild) {
 const assistant: CommandeSlash = {
   categorie: 'admin',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder().setName('setup').setDescription('Configurer le serveur pas à pas'),
+  donnees: new SlashCommandBuilder().setName('setup').setDescription('Régler le serveur'),
   async executer(interaction) {
     await repondre(interaction, { ...afficherAccueil(interaction.guild), ephemeral: true });
   },
@@ -1068,7 +1068,7 @@ const assistant: CommandeSlash = {
 const installationRapide: CommandeSlash = {
   categorie: 'admin',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder().setName('quicksetup').setDescription('Créer les salons de base en un clic'),
+  donnees: new SlashCommandBuilder().setName('quicksetup').setDescription('Salons de base'),
   async executer(interaction) {
     const apercu = STRUCTURE_RAPIDE.map((b) => `**${b.categorie}**\n${b.channels.map((c) => `　#${c.nom}`).join('\n')}`).join('\n');
     await demanderConfirmation(interaction, {
@@ -1087,7 +1087,7 @@ const installationRapide: CommandeSlash = {
 const commandeModules: CommandeSlash = {
   categorie: 'admin',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder().setName('modules').setDescription('Activer ou couper les modules'),
+  donnees: new SlashCommandBuilder().setName('modules').setDescription('Les modules'),
   async executer(interaction) {
     await repondre(interaction, { ...panneauModules(interaction.guild), ephemeral: true });
   },
@@ -1100,9 +1100,9 @@ const config: CommandeSlash = {
     .setName('config')
     .setDescription('Réglages du serveur')
     .addSubcommand((s) => s.setName('voir').setDescription('Résumé des réglages'))
-    .addSubcommand((s) => s.setName('apparence').setDescription('Thème, couleurs, fuseau horaire'))
-    .addSubcommand((s) => s.setName('permissions').setDescription('Rôles qui donnent un accès au bot'))
-    .addSubcommand((s) => s.setName('prefixes').setDescription('Préfixes et salons de commandes'))
+    .addSubcommand((s) => s.setName('apparence').setDescription('Apparence'))
+    .addSubcommand((s) => s.setName('permissions').setDescription('Rôles d’accès'))
+    .addSubcommand((s) => s.setName('prefixes').setDescription('Préfixes'))
     .addSubcommand((s) => s.setName('reset').setDescription('Tout remettre à zéro')),
   niveauxSousCommandes: { reset: Niveau.STREAMER },
   async executer(interaction) {
@@ -1161,7 +1161,7 @@ const config: CommandeSlash = {
 const test: CommandeSlash = {
   categorie: 'admin',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder().setName('test').setDescription('Tester les messages et les permissions'),
+  donnees: new SlashCommandBuilder().setName('test').setDescription('Tester le bot'),
   async executer(interaction) {
     await repondre(interaction, { embeds: [diagnostic(interaction.guild)], components: [menuTests(interaction.guild)], ephemeral: true });
   },
@@ -1211,7 +1211,7 @@ const prefixesProprietaire: CommandePrefixe[] = [
     nom: 'leave',
     domaine: 'owner',
     categorie: 'owner',
-    description: 'Faire quitter un serveur au bot',
+    description: 'Quitter un serveur',
     usage: '<id>',
     niveau: Niveau.PROPRIETAIRE_BOT,
     async executer(message, parametres) {

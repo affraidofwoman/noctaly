@@ -104,18 +104,18 @@ const commandeAnniversaire: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('set')
-        .setDescription('Enregistrer ton anniversaire')
+        .setDescription('Ton anniversaire')
         .addIntegerOption((o) => o.setName('jour').setDescription('Jour').setRequired(true).setMinValue(1).setMaxValue(31))
         .addIntegerOption((o) => o.setName('mois').setDescription('Mois').setRequired(true).addChoices(...MOIS.map((m, i) => ({ name: m, value: i + 1 }))))
-        .addUserOption((o) => o.setName('membre').setDescription('Pour quelqu’un d’autre (staff)')),
+        .addUserOption((o) => o.setName('membre').setDescription('Autre membre')),
     )
     .addSubcommand((s) =>
       s
         .setName('remove')
         .setDescription('Retirer ton anniversaire')
-        .addUserOption((o) => o.setName('membre').setDescription('Pour quelqu’un d’autre (staff)')),
+        .addUserOption((o) => o.setName('membre').setDescription('Autre membre')),
     )
-    .addSubcommand((s) => s.setName('list').setDescription('Les prochains anniversaires')),
+    .addSubcommand((s) => s.setName('list').setDescription('Prochains anniversaires')),
   async executer(interaction) {
     const serveur = interaction.guild;
     const sousCommande = interaction.options.getSubcommand();
@@ -303,7 +303,7 @@ const rappel: CommandeSlash = {
       s
         .setName('set')
         .setDescription('Programmer un rappel')
-        .addStringOption((o) => o.setName('duree').setDescription('Dans combien de temps (ex : 2h30, 1j)').setRequired(true))
+        .addStringOption((o) => o.setName('duree').setDescription('Dans combien de temps').setRequired(true))
         .addStringOption((o) => o.setName('texte').setDescription('De quoi te rappeler').setRequired(true).setMaxLength(1000)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('Tes rappels en attente'))
@@ -474,7 +474,7 @@ const commandeEvenement: CommandeSlash = {
   niveau: Niveau.STAFF,
   donnees: new SlashCommandBuilder()
     .setName('event')
-    .setDescription('Les événements communautaires')
+    .setDescription('Les événements')
     .addSubcommand((s) =>
       s
         .setName('create')

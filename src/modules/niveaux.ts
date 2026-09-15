@@ -461,7 +461,7 @@ const commandeXp: CommandeSlash = {
   niveau: Niveau.ADMIN,
   donnees: new SlashCommandBuilder()
     .setName('xp')
-    .setDescription('Gérer l’XP et les rôles de niveau')
+    .setDescription('Gérer l’XP')
     .addSubcommand((s) =>
       s
         .setName('donner')
@@ -472,7 +472,7 @@ const commandeXp: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('niveau')
-        .setDescription('Fixer le niveau d’un membre')
+        .setDescription('Fixer un niveau')
         .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
         .addIntegerOption((o) => o.setName('niveau').setDescription('Niveau').setRequired(true).setMinValue(0).setMaxValue(500)),
     )
@@ -480,11 +480,11 @@ const commandeXp: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('role-ajouter')
-        .setDescription('Récompenser un niveau par un rôle')
+        .setDescription('Rôle de niveau')
         .addIntegerOption((o) => o.setName('niveau').setDescription('Niveau').setRequired(true).setMinValue(1).setMaxValue(500))
         .addRoleOption((o) => o.setName('role').setDescription('Rôle').setRequired(true)),
     )
-    .addSubcommand((s) => s.setName('role-retirer').setDescription('Retirer une récompense de niveau').addRoleOption((o) => o.setName('role').setDescription('Rôle').setRequired(true)))
+    .addSubcommand((s) => s.setName('role-retirer').setDescription('Retirer un rôle').addRoleOption((o) => o.setName('role').setDescription('Rôle').setRequired(true)))
     .addSubcommand((s) => s.setName('roles').setDescription('Les rôles de niveau')),
   async executer(i) {
     const sousCommande = i.options.getSubcommand();
@@ -896,7 +896,7 @@ const nombre = (requete: string, ...parametres: string[]) => lire<{ n: number }>
 const statistiques: CommandeSlash = {
   categorie: 'general',
   delaiSecondes: 10,
-  donnees: new SlashCommandBuilder().setName('stats').setDescription('Les statistiques du serveur'),
+  donnees: new SlashCommandBuilder().setName('stats').setDescription('Statistiques'),
   async executer(interaction) {
     const serveur = interaction.guild;
     const fuseau = lireConfig(serveur.id).general.fuseau;

@@ -1107,7 +1107,7 @@ const commandes: CommandeSlash[] = [
     donnees: new SlashCommandBuilder()
       .setName('play')
       .setDescription('Jouer un titre ou un lien')
-      .addStringOption((o) => o.setName('recherche').setDescription('Titre, lien YouTube, SoundCloud, Spotify ou Deezer').setRequired(true).setMaxLength(500)),
+      .addStringOption((o) => o.setName('recherche').setDescription('Titre ou lien').setRequired(true).setMaxLength(500)),
     delaiSecondes: 2,
     async executer(interaction) {
       await interaction.deferReply();
@@ -1144,7 +1144,7 @@ const commandes: CommandeSlash[] = [
   slash('volume', 'Régler le volume', async (i) => reglerVolume(i.member, String(i.options.getInteger('valeur', true))), (b) =>
     b.addIntegerOption((o) => o.setName('valeur').setDescription('De 1 à 200 %').setMinValue(1).setMaxValue(200).setRequired(true)) as SlashCommandBuilder,
   ),
-  slash('loop', 'Boucle : off, morceau ou file', async (i) => reglerBoucle(i.member, i.options.getString('mode')), (b) =>
+  slash('loop', 'Mode boucle', async (i) => reglerBoucle(i.member, i.options.getString('mode')), (b) =>
     b.addStringOption((o) => o.setName('mode').setDescription('Le mode (alterne si vide)').addChoices({ name: 'Désactivée', value: 'off' }, { name: 'Le morceau', value: 'piste' }, { name: 'La file', value: 'file' })) as SlashCommandBuilder,
   ),
 ];

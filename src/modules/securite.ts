@@ -139,9 +139,9 @@ const antiraid: CommandeSlash = {
   niveau: Niveau.ADMIN,
   donnees: new SlashCommandBuilder()
     .setName('antiraid')
-    .setDescription('Protection contre les raids')
+    .setDescription('Anti-raid')
     .addSubcommand((s) => s.setName('status').setDescription('État de la protection'))
-    .addSubcommand((s) => s.setName('panique').setDescription('Mode raid immédiat : vérification élevée et lockdown'))
+    .addSubcommand((s) => s.setName('panique').setDescription('Mode raid'))
     .addSubcommand((s) => s.setName('fin').setDescription('Terminer le mode raid')),
   async executer(interaction) {
     const serveur = interaction.guild;
@@ -335,12 +335,12 @@ const antinuke: CommandeSlash = {
   niveau: Niveau.STREAMER,
   donnees: new SlashCommandBuilder()
     .setName('antinuke')
-    .setDescription('Protection contre les comptes compromis')
+    .setDescription('Anti-nuke')
     .addSubcommand((s) => s.setName('status').setDescription('Seuils et réaction'))
     .addSubcommand((s) =>
       s
         .setName('confiance')
-        .setDescription('Ajouter ou retirer un compte de confiance')
+        .setDescription('Comptes de confiance')
         .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)),
     ),
   async executer(interaction) {

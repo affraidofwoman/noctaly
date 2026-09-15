@@ -166,7 +166,7 @@ const concours: CommandeSlash = {
         .setName('create')
         .setDescription('Créer un concours')
         .addStringOption((o) => o.setName('nom').setDescription('Ex : Meilleur fan art').setRequired(true).setMaxLength(100))
-        .addStringOption((o) => o.setName('participations').setDescription('Durée des participations (ex : 3j)').setRequired(true))
+        .addStringOption((o) => o.setName('participations').setDescription('Durée des dépôts').setRequired(true))
         .addStringOption((o) => o.setName('votes').setDescription('Durée des votes (ex : 2j)').setRequired(true))
         .addStringOption((o) => o.setName('description').setDescription('Règles et thème').setMaxLength(1500))
         .addChannelOption((o) => o.setName('salon').setDescription('Où').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
@@ -178,7 +178,7 @@ const concours: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('next')
-        .setDescription('Passer à la phase suivante maintenant')
+        .setDescription('Phase suivante')
         .addIntegerOption((o) => o.setName('concours').setDescription('Le concours').setRequired(true).setAutocomplete(true)),
     )
     .addSubcommand((s) => s.setName('list').setDescription('Les concours')),
@@ -469,7 +469,7 @@ const commandeFormulaire: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('panel')
-        .setDescription('Poster le bouton d’un formulaire')
+        .setDescription('Poster un formulaire')
         .addStringOption((o) => o.setName('formulaire').setDescription('Le formulaire').setRequired(true).setAutocomplete(true))
         .addChannelOption((o) => o.setName('salon').setDescription('Où (ici par défaut)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
     )

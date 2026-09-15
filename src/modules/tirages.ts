@@ -436,14 +436,14 @@ const tirage: CommandeSlash = {
         .setDescription('Lancer un giveaway')
         .addStringOption((o) => o.setName('recompense').setDescription('Ce qu’on gagne').setRequired(true).setMaxLength(200))
         .addStringOption((o) => o.setName('duree').setDescription('Ex : 30m, 1h, 2j, 1h30m').setRequired(true))
-        .addIntegerOption((o) => o.setName('gagnants').setDescription('Combien de gagnants (1 par défaut)').setMinValue(1).setMaxValue(50))
-        .addChannelOption((o) => o.setName('salon').setDescription('Où (salon giveaways par défaut)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+        .addIntegerOption((o) => o.setName('gagnants').setDescription('Nombre de gagnants').setMinValue(1).setMaxValue(50))
+        .addChannelOption((o) => o.setName('salon').setDescription('Salon').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
         .addRoleOption((o) => o.setName('role').setDescription('Rôle obligatoire'))
         .addIntegerOption((o) => o.setName('niveau').setDescription('Niveau XP minimum').setMinValue(1).setMaxValue(500))
-        .addIntegerOption((o) => o.setName('compte').setDescription('Âge minimum du compte Discord (jours)').setMinValue(1).setMaxValue(3650))
-        .addIntegerOption((o) => o.setName('anciennete').setDescription('Présence minimum sur le serveur (jours)').setMinValue(1).setMaxValue(3650))
-        .addIntegerOption((o) => o.setName('participants').setDescription('Participants minimum pour tirer au sort').setMinValue(2).setMaxValue(100000))
-        .addStringOption((o) => o.setName('condition').setDescription('Condition personnalisée affichée (ex : suivre la chaîne)').setMaxLength(200)),
+        .addIntegerOption((o) => o.setName('compte').setDescription('Âge du compte (jours)').setMinValue(1).setMaxValue(3650))
+        .addIntegerOption((o) => o.setName('anciennete').setDescription('Ancienneté (jours)').setMinValue(1).setMaxValue(3650))
+        .addIntegerOption((o) => o.setName('participants').setDescription('Participants minimum').setMinValue(2).setMaxValue(100000))
+        .addStringOption((o) => o.setName('condition').setDescription('Condition affichée').setMaxLength(200)),
     )
     .addSubcommand((s) => s.setName('end').setDescription('Arrêter et tirer au sort').addIntegerOption(optionId))
     .addSubcommand((s) =>
@@ -451,12 +451,12 @@ const tirage: CommandeSlash = {
         .setName('reroll')
         .setDescription('Refaire le tirage')
         .addIntegerOption(optionId)
-        .addIntegerOption((o) => o.setName('gagnants').setDescription('Nombre de nouveaux gagnants').setMinValue(1).setMaxValue(50)),
+        .addIntegerOption((o) => o.setName('gagnants').setDescription('Nouveaux gagnants').setMinValue(1).setMaxValue(50)),
     )
     .addSubcommand((s) => s.setName('pause').setDescription('Mettre en pause').addIntegerOption(optionId))
     .addSubcommand((s) => s.setName('resume').setDescription('Reprendre').addIntegerOption(optionId))
     .addSubcommand((s) => s.setName('list').setDescription('Les giveaways du serveur'))
-    .addSubcommand((s) => s.setName('menu').setDescription('Le menu Lancer / Arrêter / Retirer au sort')),
+    .addSubcommand((s) => s.setName('menu').setDescription('Menu giveaways')),
   async autocompletion(interaction) {
     const saisie = String(interaction.options.getFocused()).toLowerCase();
     const sousCommande = interaction.options.getSubcommand();
@@ -650,7 +650,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     alias: ['gw'],
     domaine: 'general',
     categorie: 'giveaways',
-    description: 'Lancer, arrêter, retirer au sort',
+    description: 'Les giveaways',
     niveau: Niveau.STAFF,
     whitelist: 'giveaway',
     async executer(message) {

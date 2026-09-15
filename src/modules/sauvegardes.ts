@@ -114,8 +114,8 @@ const sauvegarde: CommandeSlash = {
   niveau: Niveau.STREAMER,
   donnees: new SlashCommandBuilder()
     .setName('backup')
-    .setDescription('Sauvegardes de la configuration du bot')
-    .addSubcommand((s) => s.setName('create').setDescription('Créer une sauvegarde maintenant'))
+    .setDescription('Sauvegardes')
+    .addSubcommand((s) => s.setName('create').setDescription('Sauvegarder'))
     .addSubcommand((s) => s.setName('list').setDescription('Les sauvegardes'))
     .addSubcommand((s) =>
       s

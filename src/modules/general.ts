@@ -229,7 +229,7 @@ const avatar: CommandeSlash = {
   categorie: 'general',
   donnees: new SlashCommandBuilder()
     .setName('avatar')
-    .setDescription('Photo de profil ou bannière')
+    .setDescription('Avatar ou bannière')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)'))
     .addStringOption((o) =>
       o.setName('type').setDescription('Quoi').addChoices({ name: 'Photo de profil', value: 'avatar' }, { name: 'Bannière', value: 'banner' }),

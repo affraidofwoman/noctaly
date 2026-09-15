@@ -230,7 +230,7 @@ const solde: CommandeSlash = {
     .setName('balance')
     .setDescription('Ton porte-monnaie')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)'))
-    .addBooleanOption((o) => o.setName('classement').setDescription('Voir le classement des plus riches')),
+    .addBooleanOption((o) => o.setName('classement').setDescription('Les plus riches')),
   async executer(interaction) {
     if (interaction.options.getBoolean('classement')) return paginer(interaction, pagesRiches(interaction.guild));
     return repondre(interaction, { embeds: [embedSolde(interaction.guild, interaction.options.getUser('membre') ?? interaction.user)] });
@@ -281,7 +281,7 @@ const boutique: CommandeSlash = {
         .addIntegerOption((o) => o.setName('prix').setDescription('Prix').setRequired(true).setMinValue(1).setMaxValue(10_000_000))
         .addStringOption((o) => o.setName('type').setDescription('Ce que ça donne').setRequired(true).addChoices({ name: 'Un rôle', value: 'role' }, { name: 'Un badge', value: 'badge' }, { name: 'Un article à livrer par le staff', value: 'item' }))
         .addRoleOption((o) => o.setName('role').setDescription('Le rôle (type rôle)'))
-        .addStringOption((o) => o.setName('badge').setDescription('Identifiant du badge (type badge, voir /badge liste)').setMaxLength(32))
+        .addStringOption((o) => o.setName('badge').setDescription('Badge').setMaxLength(32))
         .addStringOption((o) => o.setName('emoji').setDescription('Émoji').setMaxLength(64))
         .addStringOption((o) => o.setName('description').setDescription('Description').setMaxLength(150))
         .addIntegerOption((o) => o.setName('stock').setDescription('Stock (vide = illimité)').setMinValue(1).setMaxValue(100000)),
@@ -295,7 +295,7 @@ const boutique: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('crediter')
-        .setDescription('Donner ou retirer des pièces (admin)')
+        .setDescription('Ajuster les pièces')
         .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
         .addIntegerOption((o) => o.setName('montant').setDescription('Négatif pour retirer').setRequired(true).setMinValue(-10_000_000).setMaxValue(10_000_000)),
     ),
@@ -560,7 +560,7 @@ const quete: CommandeSlash = {
   categorie: 'economy',
   donnees: new SlashCommandBuilder()
     .setName('quest')
-    .setDescription('Tes quêtes du jour et ta série')
+    .setDescription('Tes quêtes')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)')),
   async executer(interaction) {
     await repondre(interaction, { embeds: [embedQuetes(interaction.guild, interaction.options.getUser('membre') ?? interaction.user)] });
@@ -730,17 +730,17 @@ const boost: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('recompense')
-        .setDescription('Ajouter une récompense de boosts')
-        .addIntegerOption((o) => o.setName('boosts').setDescription('Au bout de combien de boosts').setRequired(true).setMinValue(1).setMaxValue(100))
+        .setDescription('Nouvelle récompense')
+        .addIntegerOption((o) => o.setName('boosts').setDescription('Nombre de boosts').setRequired(true).setMinValue(1).setMaxValue(100))
         .addRoleOption((o) => o.setName('role').setDescription('Rôle donné'))
         .addStringOption((o) => o.setName('badge').setDescription('Badge donné (identifiant)').setMaxLength(32))
         .addIntegerOption((o) => o.setName('pieces').setDescription('Pièces données').setMinValue(0).setMaxValue(10_000_000)),
     )
-    .addSubcommand((s) => s.setName('recompenses').setDescription('Les récompenses configurées'))
+    .addSubcommand((s) => s.setName('recompenses').setDescription('Les récompenses'))
     .addSubcommand((s) =>
       s
         .setName('retirer')
-        .setDescription('Retirer les récompenses d’un palier')
+        .setDescription('Retirer un palier')
         .addIntegerOption((o) => o.setName('boosts').setDescription('Le palier').setRequired(true).setMinValue(1).setMaxValue(100)),
     ),
   niveauxSousCommandes: { recompense: Niveau.ADMIN, retirer: Niveau.ADMIN, recompenses: Niveau.STAFF },

@@ -338,7 +338,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     nom: 'badword',
     domaine: 'sanction',
     categorie: 'salons',
-    description: 'Mots interdits (seul : liste)',
+    description: 'Mots interdits',
     usage: '[mot|on|off]',
     niveau: Niveau.MODERATEUR,
     async executer(message, parametres) {

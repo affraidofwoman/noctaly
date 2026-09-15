@@ -270,7 +270,7 @@ const commandeJournaux: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('voir')
-        .setDescription('L’historique (sanctions, whitelists, tickets…)')
+        .setDescription('L’historique')
         .addUserOption((o) => o.setName('membre').setDescription('Une personne'))
         .addStringOption((o) =>
           o
@@ -279,7 +279,7 @@ const commandeJournaux: CommandeSlash = {
             .addChoices(...TYPES_JOURNAUX.slice(0, 25).map((t) => ({ name: `${t.nom} — ${tronquer(t.description, 60)}`, value: t.type }))),
         ),
     )
-    .addSubcommand((s) => s.setName('salons').setDescription('Créer les salons de logs manquants')),
+    .addSubcommand((s) => s.setName('salons').setDescription('Créer les salons')),
   niveauxSousCommandes: { salons: Niveau.ADMIN },
   async executer(interaction) {
     if (interaction.options.getSubcommand() === 'salons') {
@@ -299,7 +299,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     nom: 'logs',
     domaine: 'general',
     categorie: 'admin',
-    description: 'L’historique (seul : tout le serveur)',
+    description: 'L’historique',
     usage: '[membre]',
     niveau: Niveau.ADMIN,
     whitelist: 'logs',

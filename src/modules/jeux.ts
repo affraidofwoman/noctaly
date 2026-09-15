@@ -24,7 +24,7 @@ const bouleMagique: CommandeSlash = {
   categorie: 'economy',
   donnees: new SlashCommandBuilder()
     .setName('8ball')
-    .setDescription('Pose une question à la boule magique')
+    .setDescription('Boule magique')
     .addStringOption((o) => o.setName('question').setDescription('Ta question').setRequired(true).setMaxLength(200)),
   async executer(i) {
     exigerJeu(i.guildId, 'bouleMagique');
@@ -48,8 +48,8 @@ const des: CommandeSlash = {
   donnees: new SlashCommandBuilder()
     .setName('dice')
     .setDescription('Lancer des dés')
-    .addIntegerOption((o) => o.setName('faces').setDescription('Nombre de faces (6 par défaut)').setMinValue(2).setMaxValue(1000))
-    .addIntegerOption((o) => o.setName('nombre').setDescription('Nombre de dés (1 par défaut)').setMinValue(1).setMaxValue(20)),
+    .addIntegerOption((o) => o.setName('faces').setDescription('Nombre de faces').setMinValue(2).setMaxValue(1000))
+    .addIntegerOption((o) => o.setName('nombre').setDescription('Nombre de dés').setMinValue(1).setMaxValue(20)),
   async executer(i) {
     exigerJeu(i.guildId, 'des');
     const faces = i.options.getInteger('faces') ?? 6;
@@ -72,7 +72,7 @@ const pierreFeuilleCiseaux: CommandeSlash = {
   donnees: new SlashCommandBuilder()
     .setName('rps')
     .setDescription('Pierre, feuille, ciseaux')
-    .addUserOption((o) => o.setName('adversaire').setDescription('Défier un membre (contre le bot par défaut)')),
+    .addUserOption((o) => o.setName('adversaire').setDescription('Adversaire')),
   async executer(i) {
     exigerJeu(i.guildId, 'pierreFeuilleCiseaux');
     const adversaire = i.options.getUser('adversaire');

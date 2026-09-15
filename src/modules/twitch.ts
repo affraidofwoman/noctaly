@@ -887,8 +887,8 @@ const twitch: CommandeSlash = {
   niveau: Niveau.ADMIN,
   donnees: new SlashCommandBuilder()
     .setName('twitch')
-    .setDescription('Les annonces de live Twitch')
-    .addSubcommand((s) => s.setName('setup').setDescription('Régler les annonces de live'))
+    .setDescription('Annonces Twitch')
+    .addSubcommand((s) => s.setName('setup').setDescription('Régler les annonces'))
     .addSubcommand((s) =>
       s
         .setName('add')
@@ -899,7 +899,7 @@ const twitch: CommandeSlash = {
     )
     .addSubcommand((s) => s.setName('remove').setDescription('Ne plus suivre une chaîne').addStringOption((o) => optionPseudo(o).setAutocomplete(true)))
     .addSubcommand((s) => s.setName('list').setDescription('Les chaînes suivies'))
-    .addSubcommand((s) => s.setName('test').setDescription('Envoyer une notification de test').addStringOption((o) => optionPseudo(o).setAutocomplete(true))),
+    .addSubcommand((s) => s.setName('test').setDescription('Annonce de test').addStringOption((o) => optionPseudo(o).setAutocomplete(true))),
   niveauxSousCommandes: { list: Niveau.STAFF },
   async autocompletion(interaction) {
     const saisie = String(interaction.options.getFocused()).toLowerCase();
