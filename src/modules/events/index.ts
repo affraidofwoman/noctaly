@@ -16,10 +16,15 @@ import { lireConfig } from '../../core/guildConfig';
 import { repondre } from '../../core/interactions';
 import { journal, resoudreSalonTexte } from '../../core/logService';
 import type { PageReglage } from '../../core/setup';
-import { listeMentionsCourte, neutralizeMentions, truncate } from './helpers';
+import { neutraliserMentions, tronquer } from '../../core/text';
 import { lireDateHeure, marqueTemps } from '../../core/time';
 import { bouton, estLienHttp, rangee } from '../../core/ui';
 import { Niveau, type ModuleBot, type CommandeSlash } from '../../core/types';
+
+function listeMentionsCourte(ids: string[], max: number): string {
+  const affiches = ids.slice(0, max).map((id) => `<@${id}>`).join(' ');
+  return ids.length > max ? `${affiches} +${ids.length - max}` : affiches;
+}
 
 interface LigneEvenement {
   id: number;
@@ -57,7 +62,7 @@ function afficher(serveur: Guild, e: LigneEvenement) {
   const ferme = e.statut === 'cancelled' || e.statut === 'ended';
   const embed = new EmbedBuilder()
     .setColor(couleurPour(serveur, e.statut === 'cancelled' ? 'error' : 'primary'))
-    .setTitle(`🎮 ${truncate(e.nom.toUpperCase(), 240)}`)
+    .setTitle(`🎮 ${tronquer(e.nom.toUpperCase(), 240)}`)
     .setDescription(
       [
         e.jeu ? `**${e.jeu}**` : null,
@@ -135,14 +140,14 @@ const commandeEvenement: CommandeSlash = {
   niveauxSousCommandes: { list: Niveau.MEMBRE },
   async autocompletion(interaction) {
     const rangees = lireTout<LigneEvenement>("SELECT * FROM evenements WHERE serveur_id = ? AND statut IN ('scheduled','started') ORDER BY debut_le LIMIT 25", interaction.guildId);
-    await interaction.respond(rangees.map((e) => ({ name: truncate(`#${e.id} · ${e.nom}`, 100), value: e.id })));
+    await interaction.respond(rangees.map((e) => ({ name: tronquer(`#${e.id} · ${e.nom}`, 100), value: e.id })));
   },
   async executer(interaction) {
     const serveur = interaction.guild;
     const sousCommande = interaction.options.getSubcommand();
     if (sousCommande === 'list') {
       const rangees = lireTout<LigneEvenement>("SELECT * FROM evenements WHERE serveur_id = ? AND statut IN ('scheduled','started') ORDER BY debut_le LIMIT 20", serveur.id);
-      const lignes = rangees.map((e) => `🎮 **${truncate(e.nom, 80)}** — ${marqueTemps(e.debut_le, 'f')} (${marqueTemps(e.debut_le, 'R')}) · ✅ ${reponsesRsvp(e.id).yes.length}${e.message_id ? ` · [voir](https://discord.com/channels/${e.serveur_id}/${e.salon_id}/${e.message_id})` : ''}`);
+      const lignes = rangees.map((e) => `🎮 **${tronquer(e.nom, 80)}** — ${marqueTemps(e.debut_le, 'f')} (${marqueTemps(e.debut_le, 'R')}) · ✅ ${reponsesRsvp(e.id).yes.length}${e.message_id ? ` · [voir](https://discord.com/channels/${e.serveur_id}/${e.salon_id}/${e.message_id})` : ''}`);
       return repondre(interaction, { embeds: [new EmbedBuilder().setColor(couleurPour(serveur)).setTitle('📅 Événements à venir').setDescription(lignes.join('\n') || '*Aucun événement prévu.*')], ephemeral: true });
     }
     if (sousCommande === 'cancel') {
@@ -164,8 +169,8 @@ const commandeEvenement: CommandeSlash = {
       serveur.id,
       salon.id,
       interaction.user.id,
-      neutralizeMentions(interaction.options.getString('nom', true)),
-      neutralizeMentions(interaction.options.getString('description') ?? ''),
+      neutraliserMentions(interaction.options.getString('nom', true)),
+      neutraliserMentions(interaction.options.getString('description') ?? ''),
       interaction.options.getString('jeu'),
       image,
       debutLe,
