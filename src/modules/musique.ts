@@ -40,7 +40,7 @@ import { aNiveau, emojiPour, estWhitelist } from '../coeur/acces';
 import { bouton, couleurPour, erreur, estLienHttp, nomEnseigne, ok, rangee } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
 import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
-import { barreProgression, creerRegistre, RACINE_PROJET, environnement, ErreurUtilisateur, formaterHorloge, tronquer, Niveau } from '../coeur/outils';
+import { barreProgression, creerRegistre, environnement, ErreurUtilisateur, formaterHorloge, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig } from '../coeur/reglages';
 
 const registre = creerRegistre('musique');
@@ -99,63 +99,72 @@ export function fluxNormalise(saisie: Readable): Readable {
   return saisie.pipe(transcodeur);
 }
 
-export const YTDLP_FOURNI = path.join(RACINE_PROJET, 'assets', 'bin', 'yt-dlp');
+// - Binaire yt-dlp autonome -
+// Binaire propre à la plateforme, rangé avec les données : ni Python ni fichier dans le dépôt.
+const BINAIRES_YTDLP: Record<string, string> = { 'linux:x64': 'yt-dlp_linux', 'linux:arm64': 'yt-dlp_linux_aarch64', 'win32:x64': 'yt-dlp.exe', 'win32:arm64': 'yt-dlp.exe', 'darwin:x64': 'yt-dlp_macos', 'darwin:arm64': 'yt-dlp_macos' };
+
+export function fichierYtdlp(plateforme: string = process.platform, architecture: string = process.arch): { nom: string; chemin: string } | null {
+  const nom = BINAIRES_YTDLP[`${plateforme}:${architecture}`];
+  return nom ? { nom, chemin: path.join(path.dirname(environnement.cheminBase), 'bin', nom) } : null;
+}
 
 interface Commande {
   commande: string;
   parametres: string[];
 }
 
-const commandesYtdlp = (): Commande[] => [
-  ...(environnement.cheminYtdlp ? [{ commande: environnement.cheminYtdlp, parametres: [] }] : []),
-  { commande: 'yt-dlp', parametres: [] },
-  ...(fs.existsSync(YTDLP_FOURNI) ? [{ commande: 'python3', parametres: [YTDLP_FOURNI] }, { commande: 'python', parametres: [YTDLP_FOURNI] }] : []),
-  { commande: 'python3', parametres: ['-m', 'yt_dlp'] },
-  { commande: 'python', parametres: ['-m', 'yt_dlp'] },
-];
+const commandesYtdlp = (): Commande[] => {
+  const autonome = fichierYtdlp();
+  return [
+    ...(environnement.cheminYtdlp ? [{ commande: environnement.cheminYtdlp, parametres: [] }] : []),
+    ...(autonome && fs.existsSync(autonome.chemin) ? [{ commande: autonome.chemin, parametres: [] }] : []),
+    { commande: 'yt-dlp', parametres: [] },
+    { commande: 'python3', parametres: ['-m', 'yt_dlp'] },
+  ];
+};
 
 // - Mise à jour de yt-dlp -
 // Une version téléchargée ne remplace l’actuelle qu’après avoir répondu.
-export function verifierZipapp(donnees: Buffer): string | null {
-  if (donnees.length < 1_000_000) return `fichier trop petit (${donnees.length} octets)`;
-  if (!donnees.subarray(0, 2).equals(Buffer.from('#!'))) return 'ce n’est pas un zipapp yt-dlp';
-  return null;
+export function verifierExecutable(donnees: Buffer, plateforme: string = process.platform): string | null {
+  if (donnees.length < 5_000_000) return `fichier trop petit (${donnees.length} octets)`;
+  const entete = donnees.subarray(0, 4);
+  const valide = plateforme === 'win32' ? entete.subarray(0, 2).equals(Buffer.from('MZ')) : plateforme === 'linux' ? entete.equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46])) : [0xcffaedfe, 0xcafebabe, 0xfeedfacf].includes(entete.readUInt32BE(0));
+  return valide ? null : 'ce n’est pas un exécutable yt-dlp';
 }
 
 function versionYtdlp(fichier: string): string | null {
-  for (const interpreteur of ['python3', 'python']) {
-    const r = spawnSync(interpreteur, [fichier, '--version'], { encoding: 'utf8', windowsHide: true, timeout: 30_000 });
-    const version = r.status === 0 ? r.stdout.trim().split('\n')[0] : '';
-    if (version) return version;
-  }
-  return null;
+  const r = spawnSync(fichier, ['--version'], { encoding: 'utf8', windowsHide: true, timeout: 60_000 });
+  const version = r.status === 0 ? r.stdout.trim().split('\n')[0] : '';
+  return version || null;
 }
 
 export async function mettreAJourYtdlp(): Promise<string> {
+  const cible = fichierYtdlp();
+  if (!cible) return `aucun binaire pour ${process.platform} ${process.arch}`;
   if (toutesSessions().some((s) => s.actuel)) return 'lecture en cours, report';
-  const actuelle = fs.existsSync(YTDLP_FOURNI) ? versionYtdlp(YTDLP_FOURNI) : null;
+  const actuelle = fs.existsSync(cible.chemin) ? versionYtdlp(cible.chemin) : null;
   const entete = { 'User-Agent': 'noctaly', Accept: 'application/vnd.github+json' };
   const derniere = await fetch('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest', { headers: entete, signal: AbortSignal.timeout(15_000) });
   if (!derniere.ok) throw new Error(`GitHub a répondu ${derniere.status}`);
   const tag = String(((await derniere.json()) as { tag_name?: string }).tag_name ?? '').trim();
   if (!tag) throw new Error('aucune version publiée lisible');
   if (actuelle === tag) return `déjà à jour (${tag})`;
-  const reponse = await fetch('https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp', { headers: entete, redirect: 'follow', signal: AbortSignal.timeout(120_000) });
+  const reponse = await fetch(`https://github.com/yt-dlp/yt-dlp/releases/latest/download/${cible.nom}`, { headers: entete, redirect: 'follow', signal: AbortSignal.timeout(300_000) });
   if (!reponse.ok) throw new Error(`téléchargement refusé (${reponse.status})`);
   const donnees = Buffer.from(await reponse.arrayBuffer());
-  const refus = verifierZipapp(donnees);
+  const refus = verifierExecutable(donnees);
   if (refus) throw new Error(refus);
-  const temporaire = `${YTDLP_FOURNI}.nouveau`;
-  fs.mkdirSync(path.dirname(YTDLP_FOURNI), { recursive: true });
+  const temporaire = `${cible.chemin}.nouveau`;
+  fs.mkdirSync(path.dirname(cible.chemin), { recursive: true });
   fs.writeFileSync(temporaire, donnees, { mode: 0o755 });
   const nouvelle = versionYtdlp(temporaire);
-  if (!nouvelle && actuelle) {
+  if (!nouvelle) {
     fs.rmSync(temporaire, { force: true });
     throw new Error('la version téléchargée ne répond pas, remplacement annulé');
   }
-  fs.renameSync(temporaire, YTDLP_FOURNI);
+  fs.renameSync(temporaire, cible.chemin);
   choisis = null;
-  return `${actuelle ?? 'aucune'} → ${nouvelle ?? tag}`;
+  return `${actuelle ?? 'aucune'} → ${nouvelle}`;
 }
 
 const STRATEGIES: { name: string; args: string[] }[] = [

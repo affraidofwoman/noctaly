@@ -4,7 +4,7 @@ import { modules } from './modules/liste';
 
 async function demarrer(): Promise<void> {
   if (!environnement.jetonDiscord || !environnement.clientId) {
-    throw new Error('DISCORD_TOKEN et DISCORD_CLIENT_ID sont requis (voir .env.example)');
+    throw new Error('DISCORD_TOKEN et DISCORD_CLIENT_ID sont requis (voir le README)');
   }
   const change = await enregistrerCommandes(modules, { force: true });
   console.log(change ? '✅ Commandes enregistrées.' : 'ℹ️ Aucune modification.');

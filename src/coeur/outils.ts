@@ -65,7 +65,7 @@ export function verifierEnvironnement(): void {
   if (!environnement.jetonDiscord) manquants.push('DISCORD_TOKEN');
   if (!environnement.clientId) manquants.push('DISCORD_CLIENT_ID');
   if (manquants.length) {
-    throw new Error(`Variables d'environnement manquantes : ${manquants.join(', ')} (voir .env.example)`);
+    throw new Error(`Variables d'environnement manquantes : ${manquants.join(', ')} (voir le README)`);
   }
   if (environnement.siteActif) {
     if (!environnement.secretClient) throw new Error('DASHBOARD_ENABLED=true nécessite DISCORD_CLIENT_SECRET');

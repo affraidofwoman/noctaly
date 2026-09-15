@@ -56,7 +56,7 @@ Tous les modules s’activent ou se coupent par serveur avec `/modules`. Les com
 **Prérequis**
 
 - [Node.js](https://nodejs.org) **22.13 ou plus récent** (Node 24 recommandé). La base de données utilise le SQLite intégré à Node.
-- Pour la musique : **Python 3** (le `yt-dlp` fourni dans `assets/bin` se met à jour tout seul chaque jour). FFmpeg est fourni par `ffmpeg-static`.
+- Rien d’autre pour la musique : le bot télécharge tout seul la version autonome de `yt-dlp` pour son système (sans Python) et la met à jour chaque jour. FFmpeg est fourni par `ffmpeg-static`.
 
 ```bash
 npm install
@@ -83,7 +83,7 @@ npm run build
 
 ## Fichier .env
 
-Copie `.env.example` en `.env` et remplis-le.
+Crée un fichier `.env` à la racine du bot avec ces variables.
 
 | Variable | Rôle |
 |---|---|
@@ -250,7 +250,7 @@ src/
   coeur/              socle commun (outils, base, réglages, accès, affichage, journaux, aiguilleur, assistant)
   modules/            un fichier par domaine (progression, tickets, twitch, musique, modération…)
   modules/liste.ts    la liste des modules chargés
-assets/               polices, fond de bienvenue, yt-dlp
+assets/               polices et fond de bienvenue
 ```
 
 Chaque module est isolé : une erreur dans un module n’interrompt jamais les autres. Pour retirer un module, enlève sa ligne dans `src/modules/liste.ts`.
@@ -267,17 +267,20 @@ Chaque module est isolé : une erreur dans un module n’interrompt jamais les a
 
 ## Hébergement
 
-Avec Docker :
+Sur un panel d’hébergement (image Node.js 24) :
 
-```bash
-docker build -t bot-twitch .
-```
+| Réglage | Valeur |
+|---|---|
+| Adresse du dépôt Git | `https://github.com/affraidofwoman/noctaly` |
+| Branche | `main` |
+| Fichier principal | `dist/src/demarrage.js` |
+| Commande avant démarrage | `npm run build` |
+| Modules natifs à compiler | `ffmpeg-static` |
+| Installation auto des dépendances | activée |
 
-```bash
-docker run -d --restart unless-stopped --env-file .env -v ./data:/app/data -p 3000:3000 bot-twitch
-```
+Le fichier `.env` et le dossier `data/` se créent sur l’hébergeur et ne sont jamais envoyés sur GitHub. Pour un dépôt privé, le jeton GitHub doit avoir la permission **Contents : lecture**.
 
-Sans Docker : Node 24 et Python 3, puis un gestionnaire de processus (pm2, systemd…) :
+Sans panel : Node 24 puis un gestionnaire de processus (pm2, systemd…).
 
 ```bash
 npm ci && npm run build && npm start
@@ -294,7 +297,7 @@ npm ci && npm run build && npm start
 | Les commandes n’apparaissent pas | Attends quelques minutes ou renseigne `DEV_GUILD_ID`, puis `npm run deploy` |
 | « Je ne peux pas donner ce rôle » | Monte le rôle du bot au-dessus du rôle concerné |
 | Aucune annonce Twitch | `/test` → état de la connexion Twitch, vérifie les clés et le salon |
-| Pas de son | `/test` → état du lecteur, Python 3 installé |
+| Pas de son | `/test` → état du lecteur ; au premier démarrage, yt-dlp met une minute à se télécharger |
 | Pas d’image (bienvenue, cartes) | `npm install` sur l’hébergeur (module `@napi-rs/canvas`) |
 
 Le bot ne montre jamais d’erreur technique aux membres : les détails vont dans la console et le salon `#sante-log`.
