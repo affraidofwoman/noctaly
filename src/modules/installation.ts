@@ -141,11 +141,11 @@ export function associer(existants: { id: string; nom: string; texte: boolean; c
 // - Les permissions -
 export function droits(categorie: CategoriePlan, salon: SalonPlan | null, ids: { tous: string; bot: string; membre?: string; moderation?: string; staff?: string }, acces: Acces): { id: string; allow: bigint[]; deny: bigint[] }[] {
   const table = new Map<string, { id: string; allow: Set<bigint>; deny: Set<bigint> }>();
-  const regler = (id: string | undefined, allow: bigint[], deny: bigint[] = []) => {
+  const regler = (id: string | undefined, autorise: bigint[], refuse: bigint[] = []) => {
     if (!id) return;
     const e = table.get(id) ?? { id, allow: new Set(), deny: new Set() };
-    allow.forEach((p) => e.allow.add(p));
-    deny.forEach((p) => e.deny.add(p));
+    autorise.forEach((p) => e.allow.add(p));
+    refuse.forEach((p) => e.deny.add(p));
     table.set(id, e);
   };
   const P = PermissionFlagsBits;
