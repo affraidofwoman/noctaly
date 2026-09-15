@@ -16,6 +16,7 @@ import { journal, resoudreSalonTexte } from '../coeur/journaux';
 import { type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
 import { creerRegistre, RACINE_PROJET, formaterDuree, formaterNombre, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
+import { ajusterTexte, bibliothequeToile, type BibliothequeToile, type Contexte, type ImageToile, nettoyer, PILE_POLICES, rectangleArrondi } from './cartes';
 import { activiteMembre } from './niveaux';
 import { banniereTwitch, listerChaines } from './twitch';
 
@@ -27,77 +28,6 @@ const RAYON_AVATAR = 95;
 const BORDURE_AVATAR = 5;
 export const RESSOURCES = path.join(RACINE_PROJET, 'assets');
 const FOND_DEFAUT = path.join(RESSOURCES, 'bienvenue', 'fond.webp');
-const DOSSIER_POLICES = path.join(RESSOURCES, 'fonts');
-
-const POLICES: [string, string][] = [
-  ['NotoSans.ttf', 'CarteTexte'],
-  ['NotoSans-Bold.ttf', 'CarteTexte'],
-  ['NotoSansJP.ttf', 'CarteJP'],
-  ['NotoSansMath.ttf', 'CarteMath'],
-  ['NotoSansSymbols2.ttf', 'CarteSymboles'],
-  ['NotoColorEmoji.ttf', 'CarteEmoji'],
-];
-const PILE_POLICES = 'CarteTexte, CarteJP, CarteMath, CarteSymboles, CarteEmoji, sans-serif';
-
-type BibliothequeToile = typeof import('@napi-rs/canvas');
-type ImageToile = Awaited<ReturnType<BibliothequeToile['loadImage']>>;
-type Contexte = ReturnType<ReturnType<BibliothequeToile['createCanvas']>['getContext']>;
-
-let bibliotheque: BibliothequeToile | null | undefined;
-let policesChargees = false;
-
-function bibliothequeToile(): BibliothequeToile | null {
-  if (bibliotheque !== undefined) return bibliotheque;
-  try {
-    bibliotheque = require('@napi-rs/canvas') as BibliothequeToile;
-  } catch {
-    registre.avertir('@napi-rs/canvas absent — les accueils partent sans carte (npm install sur l’hébergeur).');
-    bibliotheque = null;
-  }
-  return bibliotheque;
-}
-
-function chargerPolices(l: BibliothequeToile): void {
-  if (policesChargees) return;
-  policesChargees = true;
-  for (const [fichier, famille] of POLICES) {
-    const complet = path.join(DOSSIER_POLICES, fichier);
-    try {
-      if (fs.existsSync(complet)) l.GlobalFonts.registerFromPath(complet, famille);
-    } catch (echec) {
-      registre.avertir(`Police ${fichier} non chargée : ${(echec as Error).message}`);
-    }
-  }
-}
-
-function nettoyer(texte: string): string {
-  return texte.toWellFormed().replace(/\s{2,}/g, ' ').trim();
-}
-
-function rectangleArrondi(contexte: Contexte, w: number, h: number, r: number): void {
-  contexte.beginPath();
-  contexte.moveTo(r, 0);
-  contexte.lineTo(w - r, 0);
-  contexte.quadraticCurveTo(w, 0, w, r);
-  contexte.lineTo(w, h - r);
-  contexte.quadraticCurveTo(w, h, w - r, h);
-  contexte.lineTo(r, h);
-  contexte.quadraticCurveTo(0, h, 0, h - r);
-  contexte.lineTo(0, r);
-  contexte.quadraticCurveTo(0, 0, r, 0);
-  contexte.closePath();
-}
-
-function ajusterTexte(contexte: Contexte, texte: string, max: number, largeur: number, poids = '700', min = 16): number {
-  let taille = max;
-  do {
-    contexte.font = `${poids} ${taille}px ${PILE_POLICES}`;
-    if (contexte.measureText(texte).width <= largeur) return taille;
-    taille -= 1;
-  } while (taille > min);
-  return taille;
-}
-
 const fonds = new Map<string, ImageToile>();
 
 async function imageDistante(source: string, l: BibliothequeToile): Promise<ImageToile | null> {
@@ -148,14 +78,13 @@ export async function construireCarteBienvenue(membre: GuildMember, options: Opt
   const l = bibliothequeToile();
   if (!l) return null;
   try {
-    chargerPolices(l);
     const enseigne = enseigneDe(membre.guild.id);
     const accent = `#${enseigne.couleur.toString(16).padStart(6, '0')}`;
     const toile = l.createCanvas(LARGEUR, HAUTEUR);
     const contexte = toile.getContext('2d');
 
     contexte.save();
-    rectangleArrondi(contexte, LARGEUR, HAUTEUR, 28);
+    rectangleArrondi(contexte, 0, 0, LARGEUR, HAUTEUR, 28);
     contexte.clip();
 
     const fondCarte = await fondDe(membre.guild.id, l);
