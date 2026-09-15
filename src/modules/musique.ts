@@ -39,7 +39,7 @@ import prism from 'prism-media';
 import { aNiveau, emojiPour, estWhitelist } from '../coeur/acces';
 import { bouton, couleurPour, erreur, estLienHttp, nomEnseigne, ok, rangee } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
 import { barreProgression, creerRegistre, environnement, ErreurUtilisateur, formaterHorloge, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig } from '../coeur/reglages';
 
@@ -1151,6 +1151,18 @@ function slash(nom: string, description: string, executer: (i: ChatInputCommandI
   };
 }
 
+const panneauMusique: PanneauAffiche = {
+  id: 'musique',
+  alias: ['lecteur'],
+  nom: 'Lecteur de musique',
+  emoji: '🎵',
+  groupe: 'Salons',
+  quoi: 'La musique pilotée au clic',
+  async poser(salon) {
+    return `Lecteur posté : ${(await salon.send(affichagePanneau(salon.guild))).url}`;
+  },
+};
+
 const commandes: CommandeSlash[] = [
   {
     categorie: 'music',
@@ -1223,7 +1235,8 @@ export const moduleMusique: ModuleBot = {
   desactivable: true,
   actifParDefaut: true,
   commandes,
-  commandesPrefixe,
+  commandesPrefixe: [...commandesPrefixe, prefixePanneau(panneauMusique, 'Poser le lecteur')],
+  panneaux: [panneauMusique],
   taches: [
     {
       nom: 'yt-dlp',

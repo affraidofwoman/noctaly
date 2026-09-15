@@ -2,12 +2,10 @@ import { randomInt } from 'node:crypto';
 import {
   AuditLogEvent,
   ButtonStyle,
-  ChannelType,
   EmbedBuilder,
   type Guild,
   type GuildAuditLogsEntry,
   type GuildMember,
-  type GuildTextBasedChannel,
   GuildVerificationLevel,
   type Message,
   MessageFlags,
@@ -18,7 +16,7 @@ import { botPeutGererRole, estExempte, estProprietaireBot, membresListe } from '
 import { bouton, construireFormulaire, couleurPour, erreur, info, ok, rangee, repondre } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { type CommandeSlash, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
 import {
   CarteExpirante,
   creerRegistre,
@@ -460,24 +458,22 @@ async function verifier(membre: GuildMember): Promise<string> {
   return `Bienvenue ! Tu as maintenant accès au serveur avec <@&${verifie.id}>.`;
 }
 
-const commandeVerifier: CommandeSlash = {
-  categorie: 'admin',
-  niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('verify')
-    .setDescription('Le panneau de vérification')
-    .addChannelOption((o) => o.setName('salon').setDescription('Où le poster').addChannelTypes(ChannelType.GuildText)),
-  async executer(interaction) {
-    const reglages = lireConfig(interaction.guildId).verification;
-    if (!reglages.roleVerifieId) throw new ErreurUtilisateur('Choisis d’abord le rôle « vérifié » dans `/setup` → Sécurité & accès.');
-    const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(interaction.guild, reglages.salonId) ?? interaction.channel) as GuildTextBasedChannel | null;
-    if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
+const panneauVerification: PanneauAffiche = {
+  id: 'verif',
+  alias: ['verification', 'verify'],
+  nom: 'Vérification',
+  emoji: '🔐',
+  groupe: 'Le serveur',
+  quoi: 'Le bouton qui ouvre l’accès au serveur',
+  async poser(salon, membre) {
+    const reglages = lireConfig(membre.guild.id).verification;
+    if (!reglages.roleVerifieId) throw new ErreurUtilisateur('Choisis d’abord le rôle « vérifié » dans `/serv` → Vérification.');
     const embed = new EmbedBuilder()
-      .setColor(couleurPour(interaction.guild))
-      .setTitle('🔐 VÉRIFICATION')
-      .setDescription(`Bienvenue sur **${interaction.guild.name}** !\n\nPour accéder au serveur, clique sur le bouton ci-dessous${reglages.method === 'captcha' ? ' puis recopie le code affiché' : ''}.`);
+      .setColor(couleurPour(membre.guild))
+      .setTitle('🔐 Vérification')
+      .setDescription(`Bienvenue sur **${membre.guild.name}** !\n\nUn clic sur le bouton et tu accèdes au serveur${reglages.method === 'captcha' ? ', après avoir recopié un petit code' : ''}.`);
     const envoye = await salon.send({ embeds: [embed], components: [rangee(bouton('verif:start', 'Me vérifier', ButtonStyle.Success, '✅'))] });
-    await repondre(interaction, { embeds: [ok(interaction.guild, `Panneau posté : ${envoye.url}`)], ephemeral: true });
+    return `Panneau posté : ${envoye.url}`;
   },
 };
 
@@ -489,7 +485,7 @@ const pageReglageVerification: PageReglage = {
   moduleId: 'verification',
   ordre: 2,
   description:
-    'Les nouveaux arrivent avec un accès limité, puis se vérifient (`/verify`).\n-# Donne au rôle « non vérifié » un accès au seul salon de vérification. Les rôles automatiques sont donnés après vérification.',
+    'Les nouveaux arrivent avec un accès limité, puis se vérifient (`/affiche`).\n-# Donne au rôle « non vérifié » un accès au seul salon de vérification. Les rôles automatiques sont donnés après vérification.',
   champs: [
     { genre: 'role', cle: 'verified', libelle: 'Rôle vérifié', attribuable: true, lire: (c) => c.verification.roleVerifieId, ecrire: (c, v) => void (c.verification.roleVerifieId = v) },
     { genre: 'role', cle: 'unverified', libelle: 'Rôle non vérifié (à l’arrivée)', attribuable: true, lire: (c) => c.verification.roleNonVerifieId, ecrire: (c, v) => void (c.verification.roleNonVerifieId = v) },
@@ -516,7 +512,8 @@ export const moduleVerification: ModuleBot = {
   description: 'Accès limité à l’arrivée puis vérification (clic ou code)',
   desactivable: true,
   actifParDefaut: false,
-  commandes: [commandeVerifier],
+  panneaux: [panneauVerification],
+  commandesPrefixe: [prefixePanneau(panneauVerification, 'Poser la vérification')],
   pagesReglage: [pageReglageVerification],
   composants: [
     {

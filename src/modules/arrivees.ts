@@ -7,14 +7,13 @@ import {
   type Guild,
   type GuildMember,
   type PartialGuildMember,
-  SlashCommandBuilder,
 } from 'discord.js';
-import { botPeutGererRole, emojiPour, enseigneDe, rolesAttribuables } from '../coeur/acces';
-import { aideVariables, couleurPour, embedEnseigne, estLienHttp, remplirModele, repondre } from '../coeur/affichage';
-import { afficherPage, lirePageReglage, type PageReglage } from '../coeur/assistant';
+import { emojiPour, enseigneDe, rolesAttribuables } from '../coeur/acces';
+import { aideVariables, couleurPour, embedEnseigne, estLienHttp, remplirModele } from '../coeur/affichage';
+import type { PageReglage } from '../coeur/assistant';
 import { journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
-import { creerRegistre, RACINE_PROJET, formaterDuree, formaterNombre, tronquer, Niveau } from '../coeur/outils';
+import { type ModuleBot, sur } from '../coeur/noyau';
+import { creerRegistre, RACINE_PROJET, formaterDuree, formaterNombre, tronquer } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 import { ajusterTexte, bibliothequeToile, type BibliothequeToile, type Contexte, type ImageToile, nettoyer, PILE_POLICES, rectangleArrondi } from './cartes';
 import { activiteMembre } from './niveaux';
@@ -454,25 +453,6 @@ const pageReglageRolesAuto: PageReglage = {
   ],
 };
 
-const rolesAuto: CommandeSlash = {
-  categorie: 'roles',
-  niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder().setName('autorole').setDescription('Rôles donnés à l’arrivée'),
-  async executer(interaction) {
-    const page = lirePageReglage('autorole');
-    if (page) return repondre(interaction, { ...afficherPage(interaction.guild, page), ephemeral: true });
-    const reglages = lireConfig(interaction.guildId).rolesAuto;
-    const liste = (ids: string[]) =>
-      ids.map((id) => {
-        const role = interaction.guild.roles.cache.get(id);
-        return `• <@&${id}>${role && !botPeutGererRole(interaction.guild, role) ? ' ⚠️ au-dessus du bot' : ''}`;
-      });
-    return repondre(interaction, {
-      embeds: [embedEnseigne(interaction.guild).setTitle('🎭 Rôles automatiques').setDescription([...liste(reglages.rolesMembres), ...liste(reglages.rolesBots)].join('\n') || '—')],
-      ephemeral: true,
-    });
-  },
-};
 
 export const moduleRolesAuto: ModuleBot = {
   id: 'autorole',
@@ -481,7 +461,6 @@ export const moduleRolesAuto: ModuleBot = {
   description: 'Rôles donnés à l’arrivée (membres et bots)',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [rolesAuto],
   pagesReglage: [pageReglageRolesAuto],
   evenements: [
     sur('guildMemberAdd', async (membre) => {

@@ -225,7 +225,7 @@ Pages : accueil, modules, tickets, giveaways, Twitch, modération, logs, personn
 `/twitch` · `/ticket` · `/giveaway`
 
 ### 🎭 Rôles
-`/autorole` · `/reactionrole` · `/notificationrole`
+`/serv` · `/reactionrole` · `/notificationrole`
 
 ### 🛡️ Sanctions et salons
 `/warn` · `/unwarn` · `/warnings` · `/timeout` · `/untimeout` · `/kick` · `/ban` · `/unban` · `/blacklist` · `/clear` · `/slowmode` · `/lock` · `/unlock` · `/lockdown` · `/antiraid` · `/antinuke` · `+unbanall` · `+gbl` · `+ungbl` · `&l0all` · `&unl0all`
@@ -234,7 +234,7 @@ Pages : accueil, modules, tickets, giveaways, Twitch, modération, logs, personn
 `/announce` · `/embed` · `/customcommand` · `/autoresponse`
 
 ### ⚙️ Le serveur
-`/setup` · `/quicksetup` · `/modules` · `/config` · `/test` · `/wl` · `/logs` · `/progression` · `/rules` · `/verify` · `/form` · `/backup`
+`/setup` · `/quicksetup` · `/modules` · `/config` · `/test` · `/wl` · `/logs` · `/progression` · `/affiche` · `/form` · `/backup`
 
 **Variables** utilisables dans les messages : `{user}` `{mention}` `{username}` `{userid}` `{server}` `{membercount}` `{createdat}` `{channel}` `{role}` `{date}` `{time}` `{streamer}` `{game}` `{title}` `{viewers}` `{url}` `{level}` `{boosts}` `{brand}` `{twitch}`.
 

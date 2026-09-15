@@ -1,12 +1,10 @@
 import {
   type ButtonInteraction,
   ButtonStyle,
-  ChannelType,
   type Client,
   EmbedBuilder,
   type Guild,
   type GuildMember,
-  type GuildTextBasedChannel,
   type Message,
   MessageFlags,
   type ModalSubmitInteraction,
@@ -31,7 +29,7 @@ import {
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireJson, lireTout } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
 import {
   barreProgression,
   creerRegistre,
@@ -653,19 +651,16 @@ export function lireSections(saisie: string): { titre: string; contenu: string }
   return sortie.slice(0, 25);
 }
 
-const reglement: CommandeSlash = {
-  categorie: 'admin',
-  niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('rules')
-    .setDescription('Le panneau du règlement')
-    .addChannelOption((o) => o.setName('salon').setDescription('Salon').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
-  async executer(interaction) {
-    const reglages = lireConfig(interaction.guildId).reglement;
-    const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(interaction.guild, reglages.salonId) ?? interaction.channel) as GuildTextBasedChannel | null;
-    if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
-    const envoye = await salon.send(panneauBoutons(interaction.guild));
-    await repondre(interaction, { embeds: [ok(interaction.guild, `Règlement posté : ${envoye.url}${reglages.roleAcceptationId ? '' : '\n-# Aucun rôle d’acceptation réglé : le bouton n’apparaît pas.'}`)], ephemeral: true });
+const panneauReglement: PanneauAffiche = {
+  id: 'reglement',
+  alias: ['rules', 'regles'],
+  nom: 'Règlement',
+  emoji: '📜',
+  groupe: 'Le serveur',
+  quoi: 'Le règlement et son bouton « J’accepte »',
+  async poser(salon, membre) {
+    const envoye = await salon.send(panneauBoutons(membre.guild));
+    return `Règlement posté : ${envoye.url}${lireConfig(membre.guild.id).reglement.roleAcceptationId ? '' : '\n-# Aucun rôle d’acceptation réglé : le bouton n’apparaît pas.'}`;
   },
 };
 
@@ -676,7 +671,7 @@ const pageReglageReglement: PageReglage = {
   emoji: '📜',
   moduleId: 'rules',
   ordre: 1,
-  description: 'Le panneau `/rules` avec un bouton « J’accepte » qui donne le rôle membre.\n-# Sections : une ligne `## Titre` puis le texte, répété.',
+  description: 'Le panneau `/affiche` avec un bouton « J’accepte » qui donne le rôle membre.\n-# Sections : une ligne `## Titre` puis le texte, répété.',
   champs: [
     { genre: 'channel', cle: 'channel', libelle: 'Salon du règlement', lire: (c) => c.reglement.salonId, ecrire: (c, v) => void (c.reglement.salonId = v) },
     { genre: 'role', cle: 'accept', libelle: 'Rôle donné en acceptant', attribuable: true, lire: (c) => c.reglement.roleAcceptationId, ecrire: (c, v) => void (c.reglement.roleAcceptationId = v) },
@@ -703,7 +698,8 @@ export const moduleReglement: ModuleBot = {
   description: 'Panneau de règlement avec acceptation',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [reglement],
+  panneaux: [panneauReglement],
+  commandesPrefixe: [prefixePanneau(panneauReglement, 'Poser le règlement')],
   pagesReglage: [pageReglageReglement],
   composants: [
     {

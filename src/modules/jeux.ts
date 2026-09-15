@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto';
 import { type ButtonInteraction, ButtonStyle, EmbedBuilder, type Guild, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { bouton, couleurPour, rangee, repondre } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
-import type { CommandeSlash, ModuleBot } from '../coeur/noyau';
+import type { CommandePrefixe, CommandeSlash, ModuleBot } from '../coeur/noyau';
 import { ErreurUtilisateur, neutraliserMentions, tronquer } from '../coeur/outils';
 import { lireConfig } from '../coeur/reglages';
 
@@ -20,6 +20,33 @@ const REPONSES = [
 
 const embed = (serveur: Guild) => new EmbedBuilder().setColor(couleurPour(serveur));
 
+function boule(serveur: Guild, question: string) {
+  exigerJeu(serveur.id, 'bouleMagique');
+  if (!question.trim()) throw new ErreurUtilisateur('Pose ta question après la commande.');
+  return { embeds: [embed(serveur).setTitle('🎱 Boule magique').setDescription(`**${tronquer(neutraliserMentions(question), 200)}**\n\n${REPONSES[randomInt(REPONSES.length)]}`)] };
+}
+
+function piece(serveur: Guild) {
+  exigerJeu(serveur.id, 'pileOuFace');
+  return { embeds: [embed(serveur).setTitle('🪙 Pile ou face').setDescription(`La pièce tombe sur… **${randomInt(2) === 0 ? 'Pile' : 'Face'}** !`)] };
+}
+
+// - Dés à la façon 3d20 -
+export function lireDes(parametres: string[]): { nombre: number; faces: number } {
+  const m = /^(\d*)d(\d+)$/i.exec(parametres[0] ?? '') ?? /^()(\d+)$/.exec(parametres[0] ?? '');
+  const borne = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+  if (!m) return { nombre: 1, faces: 6 };
+  return { nombre: borne(Number(m[1]) || 1, 1, 20), faces: borne(Number(m[2]) || 6, 2, 1000) };
+}
+
+function lancerDes(serveur: Guild, nombre: number, faces: number) {
+  exigerJeu(serveur.id, 'des');
+  const lancers = Array.from({ length: nombre }, () => randomInt(1, faces + 1));
+  return {
+    embeds: [embed(serveur).setTitle('🎲 Lancer de dés').setDescription(`${nombre}d${faces} : ${lancers.map((r) => `**${r}**`).join(' · ')}${nombre > 1 ? `\nTotal : **${lancers.reduce((a, b) => a + b, 0)}**` : ''}`)],
+  };
+}
+
 const bouleMagique: CommandeSlash = {
   categorie: 'economy',
   donnees: new SlashCommandBuilder()
@@ -27,9 +54,7 @@ const bouleMagique: CommandeSlash = {
     .setDescription('Boule magique')
     .addStringOption((o) => o.setName('question').setDescription('Ta question').setRequired(true).setMaxLength(200)),
   async executer(i) {
-    exigerJeu(i.guildId, 'bouleMagique');
-    const q = neutraliserMentions(i.options.getString('question', true));
-    await repondre(i, { embeds: [embed(i.guild).setTitle('🎱 Boule magique').setDescription(`**${tronquer(q, 200)}**\n\n${REPONSES[randomInt(REPONSES.length)]}`)] });
+    await repondre(i, boule(i.guild, i.options.getString('question', true)));
   },
 };
 
@@ -37,9 +62,7 @@ const pileOuFace: CommandeSlash = {
   categorie: 'economy',
   donnees: new SlashCommandBuilder().setName('coinflip').setDescription('Pile ou face'),
   async executer(i) {
-    exigerJeu(i.guildId, 'pileOuFace');
-    const pile = randomInt(2) === 0;
-    await repondre(i, { embeds: [embed(i.guild).setTitle('🪙 Pile ou face').setDescription(`La pièce tombe sur… **${pile ? 'Pile' : 'Face'}** !`)] });
+    await repondre(i, piece(i.guild));
   },
 };
 
@@ -51,13 +74,7 @@ const des: CommandeSlash = {
     .addIntegerOption((o) => o.setName('faces').setDescription('Nombre de faces').setMinValue(2).setMaxValue(1000))
     .addIntegerOption((o) => o.setName('nombre').setDescription('Nombre de dés').setMinValue(1).setMaxValue(20)),
   async executer(i) {
-    exigerJeu(i.guildId, 'des');
-    const faces = i.options.getInteger('faces') ?? 6;
-    const nombre = i.options.getInteger('nombre') ?? 1;
-    const lancers = Array.from({ length: nombre }, () => randomInt(1, faces + 1));
-    await repondre(i, {
-      embeds: [embed(i.guild).setTitle('🎲 Lancer de dés').setDescription(`${nombre} d${faces} : ${lancers.map((r) => `**${r}**`).join(' · ')}${nombre > 1 ? `\nTotal : **${lancers.reduce((a, b) => a + b, 0)}**` : ''}`)],
-    });
+    await repondre(i, lancerDes(i.guild, i.options.getInteger('nombre') ?? 1, i.options.getInteger('faces') ?? 6));
   },
 };
 
@@ -74,17 +91,42 @@ const pierreFeuilleCiseaux: CommandeSlash = {
     .setDescription('Pierre, feuille, ciseaux')
     .addUserOption((o) => o.setName('adversaire').setDescription('Adversaire')),
   async executer(i) {
-    exigerJeu(i.guildId, 'pierreFeuilleCiseaux');
-    const adversaire = i.options.getUser('adversaire');
-    if (adversaire && (adversaire.bot || adversaire.id === i.user.id)) throw new ErreurUtilisateur('Choisis un autre membre (pas un bot, pas toi).');
-    const adversaireId = adversaire?.id ?? 'bot';
-    await repondre(i, {
-      embeds: [embed(i.guild).setTitle('✊ Pierre, feuille, ciseaux').setDescription(adversaire ? `<@${i.user.id}> défie <@${adversaire.id}> ! Chacun choisit en secret.` : 'Choisis ton coup !')],
-      components: [rangee(...Object.entries(COUPS).map(([cle, v]) => bouton(`rps:${i.user.id}:${adversaireId}:${cle}`, v.label, ButtonStyle.Secondary, v.emoji)))],
-      allowedMentions: { users: adversaire ? [adversaire.id] : [] },
-    });
+    await repondre(i, duel(i.guild, i.user.id, i.options.getUser('adversaire')));
   },
 };
+
+function duel(serveur: Guild, joueurId: string, adversaire: { id: string; bot: boolean } | null) {
+  exigerJeu(serveur.id, 'pierreFeuilleCiseaux');
+  if (adversaire && (adversaire.bot || adversaire.id === joueurId)) throw new ErreurUtilisateur('Choisis un autre membre (pas un bot, pas toi).');
+  return {
+    embeds: [embed(serveur).setTitle('✊ Pierre, feuille, ciseaux').setDescription(adversaire ? `<@${joueurId}> défie <@${adversaire.id}> ! Chacun choisit en secret.` : 'Choisis ton coup !')],
+    components: [rangee(...Object.entries(COUPS).map(([cle, v]) => bouton(`rps:${joueurId}:${adversaire?.id ?? 'bot'}:${cle}`, v.label, ButtonStyle.Secondary, v.emoji)))],
+    allowedMentions: { users: adversaire ? [adversaire.id] : [] },
+  };
+}
+
+// - Les mini-jeux au clavier -
+const jeu = (nom: string, alias: string[], description: string, usage: string | undefined, charge: (message: import('discord.js').Message<true>, parametres: string[]) => Promise<object> | object): CommandePrefixe => ({
+  nom,
+  alias,
+  domaine: 'general',
+  categorie: 'economy',
+  description,
+  usage,
+  async executer(message, parametres) {
+    await message.reply({ ...(await charge(message, parametres)), allowedMentions: { repliedUser: false } });
+  },
+});
+
+const prefixesJeux: CommandePrefixe[] = [
+  jeu('8ball', ['boule'], 'Boule magique', '<question>', (m, p) => boule(m.guild, p.join(' '))),
+  jeu('pf', ['coinflip', 'pileface'], 'Pile ou face', undefined, (m) => piece(m.guild)),
+  jeu('de', ['des', 'dice'], 'Lancer des dés', '[3d20]', (m, p) => {
+    const { nombre, faces } = lireDes(p);
+    return lancerDes(m.guild, nombre, faces);
+  }),
+  jeu('rps', ['chifoumi', 'pfc'], 'Pierre, feuille, ciseaux', '[membre]', async (m) => duel(m.guild, m.author.id, m.mentions.users.first() ?? null)),
+];
 
 const enAttente = new Map<string, Map<string, string>>();
 
@@ -140,6 +182,7 @@ export const moduleJeux: ModuleBot = {
   desactivable: true,
   actifParDefaut: false,
   commandes: [bouleMagique, pileOuFace, des, pierreFeuilleCiseaux],
+  commandesPrefixe: prefixesJeux,
   pagesReglage: [pageReglage],
   composants: [{ prefixe: 'rps', bouton: (i, parametres) => surPierreFeuille(i, parametres) }],
 };

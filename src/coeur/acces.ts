@@ -623,6 +623,27 @@ export function poserServeursEnseigne(cle: string, serveurIds: string[]): void {
   oublierEnseignes();
 }
 
+// - Changer la clé d’une enseigne -
+// Serveurs et blacklist suivent la nouvelle clé, en une seule transaction.
+export function renommerEnseigne(ancienne: string, nouvelle: string): void {
+  if (!MOTIF_CLE.test(nouvelle)) throw new Error('clé invalide');
+  if (ancienne === nouvelle) return;
+  if (!lireEnseigne(ancienne)) throw new Error('enseigne introuvable');
+  if (lireEnseigne(nouvelle)) throw new Error('clé déjà prise');
+  transaction(() => {
+    executer(
+      'INSERT INTO enseignes (cle, nom, couleur, pied, logo, fond, pseudo_twitch, liens, emojis, cree_le, modifie_le) SELECT ?, nom, couleur, pied, logo, fond, pseudo_twitch, liens, emojis, cree_le, ? FROM enseignes WHERE cle = ?',
+      nouvelle,
+      Date.now(),
+      ancienne,
+    );
+    executer('UPDATE serveurs_enseignes SET enseigne_cle = ? WHERE enseigne_cle = ?', nouvelle, ancienne);
+    executer('UPDATE liste_noire SET portee = ? WHERE portee = ?', `enseigne:${nouvelle}`, `enseigne:${ancienne}`);
+    executer('DELETE FROM enseignes WHERE cle = ?', ancienne);
+  });
+  oublierEnseignes();
+}
+
 export function supprimerEnseigne(cle: string): boolean {
   const r = executer('DELETE FROM enseignes WHERE cle = ?', cle);
   executer('DELETE FROM serveurs_enseignes WHERE enseigne_cle = ?', cle);

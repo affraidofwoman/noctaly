@@ -15,7 +15,7 @@ import { bouton, type ChampFenetre, construireFormulaire, couleurPour, estLienHt
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireJson, lireTout } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot } from '../coeur/noyau';
+import { type CommandeSlash, type ModuleBot, type PanneauAffiche, prefixePanneau } from '../coeur/noyau';
 import {
   ErreurUtilisateur,
   identifiantDepuisTexte,
@@ -466,13 +466,7 @@ const commandeFormulaire: CommandeSlash = {
         .addStringOption((o) => o.setName('titre').setDescription('Ex : Recrutement monteur').setRequired(true).setMaxLength(45))
         .addChannelOption((o) => o.setName('salon').setDescription('Où arrivent les réponses').setRequired(true).addChannelTypes(ChannelType.GuildText)),
     )
-    .addSubcommand((s) =>
-      s
-        .setName('panel')
-        .setDescription('Poster un formulaire')
-        .addStringOption((o) => o.setName('formulaire').setDescription('Le formulaire').setRequired(true).setAutocomplete(true))
-        .addChannelOption((o) => o.setName('salon').setDescription('Où (ici par défaut)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
-    )
+
     .addSubcommand((s) =>
       s
         .setName('delete')
@@ -511,15 +505,28 @@ const commandeFormulaire: CommandeSlash = {
       const r = executer('DELETE FROM formulaires WHERE serveur_id = ? AND nom = ?', serveur.id, nom);
       return repondre(interaction, { embeds: [ok(serveur, r.changes ? 'Formulaire supprimé.' : 'Introuvable.')], ephemeral: true });
     }
-    const formulaire = lireFormulaire(serveur, nom);
+  },
+};
+
+const panneauFormulaire: PanneauAffiche = {
+  id: 'formulaire',
+  alias: ['form', 'candidature'],
+  nom: 'Formulaire',
+  emoji: '📝',
+  groupe: 'Accueil',
+  quoi: 'Partenariat, candidature staff ou formulaire créé',
+  choix(serveur) {
+    const rangees = lireTout<LigneFormulaire>('SELECT * FROM formulaires WHERE serveur_id = ? ORDER BY nom', serveur.id);
+    return [{ label: 'Partenariat', value: 'partenariat' }, { label: 'Candidature staff', value: 'staff' }, ...rangees.map((r) => ({ label: tronquer(r.titre, 100), value: r.nom }))].slice(0, 25);
+  },
+  async poser(salon, membre, valeur) {
+    const formulaire = lireFormulaire(membre.guild, valeur ?? '');
     if (!formulaire) throw new ErreurUtilisateur('Formulaire introuvable.');
-    const salon = (interaction.options.getChannel('salon') ?? interaction.channel) as GuildTextBasedChannel | null;
-    if (!salon) return;
     const envoye = await salon.send({
-      embeds: [new EmbedBuilder().setColor(couleurPour(serveur)).setTitle(formulaire.titre).setDescription(formulaire.description || 'Clique sur le bouton pour remplir le formulaire.')],
+      embeds: [new EmbedBuilder().setColor(couleurPour(membre.guild)).setTitle(`📝 ${formulaire.titre}`).setDescription(formulaire.description || 'Un clic sur le bouton, quelques questions, et c’est envoyé.')],
       components: [rangee(bouton(`form:open:${formulaire.nom}`, 'Remplir le formulaire', ButtonStyle.Primary, '📝'))],
     });
-    return repondre(interaction, { embeds: [ok(serveur, `Bouton posté : ${envoye.url}`)], ephemeral: true });
+    return `Bouton posté : ${envoye.url}`;
   },
 };
 
@@ -545,6 +552,8 @@ export const moduleFormulaires: ModuleBot = {
   desactivable: true,
   actifParDefaut: true,
   commandes: [partenariat, candidatureStaff, commandeFormulaire],
+  panneaux: [panneauFormulaire],
+  commandesPrefixe: [prefixePanneau(panneauFormulaire, 'Poser un formulaire')],
   pagesReglage: [pageReglageFormulaires],
   composants: [
     {
@@ -593,7 +602,7 @@ export const moduleFormulaires: ModuleBot = {
             argument,
             Date.now(),
           );
-          await interaction.reply({ embeds: [ok(interaction.guild, `Formulaire **${titre}** enregistré (\`${nom}\`, ${questions.length} question(s)).\nPoste son bouton avec \`/form panel\`.`)], flags: MessageFlags.Ephemeral });
+          await interaction.reply({ embeds: [ok(interaction.guild, `Formulaire **${titre}** enregistré (\`${nom}\`, ${questions.length} question(s)).\nPoste son bouton avec \`/affiche\`.`)], flags: MessageFlags.Ephemeral });
         }
       },
     },

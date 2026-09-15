@@ -109,6 +109,17 @@ export function creerRegistre(portee: string): Registre {
 
 export const registre = creerRegistre('bot');
 
+// - Comparer sans accent ni majuscule -
+export function simplifier(texte: string): string {
+  return texte.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
+}
+
+// - Retrouver une entrée tapée à la main -
+export function trouverEntree<T extends { id: string; nom: string; alias?: string[] }>(entrees: T[], saisie: string): T | undefined {
+  const vise = simplifier(saisie);
+  return entrees.find((e) => [e.id, e.nom, ...(e.alias ?? [])].some((n) => simplifier(n) === vise));
+}
+
 export class ErreurUtilisateur extends Error {
   constructor(
     message: string,

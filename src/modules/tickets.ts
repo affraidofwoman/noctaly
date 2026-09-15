@@ -51,7 +51,7 @@ import {
 import { afficherPage, lirePageReglage, type PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
 import { creerRegistre, ErreurUtilisateur, identifiantDepuisTexte, marqueTemps, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, modifierConfig, type MotifTicket, type StyleBoutonTicket } from '../coeur/reglages';
 
@@ -783,12 +783,7 @@ const commandeTicket: CommandeSlash = {
     .setDescription('Les tickets')
     .addSubcommand((s) => s.setName('setup').setDescription('Régler les tickets'))
     .addSubcommand((s) => s.setName('config').setDescription('Réglages tickets'))
-    .addSubcommand((s) =>
-      s
-        .setName('panneau')
-        .setDescription('Poster le panneau')
-        .addChannelOption((o) => o.setName('salon').setDescription('Où (ici par défaut)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
-    )
+
     .addSubcommand((s) => s.setName('close').setDescription('Fermer ce ticket'))
     .addSubcommand((s) => s.setName('reopen').setDescription('Rouvrir ce ticket'))
     .addSubcommand((s) =>
@@ -814,7 +809,6 @@ const commandeTicket: CommandeSlash = {
   niveauxSousCommandes: {
     setup: Niveau.ADMIN,
     config: Niveau.ADMIN,
-    panneau: Niveau.ADMIN,
     reopen: Niveau.SUPPORT,
     add: Niveau.SUPPORT,
     remove: Niveau.SUPPORT,
@@ -830,12 +824,7 @@ const commandeTicket: CommandeSlash = {
         return repondre(interaction, { ...afficherPage(serveur, lirePageReglage('tickets')!), ephemeral: true });
       case 'config':
         return repondre(interaction, { ...ecranMotifs(serveur), ephemeral: true });
-      case 'panneau': {
-        const salon = (interaction.options.getChannel('salon') ?? interaction.channel) as GuildTextBasedChannel | null;
-        if (!salon) return;
-        const url = await publierPanneau(salon);
-        return repondre(interaction, { embeds: [ok(serveur, `Panneau posté : ${url}`)], ephemeral: true });
-      }
+
       case 'list':
         return paginer(interaction, pagesTickets(serveur, (interaction.options.getString('etat') ?? 'open') as 'open' | 'closed' | 'all'), true);
     }
@@ -929,6 +918,18 @@ const commandesPrefixe: CommandePrefixe[] = [
 
 // - Composants -
 
+const panneauTickets: PanneauAffiche = {
+  id: 'tickets',
+  alias: ['ticketpanel'],
+  nom: 'Tickets',
+  emoji: '🎫',
+  groupe: 'Accueil',
+  quoi: 'Les motifs à boutons pour ouvrir un ticket',
+  async poser(salon) {
+    return `Panneau posté : ${await publierPanneau(salon)}`;
+  },
+};
+
 export const moduleTickets: ModuleBot = {
   id: 'tickets',
   nom: 'Tickets',
@@ -937,7 +938,8 @@ export const moduleTickets: ModuleBot = {
   desactivable: true,
   actifParDefaut: true,
   commandes: [commandeTicket],
-  commandesPrefixe,
+  commandesPrefixe: [...commandesPrefixe, prefixePanneau(panneauTickets, 'Poser les tickets')],
+  panneaux: [panneauTickets],
   pagesReglage: pages,
   composants: [
     {

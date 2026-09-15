@@ -41,7 +41,7 @@ import {
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout, transaction } from '../coeur/base';
 import { journal } from '../coeur/journaux';
-import { type CommandeSlash, lireAiguilleur, type ModuleBot, sur } from '../coeur/noyau';
+import { type CommandeSlash, lireAiguilleur, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
 import { CarteExpirante, creerRegistre, Delais, ErreurUtilisateur, idCourt, neutraliserMentions, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 
@@ -1073,6 +1073,29 @@ const roleNotifications: CommandeSlash = {
   },
 };
 
+// - Reposer un panneau de rôles ici -
+// L’ancien message disparaît : un seul exemplaire, là où on l’a demandé.
+const panneauRoles_: PanneauAffiche = {
+  id: 'roles',
+  alias: ['rolespanel'],
+  nom: 'Rôles à choisir',
+  emoji: '🎭',
+  groupe: 'Rôles',
+  quoi: 'Un panneau de rôles, déplacé dans ce salon',
+  choix(serveur) {
+    return lireTout<LignePanneau>('SELECT * FROM panneaux_roles WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 25', serveur.id).map((p) => ({ label: tronquer(p.titre, 100), value: String(p.id), description: `Panneau #${p.id}` }));
+  },
+  async poser(salon, membre, valeur) {
+    const panneau = exigerPanneau(membre.guild.id, valeur);
+    if (panneau.message_id && panneau.salon_id !== salon.id) {
+      const ancien = membre.guild.channels.cache.get(panneau.salon_id);
+      if (ancien?.isTextBased()) await ancien.messages.delete(panneau.message_id).catch(() => undefined);
+    }
+    if (panneau.salon_id !== salon.id) executer('UPDATE panneaux_roles SET salon_id = ?, message_id = NULL WHERE id = ?', salon.id, panneau.id);
+    return `Panneau posté : ${await publierPanneauxRoles(membre.guild, exigerPanneau(membre.guild.id, panneau.id))}`;
+  },
+};
+
 export const moduleRolesAChoisir: ModuleBot = {
   id: 'reactionroles',
   nom: 'Rôles à choisir',
@@ -1081,6 +1104,8 @@ export const moduleRolesAChoisir: ModuleBot = {
   desactivable: true,
   actifParDefaut: true,
   commandes: [panneauRoles, roleNotifications],
+  panneaux: [panneauRoles_],
+  commandesPrefixe: [prefixePanneau(panneauRoles_, 'Poser des rôles')],
   composants: [
     {
       prefixe: 'rr',

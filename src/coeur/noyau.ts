@@ -11,6 +11,8 @@ import {
   Events,
   GatewayIntentBits,
   Guild,
+  type GuildMember,
+  type GuildTextBasedChannel,
   type Interaction,
   type Message,
   type MessageComponentInteraction,
@@ -35,7 +37,7 @@ import {
   environnement,
   ERREUR_GENERIQUE,
   ErreurUtilisateur,
-  LimiteurFenetre, type CategorieAide, type DomainePrefixe, Niveau } from './outils';
+  LimiteurFenetre, type CategorieAide, type DomainePrefixe, Niveau, simplifier } from './outils';
 import { lireConfig, lireModule, moduleActif } from './reglages';
 
 export interface DonneesCommande {
@@ -108,6 +110,44 @@ export interface TestModule {
   executer(interaction: AnySelectMenuInteraction<'cached'>): Promise<string>;
 }
 
+// - Panneau posé par /affiche -
+export interface PanneauAffiche {
+  id: string;
+  alias?: string[];
+  nom: string;
+  emoji: string;
+  groupe: string;
+  quoi: string;
+  choix?(serveur: Guild): { label: string; value: string; description?: string }[];
+  poser(salon: GuildTextBasedChannel, membre: GuildMember, valeur?: string): Promise<string>;
+}
+
+// - Le préfixe d’un panneau -
+// `&tickets` pose le panneau dans le salon, comme le menu de /affiche.
+export function prefixePanneau(panneau: PanneauAffiche, description: string): CommandePrefixe {
+  return {
+    nom: panneau.id,
+    alias: panneau.alias,
+    domaine: 'salon',
+    categorie: 'admin',
+    description,
+    usage: panneau.choix ? '<lequel>' : undefined,
+    niveau: Niveau.ADMIN,
+    async executer(message, parametres) {
+      const saisie = simplifier(parametres.join(' '));
+      let valeur: string | undefined;
+      if (panneau.choix) {
+        const choix = panneau.choix(message.guild);
+        if (!choix.length) throw new ErreurUtilisateur(`Rien à poser pour « ${panneau.nom} » pour l’instant.`);
+        valeur = saisie ? choix.find((c) => simplifier(c.value) === saisie || simplifier(c.label).includes(saisie))?.value : undefined;
+        if (!valeur) throw new ErreurUtilisateur(`Précise lequel : ${choix.slice(0, 15).map((c) => `\`${c.value}\` ${c.label}`).join(' · ')}`);
+      }
+      await panneau.poser(message.channel, message.member!, valeur);
+      await message.delete().catch(() => undefined);
+    },
+  };
+}
+
 export interface ModuleBot {
   id: string;
   nom: string;
@@ -121,6 +161,7 @@ export interface ModuleBot {
   evenements?: EvenementModule[];
   taches?: TachePlanifiee[];
   pagesReglage?: PageReglage[];
+  panneaux?: PanneauAffiche[];
   tests?: TestModule[];
   auDemarrage?(client: Client<true>): Promise<void>;
   aLArret?(): Promise<void> | void;

@@ -1,139 +1,161 @@
 import {
-  type AnySelectMenuInteraction,
-  type APIApplicationCommandOption,
+  type APIEmbed,
+  type APIEmbedField,
   ApplicationCommandOptionType,
   ChannelType,
   version as djsVersion,
   type Guild,
   GuildMember,
   SlashCommandBuilder,
-  StringSelectMenuBuilder,
   type User,
 } from 'discord.js';
-import { aAcces, libelleNiveau, libelleNiveauVu, lireNiveau, whitelistsMembreVues } from '../coeur/acces';
-import { boutonCorbeille, embedEnseigne, info, nomEnseigne, rangee, rangeeCorbeille, repondre } from '../coeur/affichage';
+import { aAcces, libelleNiveauVu, whitelistsMembreVues } from '../coeur/acces';
+import { boutonCorbeille, couleurPour, embedEnseigne, info, nomEnseigne, rangee, rangeeCorbeille, repondre } from '../coeur/affichage';
 import { type CommandePrefixe, type CommandeSlash, etatBot, lireAiguilleur, type ModuleBot, niveauRequis, sur } from '../coeur/noyau';
 import { formaterDuree, formaterNombre, marqueTemps, membreCible, resoudreUtilisateur, tronquer, type CategorieAide, CATEGORIES_AIDE, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 import { crediterVocal, resynchroniserVocal, traiterEtatVocal } from './niveaux';
 
-export interface LigneAide {
-  texte: string;
-  tri: string;
+// - Aide façon Airline -
+// Tout d’un coup, en tableau : une ligne par commande, jumelles regroupées.
+interface OptionJson {
+  type: number;
+  name: string;
+  options?: { type: number; name: string }[];
 }
 
-export function lignesAide(membre: GuildMember, categorie: CategorieAide): LigneAide[] {
+export function ligneCommande(json: { name: string; description: string; options?: OptionJson[] }, autorise: (groupe: string | null, sous: string | null) => boolean, prefixes: string[]): string | null {
+  const sous: string[] = [];
+  let avecSous = false;
+  for (const o of json.options ?? []) {
+    if (o.type === ApplicationCommandOptionType.Subcommand) {
+      avecSous = true;
+      if (autorise(null, o.name)) sous.push(o.name);
+    } else if (o.type === ApplicationCommandOptionType.SubcommandGroup) {
+      avecSous = true;
+      for (const interne of o.options ?? []) if (autorise(o.name, interne.name)) sous.push(`${o.name} ${interne.name}`);
+    }
+  }
+  if (avecSous ? !sous.length : !autorise(null, null)) return null;
+  const tete = [`**/${json.name}**`, ...prefixes.map((p) => `**${p}**`)].join(' · ');
+  return `${tete}${sous.length ? ` ${sous.join(' · ')}` : ''} — ${json.description}`;
+}
+
+export interface EntreePrefixe {
+  declencheur: string;
+  nom: string;
+  description: string;
+  usage?: string;
+}
+
+const JUMELLES: [string, string][] = [
+  ['pause', 'resume'],
+  ['pic', 'banner'],
+  ['join', 'leave'],
+  ['daily', 'gold'],
+];
+
+export function pairesPrefixe(entrees: EntreePrefixe[]): string[] {
+  const triees = [...entrees].sort((a, b) => a.declencheur.localeCompare(b.declencheur, 'fr'));
+  const parDeclencheur = new Map(triees.map((e) => [e.declencheur, e]));
+  const pris = new Set<string>();
+  const lignes: string[] = [];
+  for (const e of triees) {
+    if (pris.has(e.declencheur)) continue;
+    pris.add(e.declencheur);
+    const prefixe = e.declencheur.slice(0, e.declencheur.length - e.nom.length);
+    const jumelle = [`un${e.nom}`, ...JUMELLES.filter(([a]) => a === e.nom).map(([, b]) => b)]
+      .map((nom) => parDeclencheur.get(`${prefixe}${nom}`))
+      .find((j) => j && !pris.has(j.declencheur));
+    if (jumelle) pris.add(jumelle.declencheur);
+    const noms = [e, ...(jumelle ? [jumelle] : [])].map((x) => `**${x.declencheur}**`).join(' · ');
+    lignes.push(`${noms}${!jumelle && e.usage ? ` \`${e.usage}\`` : ''} — ${e.description}`);
+  }
+  return lignes;
+}
+
+const longueurVisible = (ligne: string) => ligne.replace(/<a?:\w+:\d+>/g, ' ').replace(/\*\*|`/g, '').length;
+
+export function tableauAide(sections: { titre: string; lignes: string[] }[], options: { couleur: number; titre: string; accroche: string; pied: string }): APIEmbed[] {
+  const embeds: APIEmbed[] = [];
+  let champs: APIEmbedField[] = [];
+  let taille = 0;
+  let colonnes = 0;
+  const fermer = () => {
+    if (!champs.length) return;
+    embeds.push({ color: options.couleur, fields: champs });
+    champs = [];
+    taille = 0;
+    colonnes = 0;
+  };
+  for (const s of sections) {
+    const valeur = tronquer(s.lignes.join('\n'), 1024);
+    const poids = s.titre.length + valeur.length;
+    const enColonne = s.lignes.length <= 8 && s.lignes.every((l) => longueurVisible(l) <= 30);
+    if (champs.length >= 24 || (champs.length && taille + poids > 5000)) fermer();
+    if (!enColonne) colonnes = 0;
+    else if (colonnes === 2) {
+      champs.push({ name: '​', value: '⠀', inline: false });
+      colonnes = 0;
+    }
+    champs.push({ name: s.titre, value: valeur, inline: enColonne });
+    taille += poids;
+    colonnes = enColonne ? colonnes + 1 : 0;
+  }
+  fermer();
+  if (embeds.length) {
+    embeds[0]!.title = options.titre;
+    embeds[0]!.description = options.accroche;
+    embeds.at(-1)!.footer = { text: options.pied };
+  }
+  return embeds;
+}
+
+function sectionsAide(membre: GuildMember): { titre: string; lignes: string[] }[] {
   const aiguilleur = lireAiguilleur();
   const serveurId = membre.guild.id;
   const prefixes = lireConfig(serveurId).prefixes;
-  const lignes: LigneAide[] = [];
-
-  for (const { commande, module } of aiguilleur.commandes.values()) {
-    if (commande.categorie !== categorie || !moduleActif(serveurId, module.id)) continue;
-    const json = commande.donnees.toJSON();
-    const sousCommandes = (json.options ?? []).filter(
-      (o) => o.type === ApplicationCommandOptionType.Subcommand || o.type === ApplicationCommandOptionType.SubcommandGroup,
-    );
-    const autorise = (groupe: string | null, sousCommande: string | null) => aAcces(membre, niveauRequis(commande, groupe, sousCommande), commande.whitelist);
-    if (sousCommandes.length === 0) {
-      if (autorise(null, null)) lignes.push({ texte: `**/${json.name}** — ${json.description}`, tri: `/${json.name}` });
-      continue;
+  const permis = (niveau: Niveau, whitelist?: string) => niveau < Niveau.PROPRIETAIRE_BOT && aAcces(membre, niveau, whitelist);
+  const sections: { titre: string; lignes: string[] }[] = [];
+  for (const categorie of Object.keys(CATEGORIES_AIDE) as CategorieAide[]) {
+    if (categorie === 'owner') continue;
+    const vus = new Set<string>();
+    const aPrefixe: EntreePrefixe[] = [];
+    for (const { commande, module } of aiguilleur.commandesPrefixe.values()) {
+      const cle = `${commande.domaine}:${commande.nom}`;
+      if (commande.categorie !== categorie || vus.has(cle) || !moduleActif(serveurId, module.id) || !permis(commande.niveau ?? Niveau.MEMBRE, commande.whitelist)) continue;
+      vus.add(cle);
+      aPrefixe.push({ declencheur: `${prefixes[commande.domaine]}${commande.nom}`, nom: commande.nom, description: commande.description, usage: commande.usage });
     }
-    for (const sousCommande of sousCommandes) {
-      if (sousCommande.type === ApplicationCommandOptionType.SubcommandGroup) {
-        for (const interne of (sousCommande.options ?? []) as APIApplicationCommandOption[]) {
-          if (autorise(sousCommande.name, interne.name)) {
-            lignes.push({ texte: `**/${json.name} ${sousCommande.name} ${interne.name}** — ${interne.description}`, tri: `/${json.name} ${sousCommande.name} ${interne.name}` });
-          }
-        }
-      } else if (autorise(null, sousCommande.name)) {
-        lignes.push({ texte: `**/${json.name} ${sousCommande.name}** — ${sousCommande.description}`, tri: `/${json.name} ${sousCommande.name}` });
-      }
+    const lignes: string[] = [];
+    for (const { commande, module } of aiguilleur.commandes.values()) {
+      if (commande.categorie !== categorie || !moduleActif(serveurId, module.id)) continue;
+      const json = commande.donnees.toJSON();
+      const memeNom = aPrefixe.filter((p) => p.nom === json.name);
+      const ligne = ligneCommande(json as { name: string; description: string; options?: OptionJson[] }, (groupe, sous) => permis(niveauRequis(commande, groupe, sous), commande.whitelist), memeNom.map((p) => p.declencheur));
+      if (!ligne) continue;
+      lignes.push(ligne);
+      for (const p of memeNom) aPrefixe.splice(aPrefixe.indexOf(p), 1);
     }
+    lignes.sort((a, b) => a.localeCompare(b, 'fr'));
+    lignes.push(...pairesPrefixe(aPrefixe));
+    if (lignes.length) sections.push({ titre: `${CATEGORIES_AIDE[categorie].emoji} ${CATEGORIES_AIDE[categorie].label}`, lignes });
   }
-
-  const vu = new Set<string>();
-  for (const { commande, module } of aiguilleur.commandesPrefixe.values()) {
-    if (commande.categorie !== categorie || !moduleActif(serveurId, module.id)) continue;
-    const cle = `${commande.domaine}:${commande.nom}`;
-    if (vu.has(cle)) continue;
-    vu.add(cle);
-    if (!aAcces(membre, commande.niveau ?? Niveau.MEMBRE, commande.whitelist)) continue;
-    const declencheur = `${prefixes[commande.domaine]}${commande.nom}`;
-    const usage = commande.usage ? ` \`${commande.usage}\`` : '';
-    lignes.push({ texte: `**${declencheur}**${usage} — ${commande.description}`, tri: `~${declencheur}` });
-  }
-
-  return lignes.sort((a, b) => a.tri.localeCompare(b.tri, 'fr'));
-}
-
-function sectionsPour(membre: GuildMember): { categorie: CategorieAide; lines: LigneAide[] }[] {
-  return (Object.keys(CATEGORIES_AIDE) as CategorieAide[])
-    .map((categorie) => ({ categorie, lines: lignesAide(membre, categorie) }))
-    .filter((s) => s.lines.length > 0);
-}
-
-function menu(membre: GuildMember, sections: { categorie: CategorieAide; lines: LigneAide[] }[], selectionne?: CategorieAide) {
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId(`help:cat:${membre.id}`)
-    .setPlaceholder('Ouvrir une section')
-    .addOptions([
-      { label: 'Vue d’ensemble', value: 'home', emoji: '📚', default: !selectionne },
-      ...sections.slice(0, 24).map((s) => ({
-        label: CATEGORIES_AIDE[s.categorie].label,
-        value: s.categorie,
-        emoji: CATEGORIES_AIDE[s.categorie].emoji,
-        description: `${s.lines.length} commande${s.lines.length > 1 ? 's' : ''}`,
-        default: s.categorie === selectionne,
-      })),
-    ]);
-  return [rangee(menu), rangee(boutonCorbeille(membre.guild.id, membre.id))];
+  return sections;
 }
 
 export function accueilAide(membre: GuildMember) {
-  const sections = sectionsPour(membre);
-  const embed = embedEnseigne(membre.guild)
-    .setTitle('📚 Tes commandes')
-    .setDescription(`Uniquement celles que tu peux lancer — la liste change avec tes accès.\n-# Ton accès : **${libelleNiveau(lireNiveau(membre))}**`)
-    .setFooter({ text: `${nomEnseigne(membre.guild)} · choisis une section pour tout voir` });
-
-  let taille = 0;
-  for (const s of sections.slice(0, 24)) {
-    const info = CATEGORIES_AIDE[s.categorie];
-    const apercu = s.lines.slice(0, 4).map((l) => l.texte.split(' — ')[0]).join('\n');
-    const plus = s.lines.length > 4 ? `\n-# +${s.lines.length - 4} autre${s.lines.length - 4 > 1 ? 's' : ''}` : '';
-    const valeur = tronquer(`${apercu}${plus}`, 1024);
-    taille += valeur.length;
-    if (taille > 5000) break;
-    embed.addFields({ name: `${info.emoji} ${info.label}`, value: valeur, inline: true });
-  }
-  return { embeds: [embed], components: menu(membre, sections) };
-}
-
-export function sectionAide(membre: GuildMember, categorie: CategorieAide) {
-  const sections = sectionsPour(membre);
-  const actuel = sections.find((s) => s.categorie === categorie);
-  if (!actuel) return accueilAide(membre);
-  const info = CATEGORIES_AIDE[categorie];
-  const embed = embedEnseigne(membre.guild)
-    .setTitle(`${info.emoji} ${info.label}`)
-    .setDescription(tronquer(actuel.lines.map((l) => l.texte).join('\n'), 4000))
-    .setFooter({ text: `${actuel.lines.length} commande(s) · ${nomEnseigne(membre.guild)}` });
-  return { embeds: [embed], components: menu(membre, sections, categorie) };
-}
-
-export async function surMenuAide(interaction: AnySelectMenuInteraction<'cached'>, proprietaireId: string | undefined): Promise<void> {
-  if (!interaction.isStringSelectMenu()) return;
-  if (proprietaireId && proprietaireId !== interaction.user.id) {
-    await interaction.reply({ ...accueilAide(interaction.member), flags: 64 });
-    return;
-  }
-  const valeur = interaction.values[0];
-  if (!valeur || valeur === 'home') {
-    await interaction.update(accueilAide(interaction.member));
-    return;
-  }
-  await interaction.update(sectionAide(interaction.member, valeur as CategorieAide));
+  const options = {
+    couleur: couleurPour(membre.guild),
+    titre: '📚 Tes commandes',
+    accroche: `Uniquement celles que tu peux lancer — la liste change avec tes accès.\n-# Ton accès : **${libelleNiveauVu(membre, '')}**`,
+    pied: `${nomEnseigne(membre.guild)} · les commandes à sous-commandes s’ouvrent avec leur nom`,
+  };
+  const sections = sectionsAide(membre);
+  let embeds = tableauAide(sections, options);
+  // - Trop long : les noms seuls -
+  if (JSON.stringify(embeds).length > 5800) embeds = tableauAide(sections.map((s) => ({ titre: s.titre, lignes: s.lignes.map((l) => l.split(' — ')[0]!) })), options);
+  return { embeds, components: [rangee(boutonCorbeille(membre.guild.id, membre.id))] };
 }
 
 function embedInfoMembre(serveur: Guild, utilisateur: User, membre: GuildMember | null, spectateurId: string) {
@@ -373,14 +395,6 @@ export const moduleGeneral: ModuleBot = {
   actifParDefaut: true,
   commandes: [aide, ping, avatar, infoMembre, infoServeur, infoBot],
   commandesPrefixe,
-  composants: [
-    {
-      prefixe: 'help',
-      async menu(interaction, [, proprietaireId]) {
-        await surMenuAide(interaction, proprietaireId);
-      },
-    },
-  ],
   evenements: [sur('voiceStateUpdate', (avant, apres) => traiterEtatVocal(avant, apres), 5)],
   taches: [
     {

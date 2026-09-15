@@ -10,6 +10,7 @@ import {
   type Guild,
   type GuildBasedChannel,
   type GuildMember,
+  type GuildTextBasedChannel,
   type Message,
   type MessageActionRowComponentBuilder,
   type ModalSubmitInteraction,
@@ -48,6 +49,7 @@ import {
   PALETTES,
   peutGererWhitelist,
   poserServeursEnseigne,
+  renommerEnseigne,
   retirerWhitelist,
   supprimerEnseigne,
   type WhitelistId,
@@ -74,14 +76,17 @@ import {
   afficherSection,
   lirePageReglage,
   type PageReglage,
+  pagesDeSection,
+  SECTIONS_REGLAGE,
+  type SectionReglage,
   traiterBoutonReglage,
   traiterFenetreReglage,
   traiterMenuReglage,
 } from '../coeur/assistant';
 import { executer, lireJson } from '../coeur/base';
 import { creerSalonsJournal, historiser, journal, salonJournalPour, synchroniserAccesJournaux, TYPES_JOURNAUX } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type GestionnaireComposant, type ModuleBot } from '../coeur/noyau';
-import { ErreurUtilisateur, fuseauValide, identifiantDepuisTexte, marqueTemps, resoudreUtilisateur, tronquer, type DomainePrefixe, DOMAINES_PREFIXES, Niveau } from '../coeur/outils';
+import { type CommandePrefixe, type CommandeSlash, type GestionnaireComposant, type ModuleBot, type PanneauAffiche, prefixePanneau } from '../coeur/noyau';
+import { ErreurUtilisateur, fuseauValide, identifiantDepuisTexte, marqueTemps, resoudreUtilisateur, tronquer, trouverEntree, type DomainePrefixe, DOMAINES_PREFIXES, Niveau } from '../coeur/outils';
 import {
   activerModule,
   lireConfig,
@@ -584,6 +589,7 @@ export function ecranEnseigne(client: Client, cle: string, note?: string) {
     .addOptions(
       { label: 'La couleur', value: 'color', description: 'Une palette, ou ton code exact', emoji: '🎨' },
       { label: 'Le nom', value: 'name', description: 'Ce qui s’affiche en tête des écrans', emoji: '🏷️' },
+      { label: 'La clé', value: 'key', description: 'L’identifiant, en cas d’erreur de saisie', emoji: '🔑' },
       { label: 'Le pied de page', value: 'footer', description: 'La signature sous chaque message', emoji: '✍️' },
       { label: 'Le logo', value: 'logo', description: 'Une image, en https', emoji: '🖼️' },
       { label: 'Le fond de bienvenue', value: 'background', description: 'L’image derrière la carte d’arrivée', emoji: '🌄' },
@@ -752,6 +758,10 @@ export const composantEnseignes: GestionnaireComposant = {
         if (valeur === 'color') return void (await interaction.update(ecranCouleur(s.cle)));
         if (valeur === 'guilds') return void (await interaction.update(ecranServeurs(client, s.cle)));
         if (valeur === 'emojis') return void (await interaction.update(ecranEmojis(s.cle)));
+        if (valeur === 'key') {
+          await interaction.showModal(construireFormulaire(`cu:keym:${s.cle}`, 'La clé', [{ id: 'value', libelle: 'Nouvelle clé (a-z, 0-9, - et _)', valeur: s.cle, longueurMax: 32 }]));
+          return;
+        }
         if (valeur === 'links') {
           const liens = lireJson<LiensEnseigne>(s.liens, {});
           await interaction.showModal(
@@ -812,6 +822,15 @@ export const composantEnseignes: GestionnaireComposant = {
         if (lireEnseigne(nouvelleCle)) throw new ErreurUtilisateur('Cette clé existe déjà.');
         creerEnseigne(nouvelleCle, nom || nouvelleCle);
         await repondreEcran(ecranEnseigne(client, nouvelleCle, '✅ Enseigne créée. Choisis maintenant ce que tu veux régler.'));
+        return;
+      }
+      case 'keym': {
+        const nouvelleCle = interaction.fields.getTextInputValue('value').trim().toLowerCase();
+        if (!MOTIF_CLE.test(nouvelleCle)) throw new ErreurUtilisateur('Clé invalide : 2 à 32 caractères parmi a-z, 0-9, - et _.');
+        if (nouvelleCle !== cle && lireEnseigne(nouvelleCle)) throw new ErreurUtilisateur('Cette clé est déjà prise par une autre enseigne.');
+        exigerEnseigne(cle);
+        renommerEnseigne(cle!, nouvelleCle);
+        await repondreEcran(ecranEnseigne(client, nouvelleCle, nouvelleCle === cle ? 'Clé inchangée.' : `✅ Clé changée : \`${cle}\` → \`${nouvelleCle}\`. Serveurs et blacklist suivent.`));
         return;
       }
       case 'hexm': {
@@ -1191,6 +1210,171 @@ const wl: CommandeSlash = {
   },
 };
 
+// - Menus façon Airline -
+// Rangés par groupe : on choisit, le bot fait le reste.
+export interface EntreeMenu {
+  id: string;
+  nom: string;
+  emoji: string;
+  groupe: string;
+  quoi: string;
+  alias?: string[];
+}
+
+export function optionsRangees(entrees: EntreeMenu[]) {
+  const groupes: string[] = [];
+  for (const e of entrees) if (!groupes.includes(e.groupe)) groupes.push(e.groupe);
+  return [...entrees]
+    .sort((a, b) => groupes.indexOf(a.groupe) - groupes.indexOf(b.groupe) || a.nom.localeCompare(b.nom, 'fr'))
+    .slice(0, 25)
+    .map((e) => ({ label: tronquer(groupes.length > 1 ? `${e.groupe} · ${e.nom}` : e.nom, 100), value: e.id, emoji: e.emoji, description: tronquer(e.quoi, 100) }));
+}
+
+// - /affiche -
+function panneauxDisponibles(serveur: Guild): PanneauAffiche[] {
+  return lireModules().filter((m) => moduleActif(serveur.id, m.id)).flatMap((m) => m.panneaux ?? []);
+}
+
+export function ecranAffiche(serveur: Guild) {
+  const panneaux = panneauxDisponibles(serveur);
+  const embed = embedEnseigne(serveur)
+    .setTitle('🪧 Poser un panneau')
+    .setDescription(
+      [
+        'Choisis le panneau : il est posé **dans ce salon**, tout de suite.',
+        '',
+        ...panneaux.map((p) => `${p.emoji} **${p.nom}** — ${p.quoi}`),
+        '',
+        `-# Au clavier : \`${lireConfig(serveur.id).prefixes.salon}<nom>\`, par exemple \`${lireConfig(serveur.id).prefixes.salon}reglement\`.`,
+      ].join('\n'),
+    );
+  if (!panneaux.length) return { embeds: [embed.setDescription('Aucun module à panneau n’est activé (`/modules`).')], components: [] };
+  return { embeds: [embed], components: [rangee(new StringSelectMenuBuilder().setCustomId('aff:pick').setPlaceholder('Quel panneau ?').addOptions(optionsRangees(panneaux)))] };
+}
+
+const composantAffiche: GestionnaireComposant = {
+  prefixe: 'aff',
+  niveau: Niveau.ADMIN,
+  async menu(interaction: AnySelectMenuInteraction<'cached'>, [action, id]) {
+    if (!interaction.isStringSelectMenu()) return;
+    const serveur = interaction.guild;
+    const panneau = panneauxDisponibles(serveur).find((p) => p.id === (action === 'pick' ? interaction.values[0] : id));
+    if (!panneau) throw new ErreurUtilisateur('Ce panneau n’est plus disponible.');
+    const salon = interaction.channel as GuildTextBasedChannel | null;
+    if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
+    if (action === 'pick' && panneau.choix) {
+      const choix = panneau.choix(serveur);
+      if (!choix.length) throw new ErreurUtilisateur(`Rien à poser pour « ${panneau.nom} » pour l’instant.`);
+      await interaction.update({
+        embeds: [info(serveur, 'Lequel ?', { titre: panneau.nom, sujet: panneau.emoji })],
+        components: [rangee(new StringSelectMenuBuilder().setCustomId(`aff:val:${panneau.id}`).setPlaceholder('Lequel ?').addOptions(choix.slice(0, 25)))],
+      });
+      return;
+    }
+    await interaction.deferUpdate();
+    const note = await panneau.poser(salon, interaction.member, action === 'val' ? interaction.values[0] : undefined);
+    await interaction.editReply({ embeds: [ok(serveur, note, { titre: panneau.nom, sujet: panneau.emoji })], components: [] });
+  },
+};
+
+const affiche: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder().setName('affiche').setDescription('Poser un panneau'),
+  async executer(interaction) {
+    await repondre(interaction, { ...ecranAffiche(interaction.guild), ephemeral: true });
+  },
+};
+
+// - /serv -
+const SECTIONS_SERV: SectionReglage[] = ['welcome', 'security', 'roles', 'tickets', 'logs', 'appearance'];
+
+function pagesServ(): (EntreeMenu & { page: PageReglage })[] {
+  return SECTIONS_SERV.flatMap((s) =>
+    pagesDeSection(s).map((page) => ({
+      id: page.id,
+      nom: page.titre,
+      emoji: page.emoji,
+      groupe: SECTIONS_REGLAGE[s].label,
+      quoi: page.description.split('\n')[0]!.replace(/[`*]/g, ''),
+      page,
+    })),
+  );
+}
+
+export function ecranServ(serveur: Guild) {
+  const embed = embedEnseigne(serveur)
+    .setTitle('🏠 Le serveur')
+    .setDescription(['Choisis le réglage à ouvrir.', '', '-# Tout le reste est dans `/setup`. Pour tout créer d’un coup : `/quicksetup`.'].join('\n'));
+  return { embeds: [embed], components: [rangee(new StringSelectMenuBuilder().setCustomId('srv:pick').setPlaceholder('Quel réglage ?').addOptions(optionsRangees(pagesServ())))] };
+}
+
+const composantServ: GestionnaireComposant = {
+  prefixe: 'srv',
+  niveau: Niveau.ADMIN,
+  async menu(interaction: AnySelectMenuInteraction<'cached'>) {
+    const page = pagesServ().find((p) => p.id === interaction.values[0]);
+    if (!page) throw new ErreurUtilisateur('Réglage introuvable.');
+    await interaction.update(afficherPage(interaction.guild, page.page));
+  },
+};
+
+const serv: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder().setName('serv').setDescription('Les réglages du serveur'),
+  async executer(interaction) {
+    await repondre(interaction, { ...ecranServ(interaction.guild), ephemeral: true });
+  },
+};
+
+const raccourciPage = (nom: string, alias: string[], pageId: string, description: string): CommandePrefixe => ({
+  nom,
+  alias,
+  domaine: 'general',
+  categorie: 'admin',
+  description,
+  niveau: Niveau.ADMIN,
+  async executer(message) {
+    const page = lirePageReglage(pageId);
+    if (!page) throw new ErreurUtilisateur('Réglage introuvable.');
+    await message.reply({ ...afficherPage(message.guild, page), allowedMentions: { repliedUser: false } });
+  },
+});
+
+const prefixesServeur: CommandePrefixe[] = [
+  {
+    nom: 'affiche',
+    alias: ['panneau', 'panneaux'],
+    domaine: 'salon',
+    categorie: 'admin',
+    description: 'Poser un panneau',
+    usage: '[panneau]',
+    niveau: Niveau.ADMIN,
+    async executer(message, parametres) {
+      const panneau = parametres[0] ? trouverEntree(panneauxDisponibles(message.guild), parametres[0]) : undefined;
+      if (panneau) return prefixePanneau(panneau, panneau.nom).executer(message, parametres.slice(1));
+      await message.reply({ ...ecranAffiche(message.guild), allowedMentions: { repliedUser: false } });
+    },
+  },
+  {
+    nom: 'serv',
+    alias: ['serveur', 'reglages'],
+    domaine: 'general',
+    categorie: 'admin',
+    description: 'Les réglages du serveur',
+    usage: '[réglage]',
+    niveau: Niveau.ADMIN,
+    async executer(message, parametres) {
+      const page = parametres.length ? trouverEntree(pagesServ(), parametres.join(' ')) : undefined;
+      await message.reply({ ...(page ? afficherPage(message.guild, page.page) : ecranServ(message.guild)), allowedMentions: { repliedUser: false } });
+    },
+  },
+  raccourciPage('bienvenue', ['welcome'], 'welcome', 'Le message d’arrivée'),
+  raccourciPage('depart', ['leave'], 'leave', 'Le message de départ'),
+  raccourciPage('autorole', ['autoroles'], 'autorole', 'Rôles à l’arrivée'),
+];
+
 // - Préfixes owner -
 
 const prefixesProprietaire: CommandePrefixe[] = [
@@ -1245,12 +1429,14 @@ export const moduleAdministration: ModuleBot = {
   description: 'Setup, modules, whitelists, enseignes',
   desactivable: false,
   actifParDefaut: true,
-  commandes: [assistant, installationRapide, commandeModules, config, test, wl],
-  commandesPrefixe: [...raccourcisWhitelists(), ...prefixesProprietaire],
+  commandes: [assistant, installationRapide, commandeModules, config, test, wl, affiche, serv],
+  commandesPrefixe: [...raccourcisWhitelists(), ...prefixesServeur, ...prefixesProprietaire],
   pagesReglage: pagesAdministration,
   composants: [
     composantWhitelists,
     composantEnseignes,
+    composantAffiche,
+    composantServ,
     {
       prefixe: 'setup',
       niveau: Niveau.ADMIN,
