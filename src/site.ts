@@ -3,8 +3,8 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { type Client, type Guild, PermissionFlagsBits } from 'discord.js';
 import { enHexa, enseigneDe, estProprietaireBot, libelleNiveau, lireNiveau } from './coeur/acces';
 import { lireJson, lireTout } from './coeur/base';
-import { Niveau } from './coeur/noyau';
-import { CarteExpirante, creerRegistre, environnement, fuseauValide, LimiteurFenetre } from './coeur/outils';
+
+import { CarteExpirante, creerRegistre, environnement, fuseauValide, LimiteurFenetre, Niveau } from './coeur/outils';
 import { activerModule, lireConfig, lireEtatsModules, lireModule, modifierConfig, THEMES } from './coeur/reglages';
 import { echapperHtml } from './modules/tickets';
 

@@ -51,8 +51,8 @@ import {
 import { afficherPage, lirePageReglage, type PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, Niveau, sur } from '../coeur/noyau';
-import { creerRegistre, ErreurUtilisateur, identifiantDepuisTexte, marqueTemps, tronquer } from '../coeur/outils';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { creerRegistre, ErreurUtilisateur, identifiantDepuisTexte, marqueTemps, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, modifierConfig, type MotifTicket, type StyleBoutonTicket } from '../coeur/reglages';
 
 export function echapperHtml(texte: string): string {

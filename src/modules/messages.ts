@@ -41,8 +41,8 @@ import {
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout, transaction } from '../coeur/base';
 import { journal } from '../coeur/journaux';
-import { type CommandeSlash, lireAiguilleur, type ModuleBot, Niveau, sur } from '../coeur/noyau';
-import { CarteExpirante, creerRegistre, Delais, ErreurUtilisateur, idCourt, neutraliserMentions, tronquer } from '../coeur/outils';
+import { type CommandeSlash, lireAiguilleur, type ModuleBot, sur } from '../coeur/noyau';
+import { CarteExpirante, creerRegistre, Delais, ErreurUtilisateur, idCourt, neutraliserMentions, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 
 export interface Brouillon {

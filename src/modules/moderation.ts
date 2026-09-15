@@ -35,7 +35,7 @@ import {
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireJson, lireTout } from '../coeur/base';
 import { historiser, journal } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, Niveau, sur } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
 import {
   creerRegistre,
   ErreurUtilisateur,
@@ -44,8 +44,7 @@ import {
   marqueTemps,
   membreCible,
   resoudreUtilisateur,
-  tronquer,
-} from '../coeur/outils';
+  tronquer, Niveau } from '../coeur/outils';
 import { lireConfig } from '../coeur/reglages';
 
 const registre = creerRegistre('sanctions');

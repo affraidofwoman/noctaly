@@ -3,8 +3,8 @@ import { emojiPour, estExempte } from '../coeur/acces';
 import { info, ok, refus } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
 import { historiser, journal } from '../coeur/journaux';
-import { type CommandePrefixe, type ModuleBot, Niveau, sur } from '../coeur/noyau';
-import { creerRegistre, Delais, LimiteurFenetre, tronquer } from '../coeur/outils';
+import { type CommandePrefixe, type ModuleBot, sur } from '../coeur/noyau';
+import { creerRegistre, Delais, LimiteurFenetre, tronquer, Niveau } from '../coeur/outils';
 import { type ConfigServeur, lireConfig, modifierConfig } from '../coeur/reglages';
 import { appliquerSanction } from './moderation';
 

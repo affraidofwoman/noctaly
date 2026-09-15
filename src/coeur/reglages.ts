@@ -1,7 +1,7 @@
 import { executer, lire, lireTout } from './base';
 import type { TypeJournal } from './journaux';
-import type { DomainePrefixe, ModuleBot } from './noyau';
-import { environnement } from './outils';
+import { type ModuleBot } from './noyau';
+import { environnement, type DomainePrefixe } from './outils';
 
 export interface CouleursTheme {
   primary: string;

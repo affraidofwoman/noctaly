@@ -13,8 +13,8 @@ import { botPeutGererRole, emojiPour, enseigneDe, rolesAttribuables } from '../c
 import { aideVariables, couleurPour, embedEnseigne, estLienHttp, remplirModele, repondre } from '../coeur/affichage';
 import { afficherPage, lirePageReglage, type PageReglage } from '../coeur/assistant';
 import { journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot, Niveau, sur } from '../coeur/noyau';
-import { creerRegistre, RACINE_PROJET, formaterDuree, formaterNombre, tronquer } from '../coeur/outils';
+import { type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { creerRegistre, RACINE_PROJET, formaterDuree, formaterNombre, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 import { activiteMembre } from './niveaux';
 

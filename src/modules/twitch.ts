@@ -35,8 +35,8 @@ import {
 import { afficherPage, lirePageReglage, type PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, Niveau } from '../coeur/noyau';
-import { creerRegistre, environnement, ErreurUtilisateur, formaterDuree, formaterNombre, marqueTemps, tronquer } from '../coeur/outils';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot } from '../coeur/noyau';
+import { creerRegistre, environnement, ErreurUtilisateur, formaterDuree, formaterNombre, marqueTemps, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 
 const registre = creerRegistre('twitch');

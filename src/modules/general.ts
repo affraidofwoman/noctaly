@@ -12,19 +12,8 @@ import {
 } from 'discord.js';
 import { aAcces, libelleNiveau, lireNiveau, whitelistsMembre } from '../coeur/acces';
 import { boutonCorbeille, embedEnseigne, info, nomEnseigne, rangee, rangeeCorbeille, repondre } from '../coeur/affichage';
-import {
-  type CategorieAide,
-  CATEGORIES_AIDE,
-  type CommandePrefixe,
-  type CommandeSlash,
-  etatBot,
-  lireAiguilleur,
-  type ModuleBot,
-  Niveau,
-  niveauRequis,
-  sur,
-} from '../coeur/noyau';
-import { formaterDuree, formaterNombre, marqueTemps, membreCible, resoudreUtilisateur, tronquer } from '../coeur/outils';
+import { type CommandePrefixe, type CommandeSlash, etatBot, lireAiguilleur, type ModuleBot, niveauRequis, sur } from '../coeur/noyau';
+import { formaterDuree, formaterNombre, marqueTemps, membreCible, resoudreUtilisateur, tronquer, type CategorieAide, CATEGORIES_AIDE, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 import { crediterVocal, resynchroniserVocal, traiterEtatVocal } from './niveaux';
 

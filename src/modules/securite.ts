@@ -18,7 +18,7 @@ import { botPeutGererRole, estExempte, estProprietaireBot, membresListe } from '
 import { bouton, construireFormulaire, couleurPour, erreur, info, ok, rangee, repondre } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot, Niveau, sur } from '../coeur/noyau';
+import { type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
 import {
   CarteExpirante,
   creerRegistre,
@@ -26,8 +26,7 @@ import {
   formaterDuree,
   joursDepuis,
   LimiteurFenetre,
-  marqueTemps,
-} from '../coeur/outils';
+  marqueTemps, Niveau } from '../coeur/outils';
 import { lireConfig, modifierConfig } from '../coeur/reglages';
 import { donnerRolesAuto } from './arrivees';
 import { serveurVerrouille, verrouiller } from './moderation';

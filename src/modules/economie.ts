@@ -18,7 +18,7 @@ import { bouton, couleurPour, embedEnseigne, info, lignesEnPages, ok, paginer, r
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout, transaction } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, Niveau, sur } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
 import {
   barreProgression,
   cleJour,
@@ -27,8 +27,7 @@ import {
   formaterNombre,
   marqueTemps,
   medaille,
-  tronquer,
-} from '../coeur/outils';
+  tronquer, Niveau } from '../coeur/outils';
 import { type DefinitionQuete, lireConfig, modifierConfig, moduleActif } from '../coeur/reglages';
 import { ajouterXp, donnerBadge, emettreActivite, lireBadge, surActivite, surTempsVocal, type TypeActivite } from './niveaux';
 

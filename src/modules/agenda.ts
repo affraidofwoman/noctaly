@@ -25,7 +25,7 @@ import {
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout } from '../coeur/base';
 import { journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, Niveau } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot } from '../coeur/noyau';
 import {
   ErreurUtilisateur,
   formaterDuree,
@@ -35,8 +35,7 @@ import {
   MOIS,
   neutraliserMentions,
   partiesFuseau,
-  tronquer,
-} from '../coeur/outils';
+  tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 import { donnerBadge } from './niveaux';
 

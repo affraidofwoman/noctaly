@@ -13,8 +13,8 @@ import {
 import { embedEnseigne, lignesEnPages, ok, paginer } from '../coeur/affichage';
 import { lireJson, lireTout } from '../coeur/base';
 import { creerSalonsJournal, definitionJournal, journal, type TypeJournal, TYPES_JOURNAUX } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, Niveau, sur } from '../coeur/noyau';
-import { formaterDuree, formaterNombre, joursDepuis, marqueTemps, tronquer } from '../coeur/outils';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { formaterDuree, formaterNombre, joursDepuis, marqueTemps, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig } from '../coeur/reglages';
 
 function ignore(serveur: Guild, salonId: string | null | undefined): boolean {

@@ -14,7 +14,7 @@ import { embedEnseigne, info, lignesEnPages, ok, paginer, remplirModele, repondr
 import type { ChampReglage, PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout } from '../coeur/base';
 import { journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, Niveau, sur } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
 import {
   barreProgression,
   cleJour,
@@ -25,8 +25,7 @@ import {
   identifiantDepuisTexte,
   joursDepuis,
   medaille,
-  tronquer,
-} from '../coeur/outils';
+  tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 import { nombreTickets } from './tickets';
 import { victoiresDe } from './tirages';

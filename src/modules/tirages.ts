@@ -31,7 +31,7 @@ import {
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireJson, lireTout, transaction } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, Niveau } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot } from '../coeur/noyau';
 import {
   creerRegistre,
   ErreurUtilisateur,
@@ -40,8 +40,7 @@ import {
   lireDuree,
   marqueTemps,
   resoudreRole,
-  tronquer,
-} from '../coeur/outils';
+  tronquer, Niveau } from '../coeur/outils';
 import { lireConfig } from '../coeur/reglages';
 import { donnerBadge, emettreActivite, niveauDe } from './niveaux';
 

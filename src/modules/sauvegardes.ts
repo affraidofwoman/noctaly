@@ -5,8 +5,8 @@ import { oublierEnseignes, viderCacheWhitelists } from '../coeur/acces';
 import { demanderConfirmation, info, ok, repondre } from '../coeur/affichage';
 import { executer, lire, lireTout, transaction } from '../coeur/base';
 import { journal } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot, Niveau } from '../coeur/noyau';
-import { creerRegistre, environnement, ErreurUtilisateur, marqueTemps } from '../coeur/outils';
+import { type CommandeSlash, type ModuleBot } from '../coeur/noyau';
+import { creerRegistre, environnement, ErreurUtilisateur, marqueTemps, Niveau } from '../coeur/outils';
 import { moduleActif, viderCacheConfig, viderCacheModules } from '../coeur/reglages';
 
 /** Tables de configuration sauvegardées par serveur (les données d'activité restent en place). */

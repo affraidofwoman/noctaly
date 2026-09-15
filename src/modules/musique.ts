@@ -39,8 +39,8 @@ import prism from 'prism-media';
 import { aNiveau, emojiPour, estWhitelist } from '../coeur/acces';
 import { bouton, couleurPour, erreur, estLienHttp, nomEnseigne, ok, rangee } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, Niveau, sur } from '../coeur/noyau';
-import { barreProgression, creerRegistre, RACINE_PROJET, environnement, ErreurUtilisateur, formaterHorloge, tronquer } from '../coeur/outils';
+import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { barreProgression, creerRegistre, RACINE_PROJET, environnement, ErreurUtilisateur, formaterHorloge, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig } from '../coeur/reglages';
 
 const registre = creerRegistre('musique');

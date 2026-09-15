@@ -1,7 +1,7 @@
 import { type Guild, type GuildMember, PermissionFlagsBits, type PermissionResolvable, type Role } from 'discord.js';
 import { executer, lire, lireJson, lireTout, transaction } from './base';
-import { LIBELLES_NIVEAUX, Niveau } from './noyau';
-import { environnement } from './outils';
+
+import { environnement, LIBELLES_NIVEAUX, Niveau } from './outils';
 import { type ConfigServeur, lireConfig } from './reglages';
 
 export type WhitelistId = 'owner' | 'streamer' | 'admin' | 'sys' | 'staff' | 'support' | 'logs' | 'bypass' | 'giveaway' | 'dj';

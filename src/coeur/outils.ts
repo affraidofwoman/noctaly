@@ -557,3 +557,69 @@ export async function membreCible(message: Message<true>, argument: string | und
   }
   return null;
 }
+
+/**
+ * Niveaux d'accès, du plus bas au plus haut.
+ * Chaque niveau garde tout ce que donnent les précédents.
+ */
+export enum Niveau {
+  MEMBRE = 0,
+  SUPPORT = 1,
+  STAFF = 2,
+  MODERATEUR = 3,
+  ADMIN = 4,
+  STREAMER = 5,
+  PROPRIETAIRE_BOT = 6,
+}
+
+export const LIBELLES_NIVEAUX: Record<Niveau, string> = {
+  [Niveau.MEMBRE]: 'Membre',
+  [Niveau.SUPPORT]: 'Support',
+  [Niveau.STAFF]: 'Staff',
+  [Niveau.MODERATEUR]: 'Système',
+  [Niveau.ADMIN]: 'Admin',
+  [Niveau.STREAMER]: 'Streamer',
+  [Niveau.PROPRIETAIRE_BOT]: 'Owner bot',
+};
+
+export type CategorieAide =
+  | 'general'
+  | 'moderation'
+  | 'salons'
+  | 'tickets'
+  | 'giveaways'
+  | 'music'
+  | 'twitch'
+  | 'community'
+  | 'roles'
+  | 'economy'
+  | 'customization'
+  | 'admin'
+  | 'owner';
+
+export const CATEGORIES_AIDE: Record<CategorieAide, { label: string; emoji: string }> = {
+  general: { label: 'Pour tout le monde', emoji: '📌' },
+  community: { label: 'Communauté', emoji: '⭐' },
+  economy: { label: 'Économie & jeux', emoji: '💰' },
+  music: { label: 'Musique', emoji: '🎵' },
+  twitch: { label: 'Twitch', emoji: '🔴' },
+  tickets: { label: 'Tickets', emoji: '🎫' },
+  giveaways: { label: 'Giveaways', emoji: '🎉' },
+  roles: { label: 'Rôles', emoji: '🎭' },
+  moderation: { label: 'Sanctions', emoji: '🛡️' },
+  salons: { label: 'Tenir les salons', emoji: '🔑' },
+  customization: { label: 'Poster et animer', emoji: '📝' },
+  admin: { label: 'Le serveur', emoji: '⚙️' },
+  owner: { label: 'Réglages du bot', emoji: '👑' },
+};
+
+/** Domaines de préfixes, à la manière du bot Airline : + sanctions, & salons, = général, . owner, m! musique. */
+export type DomainePrefixe = 'sanction' | 'salon' | 'general' | 'owner' | 'music';
+
+export const DOMAINES_PREFIXES: Record<DomainePrefixe, { label: string; emoji: string; prefixeParDefaut: string }> = {
+  sanction: { label: 'Sanctions', emoji: '🛡️', prefixeParDefaut: '+' },
+  salon: { label: 'Salons', emoji: '🔑', prefixeParDefaut: '&' },
+  general: { label: 'Général', emoji: '📌', prefixeParDefaut: '=' },
+  owner: { label: 'Owner', emoji: '👑', prefixeParDefaut: '.' },
+  music: { label: 'Musique', emoji: '🎵', prefixeParDefaut: 'm!' },
+};

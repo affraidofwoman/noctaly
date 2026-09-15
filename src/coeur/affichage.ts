@@ -22,7 +22,7 @@ import {
 } from 'discord.js';
 import { aNiveau, emojiPour, type Enseigne, enseigneDe } from './acces';
 import { journal } from './journaux';
-import { type GestionnaireComposant, Niveau } from './noyau';
+import { type GestionnaireComposant } from './noyau';
 import {
   CarteExpirante,
   creerRegistre,
@@ -31,8 +31,7 @@ import {
   ErreurUtilisateur,
   formaterDate,
   idCourt,
-  partiesFuseau,
-} from './outils';
+  partiesFuseau, Niveau } from './outils';
 import { type CouleursTheme, hexaEnEntier, lireConfig, THEMES } from './reglages';
 
 export type GenreEmbed = keyof CouleursTheme;

@@ -80,16 +80,8 @@ import {
 } from '../coeur/assistant';
 import { executer, lireJson } from '../coeur/base';
 import { creerSalonsJournal, historiser, journal, salonJournalPour, synchroniserAccesJournaux, TYPES_JOURNAUX } from '../coeur/journaux';
-import {
-  type CommandePrefixe,
-  type CommandeSlash,
-  type DomainePrefixe,
-  DOMAINES_PREFIXES,
-  type GestionnaireComposant,
-  type ModuleBot,
-  Niveau,
-} from '../coeur/noyau';
-import { ErreurUtilisateur, fuseauValide, identifiantDepuisTexte, marqueTemps, resoudreUtilisateur, tronquer } from '../coeur/outils';
+import { type CommandePrefixe, type CommandeSlash, type GestionnaireComposant, type ModuleBot } from '../coeur/noyau';
+import { ErreurUtilisateur, fuseauValide, identifiantDepuisTexte, marqueTemps, resoudreUtilisateur, tronquer, type DomainePrefixe, DOMAINES_PREFIXES, Niveau } from '../coeur/outils';
 import {
   activerModule,
   lireConfig,

@@ -15,7 +15,7 @@ import { bouton, type ChampFenetre, construireFormulaire, couleurPour, estLienHt
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireJson, lireTout } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot, Niveau } from '../coeur/noyau';
+import { type CommandeSlash, type ModuleBot } from '../coeur/noyau';
 import {
   ErreurUtilisateur,
   identifiantDepuisTexte,
@@ -23,8 +23,7 @@ import {
   marqueTemps,
   medaille,
   neutraliserMentions,
-  tronquer,
-} from '../coeur/outils';
+  tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 import { ajouterPieces } from './economie';
 import { ajouterXp } from './niveaux';
