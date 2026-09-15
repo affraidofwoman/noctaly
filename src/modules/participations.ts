@@ -136,8 +136,8 @@ async function conclure(client: Client, c: LigneConcours): Promise<void> {
   const gagnant = meilleurs[0];
   if (serveur && gagnant && gagnant.score > 0) {
     const membre = await serveur.members.fetch(gagnant.utilisateur_id).catch(() => null);
-    if (c.recompense_pieces && moduleActif(serveur.id, 'economy')) ajouterPieces(serveur.id, gagnant.utilisateur_id, c.recompense_pieces, 'contest');
-    if (c.recompense_xp && moduleActif(serveur.id, 'xp')) ajouterXp(serveur.id, gagnant.utilisateur_id, c.recompense_xp);
+    if (c.recompense_pieces && moduleActif(serveur.id, 'progression')) ajouterPieces(serveur.id, gagnant.utilisateur_id, c.recompense_pieces, 'contest');
+    if (c.recompense_xp && moduleActif(serveur.id, 'progression')) ajouterXp(serveur.id, gagnant.utilisateur_id, c.recompense_xp);
     const role = c.recompense_role_id ? serveur.roles.cache.get(c.recompense_role_id) : null;
     if (membre && role && botPeutGererRole(serveur, role)) await membre.roles.add(role, `Gagnant du concours ${c.nom}`).catch(() => undefined);
   }

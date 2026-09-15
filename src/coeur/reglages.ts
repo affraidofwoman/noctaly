@@ -81,15 +81,6 @@ export interface ActionAutoAvertissement {
   dureeMinutes: number;
 }
 
-export interface DefinitionQuete {
-  id: string;
-  libelle: string;
-  type: 'messages' | 'voice_minutes' | 'giveaways' | 'daily';
-  cible: number;
-  recompenseXp: number;
-  recompensePieces: number;
-}
-
 export interface ConfigServeur {
   general: {
     fuseau: string;
@@ -263,11 +254,14 @@ export interface ConfigServeur {
     bonusSerie: number;
     parMessage: number;
     delaiMessageSecondes: number;
+    parMinuteVocal: number;
+    parNiveau: number;
   };
-  quetes: {
-    liste: DefinitionQuete[];
-    paliersSerie: { jours: number; pieces: number; xp: number }[];
-    annonce: boolean;
+  progression: {
+    roleHommeId: string | null;
+    roleFemmeId: string | null;
+    prixCoffre: number;
+    bonusBooster: number;
   };
   profils: {
     badgesAuto: boolean;
@@ -467,24 +461,20 @@ export function configParDefaut(): ConfigServeur {
     evenements: { salonDefautId: null, roleMentionId: null, rappelMinutes: 30 },
     jeux: { bouleMagique: true, pileOuFace: true, des: true, pierreFeuilleCiseaux: true },
     economie: {
-      nomMonnaie: 'Coins',
-      emojiMonnaie: '💰',
+      nomMonnaie: 'Gold',
+      emojiMonnaie: '🪙',
       montantQuotidien: 100,
       bonusSerie: 10,
-      parMessage: 1,
+      parMessage: 2,
       delaiMessageSecondes: 60,
+      parMinuteVocal: 0.5,
+      parNiveau: 10,
     },
-    quetes: {
-      liste: [
-        { id: 'messages20', libelle: 'Envoyer 20 messages', type: 'messages', cible: 20, recompenseXp: 100, recompensePieces: 50 },
-        { id: 'voice30', libelle: 'Passer 30 minutes en vocal', type: 'voice_minutes', cible: 30, recompenseXp: 150, recompensePieces: 50 },
-        { id: 'daily', libelle: 'Récupérer ta récompense /daily', type: 'daily', cible: 1, recompenseXp: 50, recompensePieces: 0 },
-      ],
-      paliersSerie: [
-        { jours: 7, pieces: 200, xp: 200 },
-        { jours: 30, pieces: 1000, xp: 1000 },
-      ],
-      annonce: true,
+    progression: {
+      roleHommeId: null,
+      roleFemmeId: null,
+      prixCoffre: 50,
+      bonusBooster: 1.25,
     },
     profils: { badgesAuto: true },
     reglement: {

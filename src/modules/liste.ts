@@ -4,15 +4,16 @@ import { moduleAnniversaires, moduleEvenements, moduleRappels } from './agenda';
 import { moduleBienvenue, moduleDeparts, moduleRolesAuto } from './arrivees';
 import { moduleAutomod } from './automod';
 import { moduleAfk, moduleInvitations, moduleReglement, moduleSignalements, moduleSondages, moduleSuggestions } from './communaute';
-import { moduleBoosts, moduleEconomie, moduleQuetes } from './economie';
+import { moduleBoosts } from './economie';
 import { moduleGeneral } from './general';
 import { moduleJeux } from './jeux';
 import { moduleJournaux } from './journaux';
 import { moduleAnnonces, moduleCommandesPerso, moduleRedaction, moduleReponsesAuto, moduleRolesAChoisir } from './messages';
 import { moduleModeration } from './moderation';
 import { moduleMusique } from './musique';
-import { moduleAnciennete, moduleNiveaux, moduleProfils, moduleStatistiques } from './niveaux';
+import { moduleAnciennete, moduleProfils, moduleStatistiques } from './niveaux';
 import { moduleConcours, moduleFormulaires } from './participations';
+import { moduleProgression } from './progression';
 import { moduleSauvegardes } from './sauvegardes';
 import { moduleAntinuke, moduleAntiraid, moduleVerification } from './securite';
 import { moduleTickets } from './tickets';
@@ -37,7 +38,7 @@ export const modules: ModuleBot[] = [
   moduleTwitch,
   moduleMusique,
   // - Communauté -
-  moduleNiveaux,
+  moduleProgression,
   moduleAnciennete,
   moduleSuggestions,
   moduleSondages,
@@ -57,8 +58,6 @@ export const modules: ModuleBot[] = [
   // - Engagement -
   moduleInvitations,
   moduleBoosts,
-  moduleEconomie,
-  moduleQuetes,
   moduleJeux,
   moduleConcours,
   // - Sécurité et accès -

@@ -369,21 +369,60 @@ CREATE TABLE inventaire (
 CREATE TABLE quetes (
   serveur_id TEXT NOT NULL,
   utilisateur_id TEXT NOT NULL,
-  jour TEXT NOT NULL,
+  periode TEXT NOT NULL,
   quete_id TEXT NOT NULL,
   progression INTEGER NOT NULL DEFAULT 0,
   terminee INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (serveur_id, utilisateur_id, jour, quete_id)
+  reclamee INTEGER NOT NULL DEFAULT 0,
+  donnees TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (serveur_id, utilisateur_id, periode, quete_id)
 );
 
-CREATE TABLE series (
+CREATE TABLE activite_jour (
   serveur_id TEXT NOT NULL,
   utilisateur_id TEXT NOT NULL,
-  actuelle INTEGER NOT NULL DEFAULT 0,
-  record INTEGER NOT NULL DEFAULT 0,
-  dernier_jour TEXT,
+  jour TEXT NOT NULL,
+  messages INTEGER NOT NULL DEFAULT 0,
+  secondes_vocal INTEGER NOT NULL DEFAULT 0,
+  xp INTEGER NOT NULL DEFAULT 0,
+  gold INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serveur_id, utilisateur_id, jour)
+);
+CREATE INDEX idx_activite_jour ON activite_jour (serveur_id, jour);
+
+CREATE TABLE joueurs (
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  genre TEXT NOT NULL,
+  teint TEXT NOT NULL,
+  coupe TEXT NOT NULL,
+  couleur_cheveux TEXT NOT NULL,
+  yeux TEXT NOT NULL,
+  tenue TEXT NOT NULL,
+  couleur_tenue TEXT NOT NULL,
+  bio TEXT NOT NULL DEFAULT '',
+  notifications INTEGER NOT NULL DEFAULT 1,
+  cree_le INTEGER NOT NULL,
   PRIMARY KEY (serveur_id, utilisateur_id)
 );
+
+CREATE TABLE objets (
+  serveur_id TEXT NOT NULL,
+  utilisateur_id TEXT NOT NULL,
+  objet TEXT NOT NULL,
+  obtenu_le INTEGER NOT NULL,
+  PRIMARY KEY (serveur_id, utilisateur_id, objet)
+);
+
+CREATE TABLE reputations (
+  serveur_id TEXT NOT NULL,
+  donneur_id TEXT NOT NULL,
+  receveur_id TEXT NOT NULL,
+  jour TEXT NOT NULL,
+  donne_le INTEGER NOT NULL,
+  PRIMARY KEY (serveur_id, donneur_id, jour)
+);
+CREATE INDEX idx_reputations ON reputations (serveur_id, receveur_id);
 
 CREATE TABLE formulaires (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

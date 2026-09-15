@@ -228,8 +228,8 @@ const ping: CommandeSlash = {
 const avatar: CommandeSlash = {
   categorie: 'general',
   donnees: new SlashCommandBuilder()
-    .setName('avatar')
-    .setDescription('Avatar ou bannière')
+    .setName('photo')
+    .setDescription('Photo ou bannière')
     .addUserOption((o) => o.setName('membre').setDescription('Qui (toi par défaut)'))
     .addStringOption((o) =>
       o.setName('type').setDescription('Quoi').addChoices({ name: 'Photo de profil', value: 'avatar' }, { name: 'Bannière', value: 'banner' }),
@@ -332,7 +332,7 @@ const commandesPrefixe: CommandePrefixe[] = [
   },
   {
     nom: 'pic',
-    alias: ['avatar', 'pp'],
+    alias: ['pp'],
     domaine: 'sanction',
     categorie: 'general',
     description: 'Photo de profil',

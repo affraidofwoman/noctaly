@@ -240,7 +240,7 @@ export function participerTirage(membre: GuildMember, g: LigneTirage): ResultatP
   if (refusMotif) return { inscrit: false, raison: refusMotif };
   const r = executer('INSERT OR IGNORE INTO participations_tirages (tirage_id, utilisateur_id, inscrit_le) VALUES (?, ?, ?)', g.id, membre.id, Date.now());
   if (!r.changes) return { dejaInscrit: true };
-  emettreActivite({ serveurId: membre.guild.id, utilisateurId: membre.id, type: 'giveaways', montant: 1 });
+  emettreActivite({ serveurId: membre.guild.id, utilisateurId: membre.id, type: 'tirages', montant: 1 });
   if (lireConfig(membre.guild.id).tirages.journaliserParticipations) {
     void journal(membre.guild, 'giveaway', { titre: 'Participation', ton: 'neutre', lignes: [`<@${membre.id}> participe à **${tronquer(g.lot, 100)}**`] });
   }

@@ -566,6 +566,7 @@ export type CategorieAide =
   | 'community'
   | 'roles'
   | 'economy'
+  | 'progression'
   | 'customization'
   | 'admin'
   | 'owner';
@@ -573,6 +574,7 @@ export type CategorieAide =
 export const CATEGORIES_AIDE: Record<CategorieAide, { label: string; emoji: string }> = {
   general: { label: 'Pour tout le monde', emoji: '📌' },
   community: { label: 'Communauté', emoji: '⭐' },
+  progression: { label: 'Progression', emoji: '🌟' },
   economy: { label: 'Économie & jeux', emoji: '💰' },
   music: { label: 'Musique', emoji: '🎵' },
   twitch: { label: 'Twitch', emoji: '🔴' },

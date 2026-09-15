@@ -1296,3 +1296,19 @@ export async function carteCommandes(nom: string, niveau: number, prefixe: strin
   ecrire(contexte, 'Tape une commande pour commencer', 750, 234 + lignes * 84, { taille: 16, couleur: PALETTE.texteFaible, aligner: 'center' });
   return encoder(toile);
 }
+
+export async function carteChoix(titre: string, sousTitre: string, options: { nom: string; apercu: Apparence }[], accent: string): Promise<Buffer | null> {
+  const t = nouvelleToile(Math.max(700, 80 + options.length * 290), 520);
+  if (!t) return null;
+  const { toile, contexte } = t;
+  entete(contexte, titre, sousTitre, Math.max(700, 80 + options.length * 290), accent);
+  const largeur = Math.max(700, 80 + options.length * 290);
+  const depart = (largeur - (options.length * 290 - 20)) / 2;
+  options.forEach((o, i) => {
+    const x = depart + i * 290;
+    panneau(contexte, x, 140, 270, 340);
+    dessinerAvatar(contexte, o.apercu, x + 20, 160, 230, { arrondi: 16 });
+    ecrire(contexte, o.nom, x + 135, 448, { taille: 24, poids: '700', aligner: 'center' });
+  });
+  return encoder(toile);
+}
