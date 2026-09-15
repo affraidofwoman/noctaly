@@ -24,4 +24,4 @@ RUN mkdir -p /app/data && chown -R node:node /app
 USER node
 VOLUME ["/app/data"]
 EXPOSE 3000
-CMD ["node", "dist/src/index.js"]
+CMD ["node", "dist/src/demarrage.js"]

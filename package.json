@@ -2,7 +2,7 @@
   "name": "twitch-community-bot",
   "version": "1.0.0",
   "description": "Bot Discord all-in-one pour la communauté d'un streamer Twitch",
-  "main": "dist/src/index.js",
+  "main": "dist/src/demarrage.js",
   "type": "commonjs",
   "private": true,
   "license": "UNLICENSED",
@@ -11,9 +11,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/src/index.js",
-    "dev": "npm run build && node dist/src/index.js",
-    "deploy": "npm run build && node dist/src/deploy.js",
+    "start": "node dist/src/demarrage.js",
+    "dev": "npm run build && node dist/src/demarrage.js",
+    "deploy": "npm run build && node dist/src/enregistrement.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test \"dist/tests/*.test.js\"",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
