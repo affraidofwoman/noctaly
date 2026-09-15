@@ -605,7 +605,7 @@ const bannir: CommandeSlash = {
   donnees: new SlashCommandBuilder()
     .setName('ban')
     .setDescription('Bannir un compte')
-    .addUserOption((o) => o.setName('membre').setDescription('Qui (même hors du serveur)').setRequired(true))
+    .addUserOption((o) => o.setName('membre').setDescription('Qui, même absent').setRequired(true))
     .addStringOption((o) => optionRaison(o)),
   async executer(i) {
     await sanctionParCommande(i, 'ban', i.options.getUser('membre', true), i.options.getString('raison'));

@@ -899,7 +899,7 @@ const pageReglage: PageReglage = {
       emoji: '💜',
       async executer(interaction) {
         const pseudo = enseigneDe(interaction.guildId).pseudoTwitch;
-        if (!pseudo) throw new ErreurUtilisateur('L’enseigne de ce serveur n’a pas de chaîne Twitch (réglable par l’owner bot avec /custom).');
+        if (!pseudo) throw new ErreurUtilisateur('L’enseigne de ce serveur n’a pas de chaîne Twitch (réglable par l’owner bot).');
         await interaction.deferUpdate();
         const r = await suivre(interaction.guild, pseudo, null, null);
         await interaction.editReply(ecranChaine(interaction.guild, r, `✅ **${r.nom_affiche}** est suivie.`));
@@ -927,7 +927,7 @@ const twitch: CommandeSlash = {
         .addChannelOption((o) => o.setName('salon').setDescription('Salon d’annonce').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
         .addRoleOption((o) => o.setName('role').setDescription('Rôle à mentionner')),
     )
-    .addSubcommand((s) => s.setName('remove').setDescription('Ne plus suivre une chaîne').addStringOption((o) => optionPseudo(o).setAutocomplete(true)))
+    .addSubcommand((s) => s.setName('remove').setDescription('Retirer une chaîne').addStringOption((o) => optionPseudo(o).setAutocomplete(true)))
     .addSubcommand((s) => s.setName('list').setDescription('Les chaînes suivies'))
     .addSubcommand((s) => s.setName('test').setDescription('Annonce de test').addStringOption((o) => optionPseudo(o).setAutocomplete(true))),
   niveauxSousCommandes: { list: Niveau.STAFF },

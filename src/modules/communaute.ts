@@ -474,7 +474,7 @@ const signalement: CommandeSlash = {
 const avis: CommandeSlash = {
   categorie: 'community',
   delaiSecondes: 60,
-  donnees: new SlashCommandBuilder().setName('feedback').setDescription('Donner ton avis au staff'),
+  donnees: new SlashCommandBuilder().setName('feedback').setDescription('Ton avis'),
   async executer(interaction) {
     await interaction.showModal(
       construireFormulaire('rep:feedback', 'Ton avis compte', [
@@ -600,7 +600,7 @@ const afk: CommandeSlash = {
   donnees: new SlashCommandBuilder()
     .setName('afk')
     .setDescription('Te mettre AFK')
-    .addStringOption((o) => o.setName('raison').setDescription('Ex : En train de dormir').setMaxLength(200)),
+    .addStringOption((o) => o.setName('raison').setDescription('Raison').setMaxLength(200)),
   async executer(interaction) {
     const raison = interaction.options.getString('raison') ?? 'AFK';
     mettreAfk(interaction.guildId, interaction.user.id, raison);

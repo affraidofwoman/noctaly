@@ -434,7 +434,7 @@ const tirage: CommandeSlash = {
         .setName('start')
         .setDescription('Lancer un giveaway')
         .addStringOption((o) => o.setName('recompense').setDescription('Ce qu’on gagne').setRequired(true).setMaxLength(200))
-        .addStringOption((o) => o.setName('duree').setDescription('Ex : 30m, 1h, 2j, 1h30m').setRequired(true))
+        .addStringOption((o) => o.setName('duree').setDescription('Durée (30m, 2j)').setRequired(true))
         .addIntegerOption((o) => o.setName('gagnants').setDescription('Nombre de gagnants').setMinValue(1).setMaxValue(50))
         .addChannelOption((o) => o.setName('salon').setDescription('Salon').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
         .addRoleOption((o) => o.setName('role').setDescription('Rôle obligatoire'))
@@ -444,7 +444,7 @@ const tirage: CommandeSlash = {
         .addIntegerOption((o) => o.setName('participants').setDescription('Participants minimum').setMinValue(2).setMaxValue(100000))
         .addStringOption((o) => o.setName('condition').setDescription('Condition affichée').setMaxLength(200)),
     )
-    .addSubcommand((s) => s.setName('end').setDescription('Arrêter et tirer au sort').addIntegerOption(optionId))
+    .addSubcommand((s) => s.setName('end').setDescription('Tirer maintenant').addIntegerOption(optionId))
     .addSubcommand((s) =>
       s
         .setName('reroll')

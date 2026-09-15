@@ -397,8 +397,8 @@ const embed: CommandeSlash = {
   niveau: Niveau.STAFF,
   donnees: new SlashCommandBuilder()
     .setName('embed')
-    .setDescription('Créer ou modifier un embed')
-    .addSubcommand((s) => s.setName('create').setDescription('Créer un embed pas à pas'))
+    .setDescription('Les embeds')
+    .addSubcommand((s) => s.setName('create').setDescription('Nouvel embed'))
     .addSubcommand((s) =>
       s
         .setName('edit')
@@ -938,7 +938,7 @@ const panneauRoles: CommandeSlash = {
       s
         .setName('creer')
         .setDescription('Créer un panneau')
-        .addStringOption((o) => o.setName('titre').setDescription('Ex : 🎮 JEUX PRÉFÉRÉS').setRequired(true).setMaxLength(200))
+        .addStringOption((o) => o.setName('titre').setDescription('Titre du panneau').setRequired(true).setMaxLength(200))
         .addStringOption((o) =>
           o.setName('type').setDescription('Comment choisir').setRequired(true).addChoices({ name: 'Boutons', value: 'button' }, { name: 'Réactions', value: 'reaction' }, { name: 'Menu déroulant', value: 'select' }),
         )

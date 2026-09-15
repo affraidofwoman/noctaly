@@ -804,7 +804,7 @@ const commandeTicket: CommandeSlash = {
         .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)),
     )
     .addSubcommand((s) => s.setName('claim').setDescription('Prendre le ticket'))
-    .addSubcommand((s) => s.setName('transcript').setDescription('Le transcript de ce ticket'))
+    .addSubcommand((s) => s.setName('transcript').setDescription('Transcript du ticket'))
     .addSubcommand((s) =>
       s
         .setName('list')

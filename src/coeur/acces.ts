@@ -24,7 +24,7 @@ export const WHITELISTS: DefinitionWhitelist[] = [
     libelle: 'Owner bot',
     emoji: '👑',
     groupe: 'Bot',
-    description: 'Tout le bot, sur tous les serveurs, et les enseignes /custom',
+    description: 'Tout le bot, sur tous les serveurs, et les enseignes .custom',
     portee: 'global',
     accorde: Niveau.PROPRIETAIRE_BOT,
     gerePar: Niveau.PROPRIETAIRE_BOT,

@@ -362,7 +362,8 @@ function trace(contexte: Contexte, points: Point[]): void {
   contexte.closePath();
 }
 
-// Contour d’une masse de cheveux : un arc d’ellipse texturé.
+// - Masse de cheveux -
+// Un arc d’ellipse texturé.
 function arcTexture(cx: number, cy: number, rx: number, ry: number, debut: number, fin: number, texture: 'lisse' | 'boucle' | 'pointes', pas = 60): Point[] {
   const points: Point[] = [];
   for (let i = 0; i <= pas; i++) {
@@ -477,7 +478,7 @@ function dessinerCheveuxAvant(contexte: Contexte, coupe: string, genre: Genre, s
       contexte.fill();
       break;
   }
-  // Reflet discret.
+  // - Reflet -
   contexte.save();
   contexte.globalAlpha = 0.18;
   contexte.strokeStyle = reflet;
@@ -669,19 +670,19 @@ function dessinerTenue(contexte: Contexte, tenue: string, genre: Genre, teinte: 
 
 function dessinerVisage(contexte: Contexte, genre: Genre, yeux: Teinte, cheveux: string, peau: { peau: string; ombre: string }): void {
   const { x, y } = TETE;
-  // Oreilles.
+  // - Oreilles -
   contexte.fillStyle = peau.peau;
   for (const sens of [-1, 1]) {
     contexte.beginPath();
     contexte.ellipse(x + sens * 76, y + 12, 13, 22, 0, 0, Math.PI * 2);
     contexte.fill();
   }
-  // Tête.
+  // - Tête -
   contexte.beginPath();
   contexte.ellipse(x, y, TETE.rx, TETE.ry, 0, 0, Math.PI * 2);
   contexte.fillStyle = peau.peau;
   contexte.fill();
-  // Joues.
+  // - Joues -
   if (genre === 'femme') {
     contexte.fillStyle = 'rgba(232, 120, 140, 0.18)';
     for (const sens of [-1, 1]) {
@@ -690,7 +691,7 @@ function dessinerVisage(contexte: Contexte, genre: Genre, yeux: Teinte, cheveux:
       contexte.fill();
     }
   }
-  // Sourcils.
+  // - Sourcils -
   contexte.strokeStyle = eclaircir(cheveux, -0.1);
   contexte.lineWidth = genre === 'homme' ? 6 : 4;
   contexte.lineCap = 'round';
@@ -700,7 +701,7 @@ function dessinerVisage(contexte: Contexte, genre: Genre, yeux: Teinte, cheveux:
     contexte.quadraticCurveTo(x + sens * 34, y - 32, x + sens * 52, y - 24);
     contexte.stroke();
   }
-  // Yeux.
+  // - Yeux -
   for (const sens of [-1, 1]) {
     const ox = x + sens * 34;
     const oy = y + 4;
@@ -736,7 +737,7 @@ function dessinerVisage(contexte: Contexte, genre: Genre, yeux: Teinte, cheveux:
       contexte.stroke();
     }
   }
-  // Nez et bouche.
+  // - Nez et bouche -
   contexte.strokeStyle = peau.ombre;
   contexte.lineWidth = 3;
   contexte.beginPath();

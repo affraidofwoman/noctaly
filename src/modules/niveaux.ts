@@ -515,7 +515,7 @@ const badge: CommandeSlash = {
     .addSubcommand((s) =>
       s
         .setName('creer')
-        .setDescription('Créer ou modifier un badge')
+        .setDescription('Écrire un badge')
         .addStringOption((o) => o.setName('nom').setDescription('Nom').setRequired(true).setMaxLength(40))
         .addStringOption((o) => o.setName('emoji').setDescription('Émoji').setRequired(true).setMaxLength(64))
         .addStringOption((o) => o.setName('description').setDescription('Description').setMaxLength(120)),

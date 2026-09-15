@@ -29,7 +29,8 @@ export function portefeuille(serveurId: string, utilisateurId: string): Portefeu
   );
 }
 
-// Les transferts, remboursements et corrections ne comptent pas comme des gains.
+// - Gains -
+// Les transferts, remboursements et corrections ne comptent pas.
 const HORS_GAINS = new Set(['give', 'refund', 'admin', 'coffre']);
 
 export function ajouterPieces(serveurId: string, utilisateurId: string, montant: number, raison = 'gain'): number {

@@ -1018,7 +1018,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     alias: ['p'],
     domaine: 'music',
     categorie: 'music',
-    description: 'Un titre ou un lien',
+    description: 'Jouer un titre',
     usage: '<titre ou lien>',
     async executer(message, parametres) {
       if (!message.member) return;
@@ -1065,7 +1065,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     alias: ['vol', 'v'],
     domaine: 'music',
     categorie: 'music',
-    description: 'De 1 à 200 %',
+    description: 'Volume en %',
     usage: '<1-200>',
     async executer(message, parametres) {
       if (!message.member) return;
@@ -1076,7 +1076,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     nom: 'loop',
     domaine: 'music',
     categorie: 'music',
-    description: 'off · piste · file',
+    description: 'Mode de boucle',
     usage: '[off|piste|file]',
     async executer(message, parametres) {
       if (!message.member) return;
@@ -1147,7 +1147,7 @@ const commandes: CommandeSlash[] = [
     categorie: 'music',
     donnees: new SlashCommandBuilder()
       .setName('play')
-      .setDescription('Jouer un titre ou un lien')
+      .setDescription('Jouer un titre')
       .addStringOption((o) => o.setName('recherche').setDescription('Titre ou lien').setRequired(true).setMaxLength(500)),
     delaiSecondes: 2,
     async executer(interaction) {
@@ -1160,8 +1160,8 @@ const commandes: CommandeSlash[] = [
   slash('resume', 'Reprendre la lecture', async (i) => executerAction(i.member, 'resume', i.channelId)),
   slash('skip', 'Passer au suivant', async (i) => executerAction(i.member, 'skip', i.channelId)),
   slash('stop', 'Tout arrêter et quitter', async (i) => executerAction(i.member, 'stop', i.channelId)),
-  slash('join', 'Me faire venir en vocal', async (i) => executerAction(i.member, 'join', i.channelId)),
-  slash('leave', 'Me faire quitter le vocal', async (i) => executerAction(i.member, 'leave', i.channelId)),
+  slash('join', 'Rejoindre ton vocal', async (i) => executerAction(i.member, 'join', i.channelId)),
+  slash('leave', 'Quitter le vocal', async (i) => executerAction(i.member, 'leave', i.channelId)),
   slash('shuffle', 'Mélanger la file', async (i) => executerAction(i.member, 'shuffle', i.channelId)),
   {
     categorie: 'music',
@@ -1183,10 +1183,10 @@ const commandes: CommandeSlash[] = [
     },
   },
   slash('volume', 'Régler le volume', async (i) => reglerVolume(i.member, String(i.options.getInteger('valeur', true))), (b) =>
-    b.addIntegerOption((o) => o.setName('valeur').setDescription('De 1 à 200 %').setMinValue(1).setMaxValue(200).setRequired(true)) as SlashCommandBuilder,
+    b.addIntegerOption((o) => o.setName('valeur').setDescription('Volume en %').setMinValue(1).setMaxValue(200).setRequired(true)) as SlashCommandBuilder,
   ),
   slash('loop', 'Mode boucle', async (i) => reglerBoucle(i.member, i.options.getString('mode')), (b) =>
-    b.addStringOption((o) => o.setName('mode').setDescription('Le mode (alterne si vide)').addChoices({ name: 'Désactivée', value: 'off' }, { name: 'Le morceau', value: 'piste' }, { name: 'La file', value: 'file' })) as SlashCommandBuilder,
+    b.addStringOption((o) => o.setName('mode').setDescription('Mode de boucle').addChoices({ name: 'Désactivée', value: 'off' }, { name: 'Le morceau', value: 'piste' }, { name: 'La file', value: 'file' })) as SlashCommandBuilder,
   ),
 ];
 

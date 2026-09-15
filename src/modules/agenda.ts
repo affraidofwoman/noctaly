@@ -481,7 +481,7 @@ const commandeEvenement: CommandeSlash = {
         .setDescription('Créer un événement')
         .addStringOption((o) => o.setName('nom').setDescription('Ex : Soirée communautaire').setRequired(true).setMaxLength(100))
         .addStringOption((o) => o.setName('date').setDescription('JJ/MM ou JJ/MM/AAAA').setRequired(true))
-        .addStringOption((o) => o.setName('heure').setDescription('Ex : 21h ou 21:30').setRequired(true))
+        .addStringOption((o) => o.setName('heure').setDescription('Heure (21h30)').setRequired(true))
         .addStringOption((o) => o.setName('jeu').setDescription('Ex : Minecraft').setMaxLength(100))
         .addStringOption((o) => o.setName('description').setDescription('Détails').setMaxLength(1500))
         .addChannelOption((o) => o.setName('salon').setDescription('Où l’annoncer').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))

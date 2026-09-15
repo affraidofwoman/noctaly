@@ -165,12 +165,12 @@ const concours: CommandeSlash = {
       s
         .setName('create')
         .setDescription('Créer un concours')
-        .addStringOption((o) => o.setName('nom').setDescription('Ex : Meilleur fan art').setRequired(true).setMaxLength(100))
+        .addStringOption((o) => o.setName('nom').setDescription('Nom du concours').setRequired(true).setMaxLength(100))
         .addStringOption((o) => o.setName('participations').setDescription('Durée des dépôts').setRequired(true))
-        .addStringOption((o) => o.setName('votes').setDescription('Durée des votes (ex : 2j)').setRequired(true))
+        .addStringOption((o) => o.setName('votes').setDescription('Durée des votes').setRequired(true))
         .addStringOption((o) => o.setName('description').setDescription('Règles et thème').setMaxLength(1500))
         .addChannelOption((o) => o.setName('salon').setDescription('Où').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-        .addRoleOption((o) => o.setName('jury').setDescription('Rôle du jury (vote ×3)'))
+        .addRoleOption((o) => o.setName('jury').setDescription('Rôle du jury'))
         .addIntegerOption((o) => o.setName('pieces').setDescription('Pièces pour le gagnant').setMinValue(0).setMaxValue(10_000_000))
         .addIntegerOption((o) => o.setName('xp').setDescription('XP pour le gagnant').setMinValue(0).setMaxValue(1_000_000))
         .addRoleOption((o) => o.setName('role').setDescription('Rôle pour le gagnant')),

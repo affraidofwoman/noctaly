@@ -113,7 +113,7 @@ export const pagesAdministration: PageReglage[] = [
     section: 'appearance',
     titre: 'Apparence',
     emoji: '🎨',
-    description: 'Le thème des messages du bot. « Enseigne » reprend les couleurs du streamer (réglées par l’owner bot avec /custom).',
+    description: 'Le thème des messages du bot. « Enseigne » reprend les couleurs du streamer (réglées par l’owner bot).',
     champs: [
       {
         genre: 'choice',
