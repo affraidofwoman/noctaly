@@ -107,13 +107,57 @@ interface Commande {
   parametres: string[];
 }
 
-const COMMANDES: Commande[] = [
+const commandesYtdlp = (): Commande[] => [
   ...(environnement.cheminYtdlp ? [{ commande: environnement.cheminYtdlp, parametres: [] }] : []),
   { commande: 'yt-dlp', parametres: [] },
   ...(fs.existsSync(YTDLP_FOURNI) ? [{ commande: 'python3', parametres: [YTDLP_FOURNI] }, { commande: 'python', parametres: [YTDLP_FOURNI] }] : []),
   { commande: 'python3', parametres: ['-m', 'yt_dlp'] },
   { commande: 'python', parametres: ['-m', 'yt_dlp'] },
 ];
+
+// - Mise à jour de yt-dlp -
+// Une version téléchargée ne remplace l’actuelle qu’après avoir répondu.
+export function verifierZipapp(donnees: Buffer): string | null {
+  if (donnees.length < 1_000_000) return `fichier trop petit (${donnees.length} octets)`;
+  if (!donnees.subarray(0, 2).equals(Buffer.from('#!'))) return 'ce n’est pas un zipapp yt-dlp';
+  return null;
+}
+
+function versionYtdlp(fichier: string): string | null {
+  for (const interpreteur of ['python3', 'python']) {
+    const r = spawnSync(interpreteur, [fichier, '--version'], { encoding: 'utf8', windowsHide: true, timeout: 30_000 });
+    const version = r.status === 0 ? r.stdout.trim().split('\n')[0] : '';
+    if (version) return version;
+  }
+  return null;
+}
+
+export async function mettreAJourYtdlp(): Promise<string> {
+  if (toutesSessions().some((s) => s.actuel)) return 'lecture en cours, report';
+  const actuelle = fs.existsSync(YTDLP_FOURNI) ? versionYtdlp(YTDLP_FOURNI) : null;
+  const entete = { 'User-Agent': 'noctaly', Accept: 'application/vnd.github+json' };
+  const derniere = await fetch('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest', { headers: entete, signal: AbortSignal.timeout(15_000) });
+  if (!derniere.ok) throw new Error(`GitHub a répondu ${derniere.status}`);
+  const tag = String(((await derniere.json()) as { tag_name?: string }).tag_name ?? '').trim();
+  if (!tag) throw new Error('aucune version publiée lisible');
+  if (actuelle === tag) return `déjà à jour (${tag})`;
+  const reponse = await fetch('https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp', { headers: entete, redirect: 'follow', signal: AbortSignal.timeout(120_000) });
+  if (!reponse.ok) throw new Error(`téléchargement refusé (${reponse.status})`);
+  const donnees = Buffer.from(await reponse.arrayBuffer());
+  const refus = verifierZipapp(donnees);
+  if (refus) throw new Error(refus);
+  const temporaire = `${YTDLP_FOURNI}.nouveau`;
+  fs.mkdirSync(path.dirname(YTDLP_FOURNI), { recursive: true });
+  fs.writeFileSync(temporaire, donnees, { mode: 0o755 });
+  const nouvelle = versionYtdlp(temporaire);
+  if (!nouvelle && actuelle) {
+    fs.rmSync(temporaire, { force: true });
+    throw new Error('la version téléchargée ne répond pas, remplacement annulé');
+  }
+  fs.renameSync(temporaire, YTDLP_FOURNI);
+  choisis = null;
+  return `${actuelle ?? 'aucune'} → ${nouvelle ?? tag}`;
+}
 
 const STRATEGIES: { name: string; args: string[] }[] = [
   { name: 'défaut', args: [] },
@@ -156,7 +200,7 @@ function fluxYtdlp(commande: Commande, url: string, strategie: { args: string[] 
 
 async function fluxYoutube(url: string): Promise<Readable> {
   const echecs: string[] = [];
-  for (const commande of choisis ? [choisis, ...COMMANDES] : COMMANDES) {
+  for (const commande of choisis ? [choisis, ...commandesYtdlp()] : commandesYtdlp()) {
     for (const strategie of STRATEGIES) {
       try {
         const flux = await fluxYtdlp(commande, url, strategie);
@@ -209,7 +253,7 @@ export async function chercherYoutube(requete: string): Promise<PisteResolue | n
   } catch (echec) {
     registre.debogage(`Recherche play-dl en échec : ${(echec as Error).message}`);
   }
-  for (const commande of choisis ? [choisis, ...COMMANDES] : COMMANDES) {
+  for (const commande of choisis ? [choisis, ...commandesYtdlp()] : commandesYtdlp()) {
     try {
       return await rechercheYtdlp(commande, requete);
     } catch (echec) {
@@ -1174,6 +1218,17 @@ export const moduleMusique: ModuleBot = {
   actifParDefaut: true,
   commandes,
   commandesPrefixe,
+  taches: [
+    {
+      nom: 'yt-dlp',
+      intervalleMs: 24 * 3_600_000,
+      auDemarrage: true,
+      async executer() {
+        const bilan = await mettreAJourYtdlp().catch((echec: Error) => `échec, version actuelle gardée : ${echec.message}`);
+        registreMusique.info(`yt-dlp : ${bilan}`);
+      },
+    },
+  ],
   pagesReglage: [pageReglage],
   composants: [
     {
