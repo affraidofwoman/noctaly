@@ -362,9 +362,9 @@ export function configParDefaut(): ConfigServeur {
     permissions: { streamer: [], admin: [], moderateur: [], staff: [], support: [], membre: [] },
     bienvenue: {
       salonId: null,
-      message: '🎉 Bienvenue {mention} !\n\nTu es maintenant membre de **{server}**.\n\nNous sommes désormais **{membercount} membres** !',
+      message: 'Bienvenue {mention} sur le serveur !\n\nBon courage ! 🎉',
       utiliserEmbed: true,
-      titre: '👋 BIENVENUE',
+      titre: '',
       modeImage: 'card',
       urlImage: '',
       mpActif: false,
