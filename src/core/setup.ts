@@ -55,55 +55,55 @@ interface ChampBase {
 
 export type ChampReglage =
   | (ChampBase & {
-      kind: 'channel';
+      genre: 'channel';
       channelTypes?: ChannelType[];
-      get(c: ConfigServeur): string | null;
-      set(c: ConfigServeur, v: string | null): void;
+      lire(c: ConfigServeur): string | null;
+      ecrire(c: ConfigServeur, v: string | null): void;
     })
   | (ChampBase & {
-      kind: 'channels';
+      genre: 'channels';
       channelTypes?: ChannelType[];
       max?: number;
-      get(c: ConfigServeur): string[];
-      set(c: ConfigServeur, v: string[]): void;
+      lire(c: ConfigServeur): string[];
+      ecrire(c: ConfigServeur, v: string[]): void;
     })
-  | (ChampBase & { kind: 'role'; attribuable?: boolean; get(c: ConfigServeur): string | null; set(c: ConfigServeur, v: string | null): void })
+  | (ChampBase & { genre: 'role'; attribuable?: boolean; lire(c: ConfigServeur): string | null; ecrire(c: ConfigServeur, v: string | null): void })
   | (ChampBase & {
-      kind: 'roles';
+      genre: 'roles';
       attribuable?: boolean;
       max?: number;
-      get(c: ConfigServeur): string[];
-      set(c: ConfigServeur, v: string[]): void;
+      lire(c: ConfigServeur): string[];
+      ecrire(c: ConfigServeur, v: string[]): void;
     })
-  | (ChampBase & { kind: 'toggle'; get(c: ConfigServeur): boolean; set(c: ConfigServeur, v: boolean): void })
+  | (ChampBase & { genre: 'toggle'; lire(c: ConfigServeur): boolean; ecrire(c: ConfigServeur, v: boolean): void })
   | (ChampBase & {
-      kind: 'text';
+      genre: 'text';
       long?: boolean;
-      maxLength?: number;
-      required?: boolean;
-      get(c: ConfigServeur): string;
-      set(c: ConfigServeur, v: string): void;
+      longueurMax?: number;
+      obligatoire?: boolean;
+      lire(c: ConfigServeur): string;
+      ecrire(c: ConfigServeur, v: string): void;
       validate?(v: string): string | null;
     })
   | (ChampBase & {
-      kind: 'number';
+      genre: 'number';
       min: number;
       max: number;
-      unit?: string;
-      get(c: ConfigServeur): number;
-      set(c: ConfigServeur, v: number): void;
+      unite?: string;
+      lire(c: ConfigServeur): number;
+      ecrire(c: ConfigServeur, v: number): void;
     })
   | (ChampBase & {
-      kind: 'choice';
-      options: { value: string; label: string; emoji?: string }[];
-      get(c: ConfigServeur): string;
-      set(c: ConfigServeur, v: string): void;
+      genre: 'choice';
+      options: { valeur: string; libelle: string; emoji?: string }[];
+      lire(c: ConfigServeur): string;
+      ecrire(c: ConfigServeur, v: string): void;
     })
   | (ChampBase & {
-      kind: 'multichoice';
-      options: { value: string; label: string; emoji?: string }[];
-      get(c: ConfigServeur): string[];
-      set(c: ConfigServeur, v: string[]): void;
+      genre: 'multichoice';
+      options: { valeur: string; libelle: string; emoji?: string }[];
+      lire(c: ConfigServeur): string[];
+      ecrire(c: ConfigServeur, v: string[]): void;
     });
 
 export interface ActionReglage {
@@ -153,9 +153,9 @@ const GENRES_MENUS = new Set(['channel', 'channels', 'role', 'roles', 'choice', 
 
 /** Vérifie qu'une page tient dans les 5 rangées de composants autorisées par Discord. */
 export function verifierMisePage(page: PageReglage): void {
-  const menus = page.champs.filter((f) => GENRES_MENUS.has(f.kind)).length;
-  const bascules = page.champs.filter((f) => f.kind === 'toggle').length;
-  const textes = page.champs.filter((f) => f.kind === 'text' || f.kind === 'number').length;
+  const menus = page.champs.filter((f) => GENRES_MENUS.has(f.genre)).length;
+  const bascules = page.champs.filter((f) => f.genre === 'toggle').length;
+  const textes = page.champs.filter((f) => f.genre === 'text' || f.genre === 'number').length;
   if (textes > 5) throw new Error(`Page ${page.id} : 5 champs texte maximum`);
   const controles = (page.moduleId ? 1 : 0) + (textes ? 1 : 0) + (page.actions?.length ?? 0) + 1;
   const rangees = menus + Math.ceil(bascules / 5) + Math.ceil(controles / 5);
@@ -164,24 +164,24 @@ export function verifierMisePage(page: PageReglage): void {
 
 function valeurAffichee(serveur: Guild, champ: ChampReglage, reglages: ConfigServeur): string {
   const aucun = '*non défini*';
-  switch (champ.kind) {
+  switch (champ.genre) {
     case 'channel': {
-      const v = champ.get(reglages);
+      const v = champ.lire(reglages);
       return v ? `<#${v}>` : aucun;
     }
     case 'channels': {
-      const v = champ.get(reglages);
+      const v = champ.lire(reglages);
       return v.length ? v.map((id) => `<#${id}>`).join(' ') : aucun;
     }
     case 'role': {
-      const v = champ.get(reglages);
+      const v = champ.lire(reglages);
       if (!v) return aucun;
       const role = serveur.roles.cache.get(v);
       const avertir = champ.attribuable && role && !botPeutGererRole(serveur, role) ? ' ⚠️ *rôle au-dessus du bot*' : '';
       return `<@&${v}>${avertir}`;
     }
     case 'roles': {
-      const v = champ.get(reglages);
+      const v = champ.lire(reglages);
       if (!v.length) return aucun;
       const bloques = champ.attribuable
         ? v.filter((id) => {
@@ -192,23 +192,23 @@ function valeurAffichee(serveur: Guild, champ: ChampReglage, reglages: ConfigSer
       return v.map((id) => `<@&${id}>`).join(' ') + (bloques.length ? `\n⚠️ ${bloques.length} rôle(s) au-dessus du bot` : '');
     }
     case 'toggle':
-      return champ.get(reglages) ? '🟢 Activé' : '🔴 Désactivé';
+      return champ.lire(reglages) ? '🟢 Activé' : '🔴 Désactivé';
     case 'text': {
-      const v = champ.get(reglages);
+      const v = champ.lire(reglages);
       return v ? `>>> ${tronquer(v, 180)}` : aucun;
     }
     case 'number':
-      return `\`${champ.get(reglages)}\`${champ.unit ? ` ${champ.unit}` : ''}`;
+      return `\`${champ.lire(reglages)}\`${champ.unite ? ` ${champ.unite}` : ''}`;
     case 'choice': {
-      const v = champ.get(reglages);
-      const option = champ.options.find((o) => o.value === v);
-      return option ? `${option.emoji ?? ''} ${option.label}`.trim() : aucun;
+      const v = champ.lire(reglages);
+      const option = champ.options.find((o) => o.valeur === v);
+      return option ? `${option.emoji ?? ''} ${option.libelle}`.trim() : aucun;
     }
     case 'multichoice': {
-      const v = champ.get(reglages);
+      const v = champ.lire(reglages);
       return champ.options
-        .filter((o) => v.includes(o.value))
-        .map((o) => `${o.emoji ?? ''} ${o.label}`.trim())
+        .filter((o) => v.includes(o.valeur))
+        .map((o) => `${o.emoji ?? ''} ${o.libelle}`.trim())
         .join(', ') || aucun;
     }
   }
@@ -273,7 +273,7 @@ export function afficherPage(serveur: Guild, page: PageReglage, avertissement?: 
     embed.addFields({
       name: champ.libelle,
       value: tronquer(`${valeurAffichee(serveur, champ, reglages)}${champ.aide ? `\n-# ${champ.aide}` : ''}`, 1024),
-      inline: champ.kind === 'toggle' || champ.kind === 'number',
+      inline: champ.genre === 'toggle' || champ.genre === 'number',
     });
   }
 
@@ -281,52 +281,52 @@ export function afficherPage(serveur: Guild, page: PageReglage, avertissement?: 
   for (const champ of page.champs) {
     const id = `setup:sel:${page.id}:${champ.cle}`;
     const indication = `${champ.libelle}`.slice(0, 100);
-    if (champ.kind === 'channel' || champ.kind === 'channels') {
+    if (champ.genre === 'channel' || champ.genre === 'channels') {
       const menu = new ChannelSelectMenuBuilder()
         .setCustomId(id)
         .setPlaceholder(indication)
         .setMinValues(0)
-        .setMaxValues(champ.kind === 'channel' ? 1 : Math.min(champ.max ?? 25, 25))
+        .setMaxValues(champ.genre === 'channel' ? 1 : Math.min(champ.max ?? 25, 25))
         .setChannelTypes(...(champ.channelTypes ?? [ChannelType.GuildText, ChannelType.GuildAnnouncement]));
-      const actuel = champ.kind === 'channel' ? [champ.get(reglages)].filter((v): v is string => !!v) : champ.get(reglages);
+      const actuel = champ.genre === 'channel' ? [champ.lire(reglages)].filter((v): v is string => !!v) : champ.lire(reglages);
       const valides = actuel.filter((c) => serveur.channels.cache.has(c)).slice(0, 25);
       if (valides.length) menu.setDefaultChannels(...valides);
       rangees.push(rangee(menu));
-    } else if (champ.kind === 'role' || champ.kind === 'roles') {
+    } else if (champ.genre === 'role' || champ.genre === 'roles') {
       const menu = new RoleSelectMenuBuilder()
         .setCustomId(id)
         .setPlaceholder(indication)
         .setMinValues(0)
-        .setMaxValues(champ.kind === 'role' ? 1 : Math.min(champ.max ?? 25, 25));
-      const actuel = champ.kind === 'role' ? [champ.get(reglages)].filter((v): v is string => !!v) : champ.get(reglages);
+        .setMaxValues(champ.genre === 'role' ? 1 : Math.min(champ.max ?? 25, 25));
+      const actuel = champ.genre === 'role' ? [champ.lire(reglages)].filter((v): v is string => !!v) : champ.lire(reglages);
       const valides = actuel.filter((r) => serveur.roles.cache.has(r)).slice(0, 25);
       if (valides.length) menu.setDefaultRoles(...valides);
       rangees.push(rangee(menu));
-    } else if (champ.kind === 'choice' || champ.kind === 'multichoice') {
-      const actuel = champ.kind === 'choice' ? [champ.get(reglages)] : champ.get(reglages);
+    } else if (champ.genre === 'choice' || champ.genre === 'multichoice') {
+      const actuel = champ.genre === 'choice' ? [champ.lire(reglages)] : champ.lire(reglages);
       const menu = new StringSelectMenuBuilder()
         .setCustomId(id)
         .setPlaceholder(indication)
-        .setMinValues(champ.kind === 'choice' ? 1 : 0)
-        .setMaxValues(champ.kind === 'choice' ? 1 : champ.options.length)
+        .setMinValues(champ.genre === 'choice' ? 1 : 0)
+        .setMaxValues(champ.genre === 'choice' ? 1 : champ.options.length)
         .addOptions(
           champ.options.slice(0, 25).map((o) => ({
-            label: o.label,
-            value: o.value,
+            label: o.libelle,
+            value: o.valeur,
             emoji: o.emoji,
-            default: actuel.includes(o.value),
+            default: actuel.includes(o.valeur),
           })),
         );
       rangees.push(rangee(menu));
     }
   }
 
-  const bascules = page.champs.filter((f) => f.kind === 'toggle');
+  const bascules = page.champs.filter((f) => f.genre === 'toggle');
   for (let i = 0; i < bascules.length; i += 5) {
     rangees.push(
       rangee(
         ...bascules.slice(i, i + 5).map((f) => {
-          const sur = f.kind === 'toggle' && f.get(reglages);
+          const sur = f.genre === 'toggle' && f.lire(reglages);
           return bouton(`setup:tog:${page.id}:${f.cle}`, f.libelle, sur ? ButtonStyle.Success : ButtonStyle.Secondary, sur ? '🟢' : '🔴');
         }),
       ),
@@ -338,7 +338,7 @@ export function afficherPage(serveur: Guild, page: PageReglage, avertissement?: 
     const sur = moduleActif(serveur.id, page.moduleId);
     controles.push(bouton(`setup:mod:${page.id}`, sur ? 'Désactiver le module' : 'Activer le module', sur ? ButtonStyle.Danger : ButtonStyle.Success, sur ? '⏸️' : '▶️'));
   }
-  if (page.champs.some((f) => f.kind === 'text' || f.kind === 'number')) {
+  if (page.champs.some((f) => f.genre === 'text' || f.genre === 'number')) {
     controles.push(bouton(`setup:txt:${page.id}`, 'Modifier les textes', ButtonStyle.Primary, '📝'));
   }
   for (const action of page.actions ?? []) {
@@ -389,8 +389,8 @@ export async function traiterBoutonReglage(interaction: ButtonInteraction<'cache
     case 'tog': {
       const page = exigerPage(pageId);
       const champ = trouverChamp(page, cle);
-      if (champ.kind !== 'toggle') return;
-      modifierConfig(serveur.id, (c) => champ.set(c, !champ.get(c)));
+      if (champ.genre !== 'toggle') return;
+      modifierConfig(serveur.id, (c) => champ.ecrire(c, !champ.lire(c)));
       await interaction.update(afficherPage(serveur, page));
       return;
     }
@@ -406,10 +406,10 @@ export async function traiterBoutonReglage(interaction: ButtonInteraction<'cache
       const reglages = lireConfig(serveur.id);
       const champsFenetre: ChampFenetre[] = [];
       for (const f of page.champs) {
-        if (f.kind === 'text') {
-          champsFenetre.push({ id: f.cle, libelle: f.libelle, long: f.long, obligatoire: f.required ?? false, valeur: f.get(reglages), longueurMax: f.maxLength ?? (f.long ? 2000 : 200) });
-        } else if (f.kind === 'number') {
-          champsFenetre.push({ id: f.cle, libelle: `${f.libelle} (${f.min}-${f.max})`, valeur: String(f.get(reglages)), longueurMax: 10 });
+        if (f.genre === 'text') {
+          champsFenetre.push({ id: f.cle, libelle: f.libelle, long: f.long, obligatoire: f.obligatoire ?? false, valeur: f.lire(reglages), longueurMax: f.longueurMax ?? (f.long ? 2000 : 200) });
+        } else if (f.genre === 'number') {
+          champsFenetre.push({ id: f.cle, libelle: `${f.libelle} (${f.min}-${f.max})`, valeur: String(f.lire(reglages)), longueurMax: 10 });
         }
       }
       const fenetre = construireFormulaire(`setup:txtm:${page.id}`, `${page.titre} — textes`, champsFenetre);
@@ -432,25 +432,25 @@ export async function traiterMenuReglage(interaction: AnySelectMenuInteraction<'
   const champ = trouverChamp(page, cle);
   const valeurs = interaction.values;
   modifierConfig(interaction.guildId, (c) => {
-    switch (champ.kind) {
+    switch (champ.genre) {
       case 'channel':
       case 'role':
-        champ.set(c, valeurs[0] ?? null);
+        champ.ecrire(c, valeurs[0] ?? null);
         break;
       case 'channels':
       case 'roles':
       case 'multichoice':
-        champ.set(c, [...valeurs]);
+        champ.ecrire(c, [...valeurs]);
         break;
       case 'choice':
-        if (valeurs[0]) champ.set(c, valeurs[0]);
+        if (valeurs[0]) champ.ecrire(c, valeurs[0]);
         break;
       default:
         break;
     }
   });
   let avertissement: string | undefined;
-  if ((champ.kind === 'role' || champ.kind === 'roles') && champ.attribuable) {
+  if ((champ.genre === 'role' || champ.genre === 'roles') && champ.attribuable) {
     const bloques = valeurs.filter((id) => {
       const r = interaction.guild.roles.cache.get(id);
       return r && !botPeutGererRole(interaction.guild, r);
@@ -468,21 +468,21 @@ export async function traiterFenetreReglage(interaction: ModalSubmitInteraction<
   const erreurs: string[] = [];
   modifierConfig(interaction.guildId, (c) => {
     for (const champ of page.champs) {
-      if (champ.kind !== 'text' && champ.kind !== 'number') continue;
+      if (champ.genre !== 'text' && champ.genre !== 'number') continue;
       let brut: string;
       try {
         brut = interaction.fields.getTextInputValue(champ.cle).trim();
       } catch {
         continue;
       }
-      if (champ.kind === 'text') {
+      if (champ.genre === 'text') {
         const probleme = champ.validate?.(brut) ?? null;
         if (probleme) erreurs.push(`**${champ.libelle}** : ${probleme}`);
-        else champ.set(c, brut);
+        else champ.ecrire(c, brut);
       } else {
         const n = Number(brut.replace(',', '.'));
         if (!Number.isFinite(n) || n < champ.min || n > champ.max) erreurs.push(`**${champ.libelle}** : valeur entre ${champ.min} et ${champ.max} attendue.`);
-        else champ.set(c, Math.round(n));
+        else champ.ecrire(c, Math.round(n));
       }
     }
   });

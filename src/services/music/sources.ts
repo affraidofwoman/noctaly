@@ -240,7 +240,7 @@ export const LIMITE_PLAYLIST = 5000;
 
 // ─── Résolution ────────────────────────────────────────────────────────────
 
-export type ResultatResolution = { kind: 'track'; track: PisteResolue } | { kind: 'playlist'; name: string; tracks: PisteResolue[] } | { kind: 'error'; reason: string };
+export type ResultatResolution = { genre: 'track'; piste: PisteResolue } | { genre: 'playlist'; nom: string; pistes: PisteResolue[] } | { genre: 'error'; raison: string };
 
 export async function resoudre(saisie: string): Promise<ResultatResolution> {
   const requete = saisie.trim();
@@ -250,34 +250,34 @@ export async function resoudre(saisie: string): Promise<ResultatResolution> {
       case 'yt_video': {
         const info = await play.video_basic_info(requete);
         const d = info.video_details;
-        return { kind: 'track', track: { titre: d.title ?? 'Vidéo YouTube', duree: d.durationInSec, miniature: d.thumbnails[0]?.url ?? null, url: d.url } };
+        return { genre: 'track', piste: { titre: d.title ?? 'Vidéo YouTube', duree: d.durationInSec, miniature: d.thumbnails[0]?.url ?? null, url: d.url } };
       }
       case 'yt_playlist': {
         const liste = await play.playlist_info(requete, { incomplete: true });
         const videos = await liste.all_videos();
         return {
-          kind: 'playlist',
-          name: liste.title ?? 'Playlist YouTube',
-          tracks: videos.slice(0, LIMITE_PLAYLIST).map((v) => ({ titre: v.title ?? 'Vidéo', duree: v.durationInSec, miniature: v.thumbnails[0]?.url ?? null, url: v.url })),
+          genre: 'playlist',
+          nom: liste.title ?? 'Playlist YouTube',
+          pistes: videos.slice(0, LIMITE_PLAYLIST).map((v) => ({ titre: v.title ?? 'Vidéo', duree: v.durationInSec, miniature: v.thumbnails[0]?.url ?? null, url: v.url })),
         };
       }
       case 'so_track':
       case 'so_playlist': {
         const soundcloud = await play.soundcloud(requete);
-        if (soundcloud.type === 'track') return { kind: 'track', track: { titre: soundcloud.name, duree: soundcloud.durationInSec, miniature: (soundcloud as { thumbnail?: string }).thumbnail ?? null, url: soundcloud.url } };
+        if (soundcloud.type === 'track') return { genre: 'track', piste: { titre: soundcloud.name, duree: soundcloud.durationInSec, miniature: (soundcloud as { thumbnail?: string }).thumbnail ?? null, url: soundcloud.url } };
         const pistes = await (soundcloud as import('play-dl').SoundCloudPlaylist).all_tracks();
-        return { kind: 'playlist', name: soundcloud.name, tracks: pistes.slice(0, LIMITE_PLAYLIST).map((t) => ({ titre: t.name, duree: t.durationInSec, miniature: t.thumbnail ?? null, url: t.url })) };
+        return { genre: 'playlist', nom: soundcloud.name, pistes: pistes.slice(0, LIMITE_PLAYLIST).map((t) => ({ titre: t.name, duree: t.durationInSec, miniature: t.thumbnail ?? null, url: t.url })) };
       }
       case 'sp_track':
       case 'sp_playlist':
       case 'sp_album': {
-        if (!spotifyActif()) return { kind: 'error', reason: 'Spotify n’est pas configuré sur ce bot (SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET).' };
+        if (!spotifyActif()) return { genre: 'error', raison: 'Spotify n’est pas configuré sur ce bot (SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET).' };
         const id = idSpotify(requete);
-        if (!id) return { kind: 'error', reason: 'Lien Spotify illisible.' };
-        if (type === 'sp_track') return { kind: 'track', track: depuisSpotify(await appelSpotify<SpotifyTrack>(`tracks/${id}`)) };
+        if (!id) return { genre: 'error', raison: 'Lien Spotify illisible.' };
+        if (type === 'sp_track') return { genre: 'track', piste: depuisSpotify(await appelSpotify<SpotifyTrack>(`tracks/${id}`)) };
         if (type === 'sp_album') {
           const album = await appelSpotify<{ name: string; images: { url: string }[]; tracks: { items: SpotifyTrack[] } }>(`albums/${id}`);
-          return { kind: 'playlist', name: album.name, tracks: album.tracks.items.map((t) => depuisSpotify(t, album.images[0]?.url ?? null)) };
+          return { genre: 'playlist', nom: album.name, pistes: album.tracks.items.map((t) => depuisSpotify(t, album.images[0]?.url ?? null)) };
         }
         const playlist = await appelSpotify<{ name: string; tracks: { items: { track: SpotifyTrack | null }[]; next: string | null } }>(`playlists/${id}`);
         const pistes: PisteResolue[] = playlist.tracks.items.filter((i) => i.track).map((i) => depuisSpotify(i.track!));
@@ -287,7 +287,7 @@ export async function resoudre(saisie: string): Promise<ResultatResolution> {
           pistes.push(...page.items.filter((i) => i.track).map((i) => depuisSpotify(i.track!)));
           suivant = page.next;
         }
-        return { kind: 'playlist', name: playlist.name, tracks: pistes };
+        return { genre: 'playlist', nom: playlist.name, pistes };
       }
       case 'dz_track':
       case 'dz_playlist':
@@ -295,24 +295,24 @@ export async function resoudre(saisie: string): Promise<ResultatResolution> {
         const dz = await play.deezer(requete);
         if (dz.type === 'track') {
           const t = dz as import('play-dl').DeezerTrack;
-          return { kind: 'track', track: { titre: `${t.title} — ${t.artist.name}`, duree: t.durationInSec, miniature: null, url: null, urlOrigine: t.url, requete: `${t.title} ${t.artist.name}` } };
+          return { genre: 'track', piste: { titre: `${t.title} — ${t.artist.name}`, duree: t.durationInSec, miniature: null, url: null, urlOrigine: t.url, requete: `${t.title} ${t.artist.name}` } };
         }
         const liste = dz as import('play-dl').DeezerPlaylist | import('play-dl').DeezerAlbum;
-        const lireTout = await liste.all_tracks();
+        const morceaux = await liste.all_tracks();
         return {
-          kind: 'playlist',
-          name: liste.title,
-          tracks: lireTout.slice(0, LIMITE_PLAYLIST).map((t) => ({ titre: `${t.title} — ${t.artist.name}`, duree: t.durationInSec, miniature: null, url: null, urlOrigine: t.url, requete: `${t.title} ${t.artist.name}` })),
+          genre: 'playlist',
+          nom: liste.title,
+          pistes: morceaux.slice(0, LIMITE_PLAYLIST).map((t) => ({ titre: `${t.title} — ${t.artist.name}`, duree: t.durationInSec, miniature: null, url: null, urlOrigine: t.url, requete: `${t.title} ${t.artist.name}` })),
         };
       }
       default: {
-        if (/^https?:\/\//i.test(requete)) return { kind: 'error', reason: 'Ce lien n’est pas pris en charge (YouTube, SoundCloud, Spotify, Deezer).' };
+        if (/^https?:\/\//i.test(requete)) return { genre: 'error', raison: 'Ce lien n’est pas pris en charge (YouTube, SoundCloud, Spotify, Deezer).' };
         const trouve = await chercherYoutube(requete);
-        return trouve ? { kind: 'track', track: trouve } : { kind: 'error', reason: `Rien trouvé pour \`${requete.slice(0, 100)}\`.` };
+        return trouve ? { genre: 'track', piste: trouve } : { genre: 'error', raison: `Rien trouvé pour \`${requete.slice(0, 100)}\`.` };
       }
     }
   } catch (echec) {
-    return { kind: 'error', reason: `Recherche impossible : \`${(echec as Error).message.slice(0, 200)}\`` };
+    return { genre: 'error', raison: `Recherche impossible : \`${(echec as Error).message.slice(0, 200)}\`` };
   }
 }
 

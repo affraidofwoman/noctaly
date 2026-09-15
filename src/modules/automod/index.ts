@@ -111,13 +111,13 @@ async function surMessage(message: Message): Promise<'stop' | void> {
 }
 
 const champListe = (cle: 'links' | 'badWords', libelle: string) => ({
-  kind: 'text' as const,
+  genre: 'text' as const,
   cle,
   libelle,
   long: true,
-  maxLength: 2000,
-  get: (c: import('../../core/guildConfig').ConfigServeur) => (cle === 'links' ? c.automod.liens.whitelist : c.automod.motsInterdits.mots).join(', '),
-  set: (c: import('../../core/guildConfig').ConfigServeur, v: string) => {
+  longueurMax: 2000,
+  lire: (c: import('../../core/guildConfig').ConfigServeur) => (cle === 'links' ? c.automod.liens.whitelist : c.automod.motsInterdits.mots).join(', '),
+  ecrire: (c: import('../../core/guildConfig').ConfigServeur, v: string) => {
     const articles = [...new Set(v.split(/[,\n]/).map((s) => s.trim()).filter(Boolean))].slice(0, 300);
     if (cle === 'links') c.automod.liens.whitelist = articles.map((d) => d.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
     else c.automod.motsInterdits.mots = [...new Set(articles.map(formeDeBase).filter(Boolean))];
@@ -134,29 +134,29 @@ const pages: PageReglage[] = [
     ordre: 2,
     description: 'Les filtres automatiques. Le staff, le bypass et les salons/rôles autorisés sont ignorés.\n-# Liste des domaines et mots : séparés par des virgules.',
     champs: [
-      { kind: 'toggle', cle: 'spam', libelle: 'Spam', get: (c) => c.automod.spam.enabled, set: (c, v) => void (c.automod.spam.enabled = v) },
-      { kind: 'toggle', cle: 'dup', libelle: 'Répétition', get: (c) => c.automod.repetitions.enabled, set: (c, v) => void (c.automod.repetitions.enabled = v) },
-      { kind: 'toggle', cle: 'links', libelle: 'Liens', get: (c) => c.automod.liens.enabled, set: (c, v) => void (c.automod.liens.enabled = v) },
-      { kind: 'toggle', cle: 'invites', libelle: 'Invitations', get: (c) => c.automod.invites.enabled, set: (c, v) => void (c.automod.invites.enabled = v) },
-      { kind: 'toggle', cle: 'words', libelle: 'Mots interdits', get: (c) => c.automod.motsInterdits.enabled, set: (c, v) => void (c.automod.motsInterdits.enabled = v) },
-      { kind: 'toggle', cle: 'mentions', libelle: 'Mentions', get: (c) => c.automod.mentions.enabled, set: (c, v) => void (c.automod.mentions.enabled = v) },
-      { kind: 'toggle', cle: 'caps', libelle: 'Majuscules', get: (c) => c.automod.majuscules.enabled, set: (c, v) => void (c.automod.majuscules.enabled = v) },
+      { genre: 'toggle', cle: 'spam', libelle: 'Spam', lire: (c) => c.automod.spam.enabled, ecrire: (c, v) => void (c.automod.spam.enabled = v) },
+      { genre: 'toggle', cle: 'dup', libelle: 'Répétition', lire: (c) => c.automod.repetitions.enabled, ecrire: (c, v) => void (c.automod.repetitions.enabled = v) },
+      { genre: 'toggle', cle: 'links', libelle: 'Liens', lire: (c) => c.automod.liens.enabled, ecrire: (c, v) => void (c.automod.liens.enabled = v) },
+      { genre: 'toggle', cle: 'invites', libelle: 'Invitations', lire: (c) => c.automod.invites.enabled, ecrire: (c, v) => void (c.automod.invites.enabled = v) },
+      { genre: 'toggle', cle: 'words', libelle: 'Mots interdits', lire: (c) => c.automod.motsInterdits.enabled, ecrire: (c, v) => void (c.automod.motsInterdits.enabled = v) },
+      { genre: 'toggle', cle: 'mentions', libelle: 'Mentions', lire: (c) => c.automod.mentions.enabled, ecrire: (c, v) => void (c.automod.mentions.enabled = v) },
+      { genre: 'toggle', cle: 'caps', libelle: 'Majuscules', lire: (c) => c.automod.majuscules.enabled, ecrire: (c, v) => void (c.automod.majuscules.enabled = v) },
       {
-        kind: 'choice',
+        genre: 'choice',
         cle: 'action',
         libelle: 'Action',
         options: [
-          { value: 'delete', label: 'Supprimer le message', emoji: '🗑️' },
-          { value: 'warn', label: 'Supprimer + avertir', emoji: '⚠️' },
-          { value: 'timeout', label: 'Supprimer + timeout', emoji: '⏳' },
+          { valeur: 'delete', libelle: 'Supprimer le message', emoji: '🗑️' },
+          { valeur: 'warn', libelle: 'Supprimer + avertir', emoji: '⚠️' },
+          { valeur: 'timeout', libelle: 'Supprimer + timeout', emoji: '⏳' },
         ],
-        get: (c) => c.automod.action,
-        set: (c, v) => void (c.automod.action = v as 'delete' | 'warn' | 'timeout'),
+        lire: (c) => c.automod.action,
+        ecrire: (c, v) => void (c.automod.action = v as 'delete' | 'warn' | 'timeout'),
       },
       { ...champListe('links', 'Domaines autorisés') },
       { ...champListe('badWords', 'Mots interdits') },
-      { kind: 'number', cle: 'mentionsmax', libelle: 'Mentions max', min: 1, max: 50, get: (c) => c.automod.mentions.max, set: (c, v) => void (c.automod.mentions.max = v) },
-      { kind: 'number', cle: 'timeout', libelle: 'Durée du timeout', min: 1, max: 1440, unit: 'min', get: (c) => c.automod.minutesTimeout, set: (c, v) => void (c.automod.minutesTimeout = v) },
+      { genre: 'number', cle: 'mentionsmax', libelle: 'Mentions max', min: 1, max: 50, lire: (c) => c.automod.mentions.max, ecrire: (c, v) => void (c.automod.mentions.max = v) },
+      { genre: 'number', cle: 'timeout', libelle: 'Durée du timeout', min: 1, max: 1440, unite: 'min', lire: (c) => c.automod.minutesTimeout, ecrire: (c, v) => void (c.automod.minutesTimeout = v) },
     ],
   },
   {
@@ -168,20 +168,20 @@ const pages: PageReglage[] = [
     description: 'Seuils des filtres et exceptions.',
     champs: [
       {
-        kind: 'channels',
+        genre: 'channels',
         cle: 'channels',
         libelle: 'Salons ignorés',
         channelTypes: [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement],
-        get: (c) => c.automod.salonsExemptes,
-        set: (c, v) => void (c.automod.salonsExemptes = v),
+        lire: (c) => c.automod.salonsExemptes,
+        ecrire: (c, v) => void (c.automod.salonsExemptes = v),
       },
-      { kind: 'roles', cle: 'roles', libelle: 'Rôles ignorés', get: (c) => c.automod.rolesExemptes, set: (c, v) => void (c.automod.rolesExemptes = v) },
-      { kind: 'toggle', cle: 'staff', libelle: 'Ignorer le staff', get: (c) => c.automod.ignorerStaff, set: (c, v) => void (c.automod.ignorerStaff = v) },
-      { kind: 'number', cle: 'spammsg', libelle: 'Spam : messages', min: 2, max: 30, get: (c) => c.automod.spam.messages, set: (c, v) => void (c.automod.spam.messages = v) },
-      { kind: 'number', cle: 'spamsec', libelle: 'Spam : secondes', min: 1, max: 60, unit: 's', get: (c) => c.automod.spam.seconds, set: (c, v) => void (c.automod.spam.seconds = v) },
-      { kind: 'number', cle: 'dup', libelle: 'Répétitions tolérées', min: 2, max: 20, get: (c) => c.automod.repetitions.count, set: (c, v) => void (c.automod.repetitions.count = v) },
-      { kind: 'number', cle: 'capspct', libelle: 'Majuscules : %', min: 50, max: 100, unit: '%', get: (c) => c.automod.majuscules.percent, set: (c, v) => void (c.automod.majuscules.percent = v) },
-      { kind: 'number', cle: 'capsmin', libelle: 'Majuscules : longueur min', min: 5, max: 200, get: (c) => c.automod.majuscules.minLength, set: (c, v) => void (c.automod.majuscules.minLength = v) },
+      { genre: 'roles', cle: 'roles', libelle: 'Rôles ignorés', lire: (c) => c.automod.rolesExemptes, ecrire: (c, v) => void (c.automod.rolesExemptes = v) },
+      { genre: 'toggle', cle: 'staff', libelle: 'Ignorer le staff', lire: (c) => c.automod.ignorerStaff, ecrire: (c, v) => void (c.automod.ignorerStaff = v) },
+      { genre: 'number', cle: 'spammsg', libelle: 'Spam : messages', min: 2, max: 30, lire: (c) => c.automod.spam.messages, ecrire: (c, v) => void (c.automod.spam.messages = v) },
+      { genre: 'number', cle: 'spamsec', libelle: 'Spam : secondes', min: 1, max: 60, unite: 's', lire: (c) => c.automod.spam.seconds, ecrire: (c, v) => void (c.automod.spam.seconds = v) },
+      { genre: 'number', cle: 'dup', libelle: 'Répétitions tolérées', min: 2, max: 20, lire: (c) => c.automod.repetitions.count, ecrire: (c, v) => void (c.automod.repetitions.count = v) },
+      { genre: 'number', cle: 'capspct', libelle: 'Majuscules : %', min: 50, max: 100, unite: '%', lire: (c) => c.automod.majuscules.percent, ecrire: (c, v) => void (c.automod.majuscules.percent = v) },
+      { genre: 'number', cle: 'capsmin', libelle: 'Majuscules : longueur min', min: 5, max: 200, lire: (c) => c.automod.majuscules.minLength, ecrire: (c, v) => void (c.automod.majuscules.minLength = v) },
     ],
   },
 ];

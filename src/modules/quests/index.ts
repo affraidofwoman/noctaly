@@ -146,27 +146,27 @@ const pageReglage: PageReglage = {
   description:
     'Quêtes quotidiennes (messages, vocal, giveaways, /daily) et série de jours actifs.\n-# Format des quêtes : `type:objectif:xp:pièces:texte` séparées par des retours à la ligne.\n-# Paliers de série : `jours:pièces:xp` séparés par des virgules.',
   champs: [
-    { kind: 'toggle', cle: 'announce', libelle: 'Prévenir en MP', get: (c) => c.quetes.annonce, set: (c, v) => void (c.quetes.annonce = v) },
+    { genre: 'toggle', cle: 'announce', libelle: 'Prévenir en MP', lire: (c) => c.quetes.annonce, ecrire: (c, v) => void (c.quetes.annonce = v) },
     {
-      kind: 'text',
+      genre: 'text',
       cle: 'list',
       libelle: 'Quêtes du jour',
       long: true,
-      maxLength: 1500,
-      get: (c) => c.quetes.list.map((q) => `${q.type}:${q.cible}:${q.recompenseXp}:${q.recompensePieces}:${q.libelle}`).join('\n'),
-      set: (c, v) => {
+      longueurMax: 1500,
+      lire: (c) => c.quetes.list.map((q) => `${q.type}:${q.cible}:${q.recompenseXp}:${q.recompensePieces}:${q.libelle}`).join('\n'),
+      ecrire: (c, v) => {
         const lu = lireQuetes(v);
         if (lu) c.quetes.list = lu;
       },
       validate: (v) => (lireQuetes(v) ? null : 'Format : `messages:20:100:50:Envoyer 20 messages` (types : messages, voice_minutes, giveaways, daily).'),
     },
     {
-      kind: 'text',
+      genre: 'text',
       cle: 'milestones',
       libelle: 'Paliers de série',
-      maxLength: 300,
-      get: (c) => c.quetes.paliersSerie.map((m) => `${m.days}:${m.pieces}:${m.xp}`).join(', '),
-      set: (c, v) => {
+      longueurMax: 300,
+      lire: (c) => c.quetes.paliersSerie.map((m) => `${m.days}:${m.pieces}:${m.xp}`).join(', '),
+      ecrire: (c, v) => {
         const lu = lirePaliers(v);
         if (lu) c.quetes.paliersSerie = lu;
       },

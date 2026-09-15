@@ -39,12 +39,12 @@ export async function synchroniserAnciennete(serveur: Guild): Promise<number> {
 function champsPalier(indice: number): ChampReglage[] {
   return [
     {
-      kind: 'role',
+      genre: 'role',
       cle: `role${indice}`,
       libelle: `Palier ${indice + 1} : rôle`,
       attribuable: true,
-      get: (c) => c.anciennete.paliers[indice]?.roleId || null,
-      set: (c, v) => {
+      lire: (c) => c.anciennete.paliers[indice]?.roleId || null,
+      ecrire: (c, v) => {
         const paliers = [...c.anciennete.paliers];
         while (paliers.length <= indice) paliers.push({ days: JOURS_DEFAUT[paliers.length] ?? 365, roleId: '' });
         paliers[indice] = { ...paliers[indice]!, roleId: v ?? '' };
@@ -56,14 +56,14 @@ function champsPalier(indice: number): ChampReglage[] {
 
 function champJours(indice: number): ChampReglage {
   return {
-    kind: 'number',
+    genre: 'number',
     cle: `days${indice}`,
     libelle: `Palier ${indice + 1} : jours`,
     min: 1,
     max: 3650,
-    unit: 'j',
-    get: (c) => c.anciennete.paliers[indice]?.days ?? JOURS_DEFAUT[indice] ?? 365,
-    set: (c, v) => {
+    unite: 'j',
+    lire: (c) => c.anciennete.paliers[indice]?.days ?? JOURS_DEFAUT[indice] ?? 365,
+    ecrire: (c, v) => {
       const paliers = [...c.anciennete.paliers];
       while (paliers.length <= indice) paliers.push({ days: JOURS_DEFAUT[paliers.length] ?? 365, roleId: '' });
       paliers[indice] = { ...paliers[indice]!, days: v };
@@ -84,7 +84,7 @@ const pageReglage: PageReglage = {
     ...champsPalier(0),
     ...champsPalier(1),
     ...champsPalier(2),
-    { kind: 'toggle', cle: 'stack', libelle: 'Cumuler les paliers', get: (c) => c.anciennete.stack, set: (c, v) => void (c.anciennete.stack = v) },
+    { genre: 'toggle', cle: 'stack', libelle: 'Cumuler les paliers', lire: (c) => c.anciennete.stack, ecrire: (c, v) => void (c.anciennete.stack = v) },
     champJours(0),
     champJours(1),
     champJours(2),

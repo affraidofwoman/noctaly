@@ -133,9 +133,9 @@ const pageReglage: PageReglage = {
   ordre: 13,
   description: 'Remercier les boosters, leur donner un rôle et des récompenses par palier (`/boost recompense`).\n-# Variables : `{mention}` `{user}` `{boosts}`',
   champs: [
-    { kind: 'channel', cle: 'channel', libelle: 'Salon des remerciements', get: (c) => c.boosts.channelId, set: (c, v) => void (c.boosts.channelId = v) },
-    { kind: 'role', cle: 'role', libelle: 'Rôle booster', attribuable: true, get: (c) => c.boosts.roleBoosterId, set: (c, v) => void (c.boosts.roleBoosterId = v) },
-    { kind: 'text', cle: 'message', libelle: 'Message', long: true, maxLength: 1500, required: true, get: (c) => c.boosts.message, set: (c, v) => void (c.boosts.message = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des remerciements', lire: (c) => c.boosts.channelId, ecrire: (c, v) => void (c.boosts.channelId = v) },
+    { genre: 'role', cle: 'role', libelle: 'Rôle booster', attribuable: true, lire: (c) => c.boosts.roleBoosterId, ecrire: (c, v) => void (c.boosts.roleBoosterId = v) },
+    { genre: 'text', cle: 'message', libelle: 'Message', long: true, longueurMax: 1500, obligatoire: true, lire: (c) => c.boosts.message, ecrire: (c, v) => void (c.boosts.message = v) },
   ],
 };
 

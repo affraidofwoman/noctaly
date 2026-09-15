@@ -74,21 +74,21 @@ const pageReglage: PageReglage = {
   description:
     'Les nouveaux arrivent avec un accès limité, puis se vérifient (`/verify`).\n-# Donne au rôle « non vérifié » un accès au seul salon de vérification. Les rôles automatiques sont donnés après vérification.',
   champs: [
-    { kind: 'role', cle: 'verified', libelle: 'Rôle vérifié', attribuable: true, get: (c) => c.verification.roleVerifieId, set: (c, v) => void (c.verification.roleVerifieId = v) },
-    { kind: 'role', cle: 'unverified', libelle: 'Rôle non vérifié (à l’arrivée)', attribuable: true, get: (c) => c.verification.roleNonVerifieId, set: (c, v) => void (c.verification.roleNonVerifieId = v) },
+    { genre: 'role', cle: 'verified', libelle: 'Rôle vérifié', attribuable: true, lire: (c) => c.verification.roleVerifieId, ecrire: (c, v) => void (c.verification.roleVerifieId = v) },
+    { genre: 'role', cle: 'unverified', libelle: 'Rôle non vérifié (à l’arrivée)', attribuable: true, lire: (c) => c.verification.roleNonVerifieId, ecrire: (c, v) => void (c.verification.roleNonVerifieId = v) },
     {
-      kind: 'choice',
+      genre: 'choice',
       cle: 'method',
       libelle: 'Méthode',
       options: [
-        { value: 'button', label: 'Un simple clic', emoji: '🖱️' },
-        { value: 'captcha', label: 'Recopier un code (anti-bot)', emoji: '🔢' },
+        { valeur: 'button', libelle: 'Un simple clic', emoji: '🖱️' },
+        { valeur: 'captcha', libelle: 'Recopier un code (anti-bot)', emoji: '🔢' },
       ],
-      get: (c) => c.verification.method,
-      set: (c, v) => void (c.verification.method = v as 'button' | 'captcha'),
+      lire: (c) => c.verification.method,
+      ecrire: (c, v) => void (c.verification.method = v as 'button' | 'captcha'),
     },
-    { kind: 'channel', cle: 'channel', libelle: 'Salon de vérification', get: (c) => c.verification.channelId, set: (c, v) => void (c.verification.channelId = v) },
-    { kind: 'number', cle: 'age', libelle: 'Âge minimum du compte', min: 0, max: 365, unit: 'j', get: (c) => c.verification.ageCompteMinJours, set: (c, v) => void (c.verification.ageCompteMinJours = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon de vérification', lire: (c) => c.verification.channelId, ecrire: (c, v) => void (c.verification.channelId = v) },
+    { genre: 'number', cle: 'age', libelle: 'Âge minimum du compte', min: 0, max: 365, unite: 'j', lire: (c) => c.verification.ageCompteMinJours, ecrire: (c, v) => void (c.verification.ageCompteMinJours = v) },
   ],
 };
 

@@ -189,9 +189,9 @@ const pageReglage: PageReglage = {
   ordre: 4,
   description: 'Les événements communautaires avec inscription ✅ / ❓ / ❌ et rappel aux participants avant le début.',
   champs: [
-    { kind: 'channel', cle: 'channel', libelle: 'Salon des événements', get: (c) => c.evenements.salonDefautId, set: (c, v) => void (c.evenements.salonDefautId = v) },
-    { kind: 'role', cle: 'ping', libelle: 'Rôle mentionné', get: (c) => c.evenements.roleMentionId, set: (c, v) => void (c.evenements.roleMentionId = v) },
-    { kind: 'number', cle: 'reminder', libelle: 'Rappel avant le début', min: 0, max: 1440, unit: 'min', get: (c) => c.evenements.rappelMinutes, set: (c, v) => void (c.evenements.rappelMinutes = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des événements', lire: (c) => c.evenements.salonDefautId, ecrire: (c, v) => void (c.evenements.salonDefautId = v) },
+    { genre: 'role', cle: 'ping', libelle: 'Rôle mentionné', lire: (c) => c.evenements.roleMentionId, ecrire: (c, v) => void (c.evenements.roleMentionId = v) },
+    { genre: 'number', cle: 'reminder', libelle: 'Rappel avant le début', min: 0, max: 1440, unite: 'min', lire: (c) => c.evenements.rappelMinutes, ecrire: (c, v) => void (c.evenements.rappelMinutes = v) },
   ],
 };
 

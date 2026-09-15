@@ -43,14 +43,14 @@ function exigerEnseigne(cle: string | undefined) {
 
 /** La liste des enseignes. */
 export function accueilEnseignes(client: Client, note?: string) {
-  const lireTout = listerEnseignes();
+  const enseignes = listerEnseignes();
   const embed = new EmbedBuilder()
     .setColor(COULEUR_DEFAUT)
     .setTitle('🎨 Enseignes')
     .setDescription(note ?? 'Chaque streamer a sa couleur, son nom, son logo et ses émojis. Les messages du bot prennent ceux du serveur où ils sont envoyés.');
-  if (lireTout.length) {
+  if (enseignes.length) {
     embed.addFields(
-      lireTout.slice(0, 24).map((s) => ({
+      enseignes.slice(0, 24).map((s) => ({
         name: tronquer(s.nom, 256),
         value: `${enHexa(s.couleur ?? COULEUR_DEFAUT)} · ${s.guilds.length} serveur(s)${s.pseudo_twitch ? ` · 🔴 ${s.pseudo_twitch}` : ''}`,
         inline: true,
@@ -60,14 +60,14 @@ export function accueilEnseignes(client: Client, note?: string) {
     embed.addFields({ name: 'Aucune enseigne', value: 'Le bot garde ses couleurs d’origine partout.', inline: false });
   }
   const composants = [];
-  if (lireTout.length) {
+  if (enseignes.length) {
     composants.push(
       rangee(
         new StringSelectMenuBuilder()
           .setCustomId('cu:open')
           .setPlaceholder('Ouvrir une enseigne')
           .addOptions(
-            lireTout.slice(0, 25).map((s) => ({
+            enseignes.slice(0, 25).map((s) => ({
               label: tronquer(s.nom, 100),
               value: s.cle,
               description: tronquer(`${s.guilds.length} serveur(s) · ${enHexa(s.couleur ?? COULEUR_DEFAUT)}`, 100),

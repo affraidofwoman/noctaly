@@ -150,9 +150,9 @@ function chargerPortee(portee: string): Map<string, Set<string>> {
   if (!listes) {
     listes = new Map();
     for (const rangee of lireTout<{ liste: string; utilisateur_id: string }>('SELECT liste, utilisateur_id FROM whitelists WHERE portee = ?', portee)) {
-      let ecrire = listes.get(rangee.liste);
-      if (!ecrire) listes.set(rangee.liste, (ecrire = new Set()));
-      ecrire.add(rangee.utilisateur_id);
+      let membres = listes.get(rangee.liste);
+      if (!membres) listes.set(rangee.liste, (membres = new Set()));
+      membres.add(rangee.utilisateur_id);
     }
     cache.set(portee, listes);
   }

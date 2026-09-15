@@ -156,20 +156,20 @@ export function whitelistsDe(membre: GuildMember, cible: User, note?: string) {
   return { embeds: [embed], components: composants };
 }
 
-export type ResultatBascule = { ok: true; ajoute: boolean; text: string } | { ok: false; text: string };
+export type ResultatBascule = { ok: true; ajoute: boolean; texte: string } | { ok: false; texte: string };
 
 /** Donne ou retire une whitelist, avec contrôle d'accès, journal et resynchronisation des logs. */
 export async function basculerWhitelist(auteur: GuildMember, listeId: WhitelistId, cible: User, forcer?: 'add' | 'remove'): Promise<ResultatBascule> {
   const definition = lireWhitelist(listeId);
-  if (!definition) return { ok: false, text: 'Whitelist inconnue.' };
+  if (!definition) return { ok: false, texte: 'Whitelist inconnue.' };
   const serveur = auteur.guild;
-  if (!peutGerer(auteur, definition)) return { ok: false, text: `Tu ne peux pas modifier la whitelist **${definition.libelle}**.` };
-  if (cible.bot) return { ok: false, text: 'Les bots ne vont pas en whitelist.' };
-  if (listeId === 'owner' && estProprietaireFixe(cible.id)) return { ok: false, text: 'Cet owner est fixé dans la configuration du bot.' };
+  if (!peutGerer(auteur, definition)) return { ok: false, texte: `Tu ne peux pas modifier la whitelist **${definition.libelle}**.` };
+  if (cible.bot) return { ok: false, texte: 'Les bots ne vont pas en whitelist.' };
+  if (listeId === 'owner' && estProprietaireFixe(cible.id)) return { ok: false, texte: 'Cet owner est fixé dans la configuration du bot.' };
 
   const possede = estWhitelist(listeId, cible.id, serveur.id);
   const ajouter = forcer ? forcer === 'add' : !possede;
-  if (ajouter === possede) return { ok: true, ajoute: ajouter, text: `<@${cible.id}> ${ajouter ? 'est déjà' : 'n’est pas'} dans **${definition.libelle}**.` };
+  if (ajouter === possede) return { ok: true, ajoute: ajouter, texte: `<@${cible.id}> ${ajouter ? 'est déjà' : 'n’est pas'} dans **${definition.libelle}**.` };
 
   if (ajouter) ajouterWhitelist(listeId, cible.id, serveur.id, auteur.id);
   else retirerWhitelist(listeId, cible.id, serveur.id);
@@ -183,7 +183,7 @@ export async function basculerWhitelist(auteur: GuildMember, listeId: WhitelistI
   });
   if (LIEES_AUX_JOURNAUX.includes(listeId)) void synchroniserAccesJournaux(serveur).catch(() => undefined);
 
-  return { ok: true, ajoute: ajouter, text: `<@${cible.id}> ${ajouter ? 'ajouté à' : 'retiré de'} la whitelist **${definition.libelle}**.` };
+  return { ok: true, ajoute: ajouter, texte: `<@${cible.id}> ${ajouter ? 'ajouté à' : 'retiré de'} la whitelist **${definition.libelle}**.` };
 }
 
 export const composantWhitelists: GestionnaireComposant = {
@@ -204,7 +204,7 @@ export const composantWhitelists: GestionnaireComposant = {
       const resultats: string[] = [];
       for (const utilisateur of interaction.users.values()) {
         const r = await basculerWhitelist(membre, argument as WhitelistId, utilisateur, 'add');
-        resultats.push(`${r.ok ? '✅' : '⛔'} ${r.text}`);
+        resultats.push(`${r.ok ? '✅' : '⛔'} ${r.texte}`);
       }
       await interaction.update(listeWhitelist(membre, argument as WhitelistId, resultats.join('\n')));
       return;
@@ -219,7 +219,7 @@ export const composantWhitelists: GestionnaireComposant = {
           continue;
         }
         const r = await basculerWhitelist(membre, argument as WhitelistId, utilisateur, 'remove');
-        resultats.push(`${r.ok ? '✅' : '⛔'} ${r.text}`);
+        resultats.push(`${r.ok ? '✅' : '⛔'} ${r.texte}`);
       }
       await interaction.update(listeWhitelist(membre, argument as WhitelistId, resultats.join('\n')));
       return;
@@ -231,7 +231,7 @@ export const composantWhitelists: GestionnaireComposant = {
         return;
       }
       const r = await basculerWhitelist(membre, interaction.values[0] as WhitelistId, cible);
-      await interaction.update(whitelistsDe(membre, cible, `${r.ok ? '✅' : '⛔'} ${r.text}`));
+      await interaction.update(whitelistsDe(membre, cible, `${r.ok ? '✅' : '⛔'} ${r.texte}`));
     }
   },
 };
@@ -257,7 +257,7 @@ export function raccourcisWhitelists(): CommandePrefixe[] {
         return;
       }
       const r = await basculerWhitelist(message.member, definition.id, cible);
-      const embed = r.ok ? ok(message.guild, r.text, { titre: 'Whitelist', sujet: definition.emoji }) : refus(message.guild, r.text);
+      const embed = r.ok ? ok(message.guild, r.texte, { titre: 'Whitelist', sujet: definition.emoji }) : refus(message.guild, r.texte);
       await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
     },
   }));

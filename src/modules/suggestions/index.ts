@@ -155,8 +155,8 @@ const pageReglage: PageReglage = {
   ordre: 2,
   description: 'Les membres proposent avec `/suggest`, votent 👍/👎, et le staff accepte ou refuse avec un commentaire.',
   champs: [
-    { kind: 'channel', cle: 'channel', libelle: 'Salon des suggestions', get: (c) => c.suggestions.channelId, set: (c, v) => void (c.suggestions.channelId = v) },
-    { kind: 'toggle', cle: 'thread', libelle: 'Fil de discussion', get: (c) => c.suggestions.creerFil, set: (c, v) => void (c.suggestions.creerFil = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des suggestions', lire: (c) => c.suggestions.channelId, ecrire: (c, v) => void (c.suggestions.channelId = v) },
+    { genre: 'toggle', cle: 'thread', libelle: 'Fil de discussion', lire: (c) => c.suggestions.creerFil, ecrire: (c, v) => void (c.suggestions.creerFil = v) },
   ],
 };
 

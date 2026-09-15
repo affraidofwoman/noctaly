@@ -35,7 +35,7 @@ const pageReglage: PageReglage = {
   moduleId: 'announcements',
   ordre: 7,
   description: '`/announce` ouvre un formulaire, montre l’aperçu, puis publie (et diffuse automatiquement dans un salon d’annonces).',
-  champs: [{ kind: 'channel', cle: 'channel', libelle: 'Salon des annonces par défaut', get: (c) => c.annonces.salonDefautId, set: (c, v) => void (c.annonces.salonDefautId = v) }],
+  champs: [{ genre: 'channel', cle: 'channel', libelle: 'Salon des annonces par défaut', lire: (c) => c.annonces.salonDefautId, ecrire: (c, v) => void (c.annonces.salonDefautId = v) }],
 };
 
 export const moduleAnnonces: ModuleBot = {

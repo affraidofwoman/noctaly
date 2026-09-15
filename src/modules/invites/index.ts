@@ -145,8 +145,8 @@ const pageReglage: PageReglage = {
   ordre: 12,
   description: 'Qui a invité qui. Nécessite la permission « Gérer le serveur ». Les comptes trop récents comptent comme fake.',
   champs: [
-    { kind: 'channel', cle: 'channel', libelle: 'Salon des arrivées (facultatif)', get: (c) => c.invitations.channelId, set: (c, v) => void (c.invitations.channelId = v) },
-    { kind: 'number', cle: 'fake', libelle: 'Compte « fake » si plus jeune que', min: 0, max: 365, unit: 'j', get: (c) => c.invitations.joursCompteFaux, set: (c, v) => void (c.invitations.joursCompteFaux = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des arrivées (facultatif)', lire: (c) => c.invitations.channelId, ecrire: (c, v) => void (c.invitations.channelId = v) },
+    { genre: 'number', cle: 'fake', libelle: 'Compte « fake » si plus jeune que', min: 0, max: 365, unite: 'j', lire: (c) => c.invitations.joursCompteFaux, ecrire: (c, v) => void (c.invitations.joursCompteFaux = v) },
   ],
 };
 

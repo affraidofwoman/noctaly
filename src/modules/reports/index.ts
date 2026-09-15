@@ -109,18 +109,18 @@ const pageReglage: PageReglage = {
   ordre: 5,
   description: 'Où arrivent `/report` et `/feedback`. Sans salon, c’est le salon staff général qui est utilisé.',
   champs: [
-    { kind: 'channel', cle: 'reports', libelle: 'Salon des signalements', get: (c) => c.signalements.channelId, set: (c, v) => void (c.signalements.channelId = v) },
-    { kind: 'channel', cle: 'feedback', libelle: 'Salon des feedbacks', get: (c) => c.avis.channelId, set: (c, v) => void (c.avis.channelId = v) },
+    { genre: 'channel', cle: 'reports', libelle: 'Salon des signalements', lire: (c) => c.signalements.channelId, ecrire: (c, v) => void (c.signalements.channelId = v) },
+    { genre: 'channel', cle: 'feedback', libelle: 'Salon des feedbacks', lire: (c) => c.avis.channelId, ecrire: (c, v) => void (c.avis.channelId = v) },
     {
-      kind: 'choice',
+      genre: 'choice',
       cle: 'mode',
       libelle: 'Signalement',
       options: [
-        { value: 'channel', label: 'Envoyé dans le salon staff', emoji: '📨' },
-        { value: 'ticket', label: 'Ouvre un ticket privé', emoji: '🎫' },
+        { valeur: 'channel', libelle: 'Envoyé dans le salon staff', emoji: '📨' },
+        { valeur: 'ticket', libelle: 'Ouvre un ticket privé', emoji: '🎫' },
       ],
-      get: (c) => c.signalements.mode,
-      set: (c, v) => void (c.signalements.mode = v as 'channel' | 'ticket'),
+      lire: (c) => c.signalements.mode,
+      ecrire: (c, v) => void (c.signalements.mode = v as 'channel' | 'ticket'),
     },
   ],
 };

@@ -165,20 +165,20 @@ async function lancerLecture(membre: GuildMember, salonTexteId: string, requete:
   if (!FFMPEG) throw new ErreurUtilisateur('FFmpeg est introuvable sur la machine du bot : la musique est indisponible.');
   const salon = vocalDe(membre);
   const resultat = await resoudre(requete);
-  if (resultat.kind === 'error') throw new ErreurUtilisateur(resultat.reason);
+  if (resultat.genre === 'error') throw new ErreurUtilisateur(resultat.raison);
   const session = obtenirSession(membre.guild, evenements);
   session.salonTexteId = salonTexteId;
   session.rejoindre(salon);
   const serveur = membre.guild;
 
-  if (resultat.kind === 'playlist') {
-    if (!resultat.tracks.length) throw new ErreurUtilisateur('Cette playlist est vide ou inaccessible.');
-    const pistes = resultat.tracks.map((t) => ({ ...t, demandePar: membre.id, depuisPlaylist: true }));
+  if (resultat.genre === 'playlist') {
+    if (!resultat.pistes.length) throw new ErreurUtilisateur('Cette playlist est vide ou inaccessible.');
+    const pistes = resultat.pistes.map((t) => ({ ...t, demandePar: membre.id, depuisPlaylist: true }));
     const { reserves } = session.ajouter(pistes);
-    return ok(serveur, `Playlist **${tronquer(resultat.name, 100)}** ajoutée — **${pistes.length}** morceaux, à partir de **${tronquer(pistes[0]!.titre, 100)}**${reserves ? ` — dont **${reserves}** en réserve, qui remonteront tout seuls` : ''}.`);
+    return ok(serveur, `Playlist **${tronquer(resultat.nom, 100)}** ajoutée — **${pistes.length}** morceaux, à partir de **${tronquer(pistes[0]!.titre, 100)}**${reserves ? ` — dont **${reserves}** en réserve, qui remonteront tout seuls` : ''}.`);
   }
 
-  const piste: Piste = { ...resultat.track, demandePar: membre.id };
+  const piste: Piste = { ...resultat.piste, demandePar: membre.id };
   const { position, immediat } = session.ajouter([piste]);
   const embed = new EmbedBuilder()
     .setColor(couleurPour(serveur))
@@ -515,11 +515,11 @@ const pageReglage: PageReglage = {
   moduleId: 'music',
   description: 'Le lecteur : YouTube, SoundCloud, Spotify (si configuré) et Deezer.\n-# Les DJ (rôles ci-dessous, whitelist DJ ou staff) passent les morceaux sans vote et peuvent tout arrêter.',
   champs: [
-    { kind: 'roles', cle: 'dj', libelle: 'Rôles DJ', max: 10, get: (c) => c.musique.rolesDj, set: (c, v) => void (c.musique.rolesDj = v) },
-    { kind: 'toggle', cle: 'announce', libelle: 'Annoncer chaque morceau', get: (c) => c.musique.annoncerLecture, set: (c, v) => void (c.musique.annoncerLecture = v) },
-    { kind: 'number', cle: 'volume', libelle: 'Volume par défaut', min: 1, max: 200, unit: '%', get: (c) => c.musique.volumeParDefaut, set: (c, v) => void (c.musique.volumeParDefaut = v) },
-    { kind: 'number', cle: 'empty', libelle: 'Quitter si seul après', min: 0, max: 60, unit: 'min', get: (c) => c.musique.quitterSiVideMinutes, set: (c, v) => void (c.musique.quitterSiVideMinutes = v) },
-    { kind: 'number', cle: 'maxqueue', libelle: 'Taille de file (×25 en réserve)', min: 10, max: 1000, get: (c) => c.musique.maxQueue, set: (c, v) => void (c.musique.maxQueue = v) },
+    { genre: 'roles', cle: 'dj', libelle: 'Rôles DJ', max: 10, lire: (c) => c.musique.rolesDj, ecrire: (c, v) => void (c.musique.rolesDj = v) },
+    { genre: 'toggle', cle: 'announce', libelle: 'Annoncer chaque morceau', lire: (c) => c.musique.annoncerLecture, ecrire: (c, v) => void (c.musique.annoncerLecture = v) },
+    { genre: 'number', cle: 'volume', libelle: 'Volume par défaut', min: 1, max: 200, unite: '%', lire: (c) => c.musique.volumeParDefaut, ecrire: (c, v) => void (c.musique.volumeParDefaut = v) },
+    { genre: 'number', cle: 'empty', libelle: 'Quitter si seul après', min: 0, max: 60, unite: 'min', lire: (c) => c.musique.quitterSiVideMinutes, ecrire: (c, v) => void (c.musique.quitterSiVideMinutes = v) },
+    { genre: 'number', cle: 'maxqueue', libelle: 'Taille de file (×25 en réserve)', min: 10, max: 1000, lire: (c) => c.musique.maxQueue, ecrire: (c, v) => void (c.musique.maxQueue = v) },
   ],
 };
 

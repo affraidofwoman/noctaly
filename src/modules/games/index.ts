@@ -129,10 +129,10 @@ const pageReglage: PageReglage = {
   ordre: 11,
   description: 'Chaque mini-jeu peut être activé séparément.',
   champs: [
-    { kind: 'toggle', cle: '8ball', libelle: '8ball', get: (c) => c.jeux.bouleMagique, set: (c, v) => void (c.jeux.bouleMagique = v) },
-    { kind: 'toggle', cle: 'coinflip', libelle: 'Pile ou face', get: (c) => c.jeux.pileOuFace, set: (c, v) => void (c.jeux.pileOuFace = v) },
-    { kind: 'toggle', cle: 'dice', libelle: 'Dés', get: (c) => c.jeux.des, set: (c, v) => void (c.jeux.des = v) },
-    { kind: 'toggle', cle: 'rps', libelle: 'Pierre-feuille-ciseaux', get: (c) => c.jeux.pierreFeuilleCiseaux, set: (c, v) => void (c.jeux.pierreFeuilleCiseaux = v) },
+    { genre: 'toggle', cle: '8ball', libelle: '8ball', lire: (c) => c.jeux.bouleMagique, ecrire: (c, v) => void (c.jeux.bouleMagique = v) },
+    { genre: 'toggle', cle: 'coinflip', libelle: 'Pile ou face', lire: (c) => c.jeux.pileOuFace, ecrire: (c, v) => void (c.jeux.pileOuFace = v) },
+    { genre: 'toggle', cle: 'dice', libelle: 'Dés', lire: (c) => c.jeux.des, ecrire: (c, v) => void (c.jeux.des = v) },
+    { genre: 'toggle', cle: 'rps', libelle: 'Pierre-feuille-ciseaux', lire: (c) => c.jeux.pierreFeuilleCiseaux, ecrire: (c, v) => void (c.jeux.pierreFeuilleCiseaux = v) },
   ],
 };
 

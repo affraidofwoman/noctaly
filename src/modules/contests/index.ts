@@ -242,7 +242,7 @@ const pageReglage: PageReglage = {
   moduleId: 'contests',
   ordre: 14,
   description: 'Concours en deux phases : participations (texte ou lien d’image) puis votes, avec jury optionnel et récompenses pour le gagnant.',
-  champs: [{ kind: 'channel', cle: 'channel', libelle: 'Salon des concours', get: (c) => c.concours.salonDefautId, set: (c, v) => void (c.concours.salonDefautId = v) }],
+  champs: [{ genre: 'channel', cle: 'channel', libelle: 'Salon des concours', lire: (c) => c.concours.salonDefautId, ecrire: (c, v) => void (c.concours.salonDefautId = v) }],
 };
 
 export const moduleConcours: ModuleBot = {

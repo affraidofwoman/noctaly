@@ -763,19 +763,19 @@ const pageReglage: PageReglage = {
   ordre: 1,
   description: 'Avertissements, actions automatiques et messages privés de sanction.\n-# Actions automatiques : `3:timeout:60, 5:kick, 7:ban` (nombre de warns : action : minutes).',
   champs: [
-    { kind: 'toggle', cle: 'dm', libelle: 'Prévenir en MP', get: (c) => c.moderation.mpSanction, set: (c, v) => void (c.moderation.mpSanction = v) },
+    { genre: 'toggle', cle: 'dm', libelle: 'Prévenir en MP', lire: (c) => c.moderation.mpSanction, ecrire: (c, v) => void (c.moderation.mpSanction = v) },
     {
-      kind: 'text',
+      genre: 'text',
       cle: 'auto',
       libelle: 'Actions automatiques',
-      maxLength: 200,
-      get: (c) => formaterActionsAuto(c.moderation.actionsAuto),
-      set: (c, v) => void (c.moderation.actionsAuto = lireActionsAuto(v) ?? c.moderation.actionsAuto),
+      longueurMax: 200,
+      lire: (c) => formaterActionsAuto(c.moderation.actionsAuto),
+      ecrire: (c, v) => void (c.moderation.actionsAuto = lireActionsAuto(v) ?? c.moderation.actionsAuto),
       validate: (v) => (lireActionsAuto(v) ? null : 'Format attendu : `3:timeout:60, 5:kick, 7:ban`.'),
     },
-    { kind: 'text', cle: 'contact', libelle: 'Phrase de contact (MP)', long: true, maxLength: 300, get: (c) => c.moderation.texteContact, set: (c, v) => void (c.moderation.texteContact = v) },
-    { kind: 'number', cle: 'timeout', libelle: 'Timeout par défaut', min: 1, max: 40_320, unit: 'min', get: (c) => c.moderation.minutesTimeoutDefaut, set: (c, v) => void (c.moderation.minutesTimeoutDefaut = v) },
-    { kind: 'number', cle: 'bandelete', libelle: 'Messages effacés au ban', min: 0, max: 168, unit: 'h', get: (c) => c.moderation.heuresEffaceesBan, set: (c, v) => void (c.moderation.heuresEffaceesBan = v) },
+    { genre: 'text', cle: 'contact', libelle: 'Phrase de contact (MP)', long: true, longueurMax: 300, lire: (c) => c.moderation.texteContact, ecrire: (c, v) => void (c.moderation.texteContact = v) },
+    { genre: 'number', cle: 'timeout', libelle: 'Timeout par défaut', min: 1, max: 40_320, unite: 'min', lire: (c) => c.moderation.minutesTimeoutDefaut, ecrire: (c, v) => void (c.moderation.minutesTimeoutDefaut = v) },
+    { genre: 'number', cle: 'bandelete', libelle: 'Messages effacés au ban', min: 0, max: 168, unite: 'h', lire: (c) => c.moderation.heuresEffaceesBan, ecrire: (c, v) => void (c.moderation.heuresEffaceesBan = v) },
   ],
 };
 

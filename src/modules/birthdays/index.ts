@@ -171,10 +171,10 @@ const pageReglage: PageReglage = {
   ordre: 3,
   description: 'Le bot souhaite les anniversaires à l’heure choisie (fuseau du serveur) et peut donner un rôle pour la journée.\n-# Variables : `{mention}` `{user}` `{server}`',
   champs: [
-    { kind: 'channel', cle: 'channel', libelle: 'Salon des anniversaires', get: (c) => c.anniversaires.channelId, set: (c, v) => void (c.anniversaires.channelId = v) },
-    { kind: 'role', cle: 'role', libelle: 'Rôle du jour', attribuable: true, get: (c) => c.anniversaires.roleId, set: (c, v) => void (c.anniversaires.roleId = v) },
-    { kind: 'text', cle: 'message', libelle: 'Message', long: true, maxLength: 1500, required: true, get: (c) => c.anniversaires.message, set: (c, v) => void (c.anniversaires.message = v) },
-    { kind: 'number', cle: 'hour', libelle: 'Heure d’annonce', min: 0, max: 23, unit: 'h', get: (c) => c.anniversaires.hour, set: (c, v) => void (c.anniversaires.hour = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des anniversaires', lire: (c) => c.anniversaires.channelId, ecrire: (c, v) => void (c.anniversaires.channelId = v) },
+    { genre: 'role', cle: 'role', libelle: 'Rôle du jour', attribuable: true, lire: (c) => c.anniversaires.roleId, ecrire: (c, v) => void (c.anniversaires.roleId = v) },
+    { genre: 'text', cle: 'message', libelle: 'Message', long: true, longueurMax: 1500, obligatoire: true, lire: (c) => c.anniversaires.message, ecrire: (c, v) => void (c.anniversaires.message = v) },
+    { genre: 'number', cle: 'hour', libelle: 'Heure d’annonce', min: 0, max: 23, unite: 'h', lire: (c) => c.anniversaires.hour, ecrire: (c, v) => void (c.anniversaires.hour = v) },
   ],
 };
 

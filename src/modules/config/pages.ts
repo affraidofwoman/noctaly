@@ -8,13 +8,13 @@ import { DOMAINES_PREFIXES, type DomainePrefixe } from '../../core/types';
 import { ErreurUtilisateur } from '../../core/errors';
 
 const champPrefixe = (domaine: DomainePrefixe) => ({
-  kind: 'text' as const,
+  genre: 'text' as const,
   cle: `prefix_${domaine}`,
   libelle: `Préfixe ${DOMAINES_PREFIXES[domaine].label.toLowerCase()}`,
-  maxLength: 5,
-  required: true,
-  get: (c: import('../../core/guildConfig').ConfigServeur) => c.prefixes[domaine],
-  set: (c: import('../../core/guildConfig').ConfigServeur, v: string) => {
+  longueurMax: 5,
+  obligatoire: true,
+  lire: (c: import('../../core/guildConfig').ConfigServeur) => c.prefixes[domaine],
+  ecrire: (c: import('../../core/guildConfig').ConfigServeur, v: string) => {
     c.prefixes[domaine] = v;
   },
   validate: (v: string) => (/^\S{1,5}$/.test(v) && !/[`\\]/.test(v) ? null : '1 à 5 caractères, sans espace.'),
@@ -29,61 +29,61 @@ export const pagesAdministration: PageReglage[] = [
     description: 'Le thème des messages du bot. « Enseigne » reprend les couleurs du streamer (réglées par l’owner bot avec /custom).',
     champs: [
       {
-        kind: 'choice',
+        genre: 'choice',
         cle: 'theme',
         libelle: 'Thème',
         options: [
-          { value: 'brand', label: 'Enseigne du streamer', emoji: '🎥' },
-          ...Object.entries(THEMES).map(([valeur, t]) => ({ value: valeur, label: t.label, emoji: t.emoji })),
-          { value: 'custom', label: 'Personnalisé (couleurs ci-dessous)', emoji: '🖌️' },
+          { valeur: 'brand', libelle: 'Enseigne du streamer', emoji: '🎥' },
+          ...Object.entries(THEMES).map(([valeur, t]) => ({ valeur, libelle: t.label, emoji: t.emoji })),
+          { valeur: 'custom', libelle: 'Personnalisé (couleurs ci-dessous)', emoji: '🖌️' },
         ],
-        get: (c) => c.general.theme,
-        set: (c, v) => {
+        lire: (c) => c.general.theme,
+        ecrire: (c, v) => {
           c.general.theme = v as typeof c.general.theme;
           const modele = THEMES[v as keyof typeof THEMES];
           if (modele) c.general.colors = { ...modele.colors };
         },
       },
       {
-        kind: 'text',
+        genre: 'text',
         cle: 'primary',
         libelle: 'Couleur principale (#hex)',
-        maxLength: 7,
-        get: (c) => c.general.colors.primary,
-        set: (c, v) => {
+        longueurMax: 7,
+        lire: (c) => c.general.colors.primary,
+        ecrire: (c, v) => {
           c.general.colors.primary = v.toUpperCase().startsWith('#') ? v.toUpperCase() : `#${v.toUpperCase()}`;
           c.general.theme = 'custom';
         },
         validate: (v) => (/^#?[0-9a-f]{6}$/i.test(v) ? null : 'Code hexadécimal attendu (ex : #5865F2).'),
       },
       {
-        kind: 'text',
+        genre: 'text',
         cle: 'footer',
         libelle: 'Pied de page (vide = enseigne)',
-        maxLength: 128,
-        get: (c) => c.general.footer,
-        set: (c, v) => {
+        longueurMax: 128,
+        lire: (c) => c.general.footer,
+        ecrire: (c, v) => {
           c.general.footer = v;
         },
       },
       {
-        kind: 'text',
+        genre: 'text',
         cle: 'timezone',
         libelle: 'Fuseau horaire',
-        maxLength: 64,
-        required: true,
-        get: (c) => c.general.fuseau,
-        set: (c, v) => {
+        longueurMax: 64,
+        obligatoire: true,
+        lire: (c) => c.general.fuseau,
+        ecrire: (c, v) => {
           c.general.fuseau = v;
         },
         validate: (v) => (fuseauValide(v) ? null : 'Fuseau IANA attendu (ex : Europe/Paris).'),
       },
       {
-        kind: 'channel',
+        genre: 'channel',
         cle: 'staff',
         libelle: 'Salon staff (rapports, candidatures…)',
-        get: (c) => c.general.salonStaffId,
-        set: (c, v) => {
+        lire: (c) => c.general.salonStaffId,
+        ecrire: (c, v) => {
           c.general.salonStaffId = v;
         },
       },
@@ -98,9 +98,9 @@ export const pagesAdministration: PageReglage[] = [
     description:
       'Rôles qui donnent un accès au bot. Les whitelists par ID (`/wl`) s’ajoutent à ces rôles.\n-# Propriétaire du serveur = Streamer · Administrateur Discord = Admin.',
     champs: [
-      { kind: 'roles', cle: 'streamer', libelle: '🎥 Streamer', get: (c) => c.permissions.streamer, set: (c, v) => void (c.permissions.streamer = v) },
-      { kind: 'roles', cle: 'admin', libelle: '🛠️ Admin', get: (c) => c.permissions.admin, set: (c, v) => void (c.permissions.admin = v) },
-      { kind: 'roles', cle: 'moderator', libelle: '🛡️ Système (modération)', get: (c) => c.permissions.moderateur, set: (c, v) => void (c.permissions.moderateur = v) },
+      { genre: 'roles', cle: 'streamer', libelle: '🎥 Streamer', lire: (c) => c.permissions.streamer, ecrire: (c, v) => void (c.permissions.streamer = v) },
+      { genre: 'roles', cle: 'admin', libelle: '🛠️ Admin', lire: (c) => c.permissions.admin, ecrire: (c, v) => void (c.permissions.admin = v) },
+      { genre: 'roles', cle: 'moderator', libelle: '🛡️ Système (modération)', lire: (c) => c.permissions.moderateur, ecrire: (c, v) => void (c.permissions.moderateur = v) },
     ],
   },
   {
@@ -111,8 +111,8 @@ export const pagesAdministration: PageReglage[] = [
     ordre: 11,
     description: 'Rôles de l’équipe. Chaque niveau garde tout ce que donnent les précédents.',
     champs: [
-      { kind: 'roles', cle: 'staff', libelle: '⭐ Staff', get: (c) => c.permissions.staff, set: (c, v) => void (c.permissions.staff = v) },
-      { kind: 'roles', cle: 'support', libelle: '🎫 Support', get: (c) => c.permissions.support, set: (c, v) => void (c.permissions.support = v) },
+      { genre: 'roles', cle: 'staff', libelle: '⭐ Staff', lire: (c) => c.permissions.staff, ecrire: (c, v) => void (c.permissions.staff = v) },
+      { genre: 'roles', cle: 'support', libelle: '🎫 Support', lire: (c) => c.permissions.support, ecrire: (c, v) => void (c.permissions.support = v) },
     ],
   },
   {
@@ -130,14 +130,14 @@ export const pagesAdministration: PageReglage[] = [
       champPrefixe('owner'),
       champPrefixe('music'),
       {
-        kind: 'channels',
+        genre: 'channels',
         cle: 'cmdchannels',
         libelle: 'Salons de commandes',
         channelTypes: [ChannelType.GuildText, ChannelType.GuildVoice],
-        get: (c) => c.commandes.salonsAutorises,
-        set: (c, v) => void (c.commandes.salonsAutorises = v),
+        lire: (c) => c.commandes.salonsAutorises,
+        ecrire: (c, v) => void (c.commandes.salonsAutorises = v),
       },
-      { kind: 'toggle', cle: 'deltrigger', libelle: 'Effacer la commande', get: (c) => c.commandes.effacerCommande, set: (c, v) => void (c.commandes.effacerCommande = v) },
+      { genre: 'toggle', cle: 'deltrigger', libelle: 'Effacer la commande', lire: (c) => c.commandes.effacerCommande, ecrire: (c, v) => void (c.commandes.effacerCommande = v) },
     ],
   },
   {
@@ -150,19 +150,19 @@ export const pagesAdministration: PageReglage[] = [
       'Un salon par type de log, rangés dans des catégories « Logs · … » visibles seulement par le staff concerné et les whitelists.\n-# « Créer les salons » ne touche jamais aux salons existants.',
     champs: [
       {
-        kind: 'channel',
+        genre: 'channel',
         cle: 'fallback',
         libelle: 'Salon par défaut (types sans salon)',
-        get: (c) => c.journaux.salonSecoursId,
-        set: (c, v) => void (c.journaux.salonSecoursId = v),
+        lire: (c) => c.journaux.salonSecoursId,
+        ecrire: (c, v) => void (c.journaux.salonSecoursId = v),
       },
       {
-        kind: 'channels',
+        genre: 'channels',
         cle: 'ignored',
         libelle: 'Salons ignorés par les logs',
         channelTypes: [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement],
-        get: (c) => c.journaux.salonsIgnores,
-        set: (c, v) => void (c.journaux.salonsIgnores = v),
+        lire: (c) => c.journaux.salonsIgnores,
+        ecrire: (c, v) => void (c.journaux.salonsIgnores = v),
       },
     ],
     actions: [

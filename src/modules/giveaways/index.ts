@@ -361,10 +361,10 @@ const pageReglage: PageReglage = {
   moduleId: 'giveaways',
   description: 'Où partent les giveaways et qui est prévenu.\n-# Pour les lancer : `/giveaway start` ou le menu `=giveaway` (staff ou whitelist Giveaway).',
   champs: [
-    { kind: 'channel', cle: 'channel', libelle: 'Salon par défaut', get: (c) => c.tirages.salonDefautId, set: (c, v) => void (c.tirages.salonDefautId = v) },
-    { kind: 'role', cle: 'ping', libelle: 'Rôle mentionné au lancement', get: (c) => c.tirages.roleMentionId, set: (c, v) => void (c.tirages.roleMentionId = v) },
-    { kind: 'toggle', cle: 'dm', libelle: 'MP aux gagnants', get: (c) => c.tirages.mpGagnants, set: (c, v) => void (c.tirages.mpGagnants = v) },
-    { kind: 'toggle', cle: 'logjoin', libelle: 'Journaliser les participations', get: (c) => c.tirages.journaliserParticipations, set: (c, v) => void (c.tirages.journaliserParticipations = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon par défaut', lire: (c) => c.tirages.salonDefautId, ecrire: (c, v) => void (c.tirages.salonDefautId = v) },
+    { genre: 'role', cle: 'ping', libelle: 'Rôle mentionné au lancement', lire: (c) => c.tirages.roleMentionId, ecrire: (c, v) => void (c.tirages.roleMentionId = v) },
+    { genre: 'toggle', cle: 'dm', libelle: 'MP aux gagnants', lire: (c) => c.tirages.mpGagnants, ecrire: (c, v) => void (c.tirages.mpGagnants = v) },
+    { genre: 'toggle', cle: 'logjoin', libelle: 'Journaliser les participations', lire: (c) => c.tirages.journaliserParticipations, ecrire: (c, v) => void (c.tirages.journaliserParticipations = v) },
   ],
 };
 

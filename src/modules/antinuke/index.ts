@@ -149,13 +149,13 @@ const antinuke: CommandeSlash = {
 };
 
 const champCompteur = (compteur: Compteur, libelle: string) => ({
-  kind: 'number' as const,
+  genre: 'number' as const,
   cle: compteur,
   libelle,
   min: 1,
   max: 100,
-  get: (c: import('../../core/guildConfig').ConfigServeur) => c.antinuke.thresholds[compteur],
-  set: (c: import('../../core/guildConfig').ConfigServeur, v: number) => void (c.antinuke.thresholds[compteur] = v),
+  lire: (c: import('../../core/guildConfig').ConfigServeur) => c.antinuke.thresholds[compteur],
+  ecrire: (c: import('../../core/guildConfig').ConfigServeur, v: number) => void (c.antinuke.thresholds[compteur] = v),
 });
 
 const pageReglage: PageReglage = {
@@ -168,23 +168,23 @@ const pageReglage: PageReglage = {
   description: 'Surveille le journal d’audit : un compte qui supprime ou crée en masse est neutralisé.\n-# Il me faut « Voir les logs du serveur » et un rôle au-dessus des rôles du staff.',
   champs: [
     {
-      kind: 'choice',
+      genre: 'choice',
       cle: 'action',
       libelle: 'Réaction',
       options: [
-        { value: 'alert', label: 'Alerter seulement', emoji: '📣' },
-        { value: 'strip', label: 'Retirer ses rôles dangereux', emoji: '🧯' },
-        { value: 'kick', label: 'Expulser', emoji: '👢' },
-        { value: 'ban', label: 'Bannir', emoji: '🔨' },
+        { valeur: 'alert', libelle: 'Alerter seulement', emoji: '📣' },
+        { valeur: 'strip', libelle: 'Retirer ses rôles dangereux', emoji: '🧯' },
+        { valeur: 'kick', libelle: 'Expulser', emoji: '👢' },
+        { valeur: 'ban', libelle: 'Bannir', emoji: '🔨' },
       ],
-      get: (c) => c.antinuke.action,
-      set: (c, v) => void (c.antinuke.action = v as 'alert' | 'strip' | 'kick' | 'ban'),
+      lire: (c) => c.antinuke.action,
+      ecrire: (c, v) => void (c.antinuke.action = v as 'alert' | 'strip' | 'kick' | 'ban'),
     },
     champCompteur('channelDelete', 'Suppressions de salons'),
     champCompteur('roleDelete', 'Suppressions de rôles'),
     champCompteur('ban', 'Bannissements'),
     champCompteur('channelCreate', 'Créations de salons'),
-    { kind: 'number', cle: 'window', libelle: 'Fenêtre', min: 5, max: 600, unit: 's', get: (c) => c.antinuke.fenetreSecondes, set: (c, v) => void (c.antinuke.fenetreSecondes = v) },
+    { genre: 'number', cle: 'window', libelle: 'Fenêtre', min: 5, max: 600, unite: 's', lire: (c) => c.antinuke.fenetreSecondes, ecrire: (c, v) => void (c.antinuke.fenetreSecondes = v) },
   ],
 };
 

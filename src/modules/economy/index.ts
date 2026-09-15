@@ -292,11 +292,11 @@ const pageReglage: PageReglage = {
   ordre: 9,
   description: 'Une monnaie **purement virtuelle** gagnée en participant (messages, /daily, quêtes), à dépenser dans la boutique (`/shop ajouter`).',
   champs: [
-    { kind: 'text', cle: 'name', libelle: 'Nom de la monnaie', maxLength: 30, required: true, get: (c) => c.economie.nomMonnaie, set: (c, v) => void (c.economie.nomMonnaie = v) },
-    { kind: 'text', cle: 'emoji', libelle: 'Émoji de la monnaie', maxLength: 64, required: true, get: (c) => c.economie.emojiMonnaie, set: (c, v) => void (c.economie.emojiMonnaie = v) },
-    { kind: 'number', cle: 'daily', libelle: 'Récompense /daily', min: 0, max: 1_000_000, get: (c) => c.economie.montantQuotidien, set: (c, v) => void (c.economie.montantQuotidien = v) },
-    { kind: 'number', cle: 'bonus', libelle: 'Bonus par jour de série', min: 0, max: 100_000, get: (c) => c.economie.bonusSerie, set: (c, v) => void (c.economie.bonusSerie = v) },
-    { kind: 'number', cle: 'message', libelle: 'Pièces par message (cooldown 60 s)', min: 0, max: 1000, get: (c) => c.economie.parMessage, set: (c, v) => void (c.economie.parMessage = v) },
+    { genre: 'text', cle: 'name', libelle: 'Nom de la monnaie', longueurMax: 30, obligatoire: true, lire: (c) => c.economie.nomMonnaie, ecrire: (c, v) => void (c.economie.nomMonnaie = v) },
+    { genre: 'text', cle: 'emoji', libelle: 'Émoji de la monnaie', longueurMax: 64, obligatoire: true, lire: (c) => c.economie.emojiMonnaie, ecrire: (c, v) => void (c.economie.emojiMonnaie = v) },
+    { genre: 'number', cle: 'daily', libelle: 'Récompense /daily', min: 0, max: 1_000_000, lire: (c) => c.economie.montantQuotidien, ecrire: (c, v) => void (c.economie.montantQuotidien = v) },
+    { genre: 'number', cle: 'bonus', libelle: 'Bonus par jour de série', min: 0, max: 100_000, lire: (c) => c.economie.bonusSerie, ecrire: (c, v) => void (c.economie.bonusSerie = v) },
+    { genre: 'number', cle: 'message', libelle: 'Pièces par message (cooldown 60 s)', min: 0, max: 1000, lire: (c) => c.economie.parMessage, ecrire: (c, v) => void (c.economie.parMessage = v) },
   ],
 };
 

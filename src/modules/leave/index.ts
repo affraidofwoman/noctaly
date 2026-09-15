@@ -51,9 +51,9 @@ const pageReglage: PageReglage = {
   ordre: 2,
   description: 'Le message posté quand quelqu’un quitte le serveur.\n-# Variables : `{user}` `{username}` `{server}` `{membercount}`',
   champs: [
-    { kind: 'channel', cle: 'channel', libelle: 'Salon des départs', get: (c) => c.depart.channelId, set: (c, v) => void (c.depart.channelId = v) },
-    { kind: 'toggle', cle: 'embed', libelle: 'Embed + statistiques', get: (c) => c.depart.utiliserEmbed, set: (c, v) => void (c.depart.utiliserEmbed = v) },
-    { kind: 'text', cle: 'message', libelle: 'Message', long: true, maxLength: 2000, required: true, get: (c) => c.depart.message, set: (c, v) => void (c.depart.message = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des départs', lire: (c) => c.depart.channelId, ecrire: (c, v) => void (c.depart.channelId = v) },
+    { genre: 'toggle', cle: 'embed', libelle: 'Embed + statistiques', lire: (c) => c.depart.utiliserEmbed, ecrire: (c, v) => void (c.depart.utiliserEmbed = v) },
+    { genre: 'text', cle: 'message', libelle: 'Message', long: true, longueurMax: 2000, obligatoire: true, lire: (c) => c.depart.message, ecrire: (c, v) => void (c.depart.message = v) },
   ],
 };
 

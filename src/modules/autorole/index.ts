@@ -18,9 +18,9 @@ const pageReglage: PageReglage = {
   description:
     'Rôles donnés automatiquement à l’arrivée. Les rôles placés au-dessus du bot sont ignorés.\n-# Si la vérification est active, les rôles membres sont donnés après vérification.',
   champs: [
-    { kind: 'roles', cle: 'members', libelle: 'Rôles des membres', attribuable: true, max: 10, get: (c) => c.rolesAuto.rolesMembres, set: (c, v) => void (c.rolesAuto.rolesMembres = v) },
-    { kind: 'roles', cle: 'bots', libelle: 'Rôles des bots', attribuable: true, max: 10, get: (c) => c.rolesAuto.rolesBots, set: (c, v) => void (c.rolesAuto.rolesBots = v) },
-    { kind: 'number', cle: 'delay', libelle: 'Délai avant attribution', min: 0, max: 600, unit: 's', get: (c) => c.rolesAuto.delaiSecondes, set: (c, v) => void (c.rolesAuto.delaiSecondes = v) },
+    { genre: 'roles', cle: 'members', libelle: 'Rôles des membres', attribuable: true, max: 10, lire: (c) => c.rolesAuto.rolesMembres, ecrire: (c, v) => void (c.rolesAuto.rolesMembres = v) },
+    { genre: 'roles', cle: 'bots', libelle: 'Rôles des bots', attribuable: true, max: 10, lire: (c) => c.rolesAuto.rolesBots, ecrire: (c, v) => void (c.rolesAuto.rolesBots = v) },
+    { genre: 'number', cle: 'delay', libelle: 'Délai avant attribution', min: 0, max: 600, unite: 's', lire: (c) => c.rolesAuto.delaiSecondes, ecrire: (c, v) => void (c.rolesAuto.delaiSecondes = v) },
   ],
 };
 

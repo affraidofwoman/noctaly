@@ -229,8 +229,8 @@ const pageReglage: PageReglage = {
   ordre: 15,
   description: 'Où arrivent les candidatures intégrées (`/partner`, `/staffapply`). Les formulaires personnalisés se créent avec `/form create`.',
   champs: [
-    { kind: 'channel', cle: 'partner', libelle: 'Salon des partenariats', get: (c) => c.formulaires.salonPartenariatsId, set: (c, v) => void (c.formulaires.salonPartenariatsId = v) },
-    { kind: 'channel', cle: 'staff', libelle: 'Salon des candidatures staff', get: (c) => c.formulaires.salonCandidaturesId, set: (c, v) => void (c.formulaires.salonCandidaturesId = v) },
+    { genre: 'channel', cle: 'partner', libelle: 'Salon des partenariats', lire: (c) => c.formulaires.salonPartenariatsId, ecrire: (c, v) => void (c.formulaires.salonPartenariatsId = v) },
+    { genre: 'channel', cle: 'staff', libelle: 'Salon des candidatures staff', lire: (c) => c.formulaires.salonCandidaturesId, ecrire: (c, v) => void (c.formulaires.salonCandidaturesId = v) },
   ],
 };
 

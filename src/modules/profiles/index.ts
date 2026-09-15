@@ -181,7 +181,7 @@ export const moduleProfils: ModuleBot = {
       moduleId: 'profiles',
       ordre: 6,
       description: 'Badges automatiques : 🛡️ Staff, 💎 VIP (booster), 🏆 OG (180 j), ⭐ Actif (niveau 10), 🎉 Giveaway Winner, 🎂 Birthday.',
-      champs: [{ kind: 'toggle', cle: 'auto', libelle: 'Badges automatiques', get: (c) => c.profils.badgesAuto, set: (c, v) => void (c.profils.badgesAuto = v) }],
+      champs: [{ genre: 'toggle', cle: 'auto', libelle: 'Badges automatiques', lire: (c) => c.profils.badgesAuto, ecrire: (c, v) => void (c.profils.badgesAuto = v) }],
     },
   ],
 };

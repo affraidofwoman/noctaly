@@ -137,13 +137,13 @@ const pageReglage: PageReglage = {
   description: `Des réponses rapides créées avec \`/customcommand add\`, utilisables avec le préfixe choisi et en commande slash du serveur.\n-# Variables : ${['user', 'username', 'server', 'membercount', 'brand', 'twitch'].map((v) => `\`{${v}}\``).join(' ')}`,
   champs: [
     {
-      kind: 'text',
+      genre: 'text',
       cle: 'prefix',
       libelle: 'Préfixe des commandes perso',
-      maxLength: 5,
-      required: true,
-      get: (c) => c.commandesPerso.prefixe,
-      set: (c, v) => void (c.commandesPerso.prefixe = v),
+      longueurMax: 5,
+      obligatoire: true,
+      lire: (c) => c.commandesPerso.prefixe,
+      ecrire: (c, v) => void (c.commandesPerso.prefixe = v),
       validate: (v) => (/^\S{1,5}$/.test(v) ? null : '1 à 5 caractères sans espace.'),
     },
   ],
