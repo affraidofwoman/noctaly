@@ -9,7 +9,7 @@ import {
   type User,
   type VoiceState,
 } from 'discord.js';
-import { emojiPour, libelleNiveau, lireNiveau, rolesAttribuables } from '../coeur/acces';
+import { emojiPour, libelleNiveauVu, lireNiveau, rolesAttribuables } from '../coeur/acces';
 import { embedEnseigne, info, lignesEnPages, ok, paginer, remplirModele, repondre } from '../coeur/affichage';
 import type { ChampReglage, PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout } from '../coeur/base';
@@ -717,7 +717,7 @@ function synchroniserBadgesAuto(membre: GuildMember): void {
   if (lireXp(g, membre.id).niveau >= 10) donnerBadge(g, membre.id, 'actif');
 }
 
-export function embedProfil(serveur: Guild, utilisateur: User, membre: GuildMember | null) {
+export function embedProfil(serveur: Guild, utilisateur: User, membre: GuildMember | null, spectateurId: string) {
   if (membre) synchroniserBadgesAuto(membre);
   const g = serveur.id;
   const xp = lireXp(g, utilisateur.id);
@@ -745,7 +745,7 @@ export function embedProfil(serveur: Guild, utilisateur: User, membre: GuildMemb
   if (moduleActif(g, 'economy')) embed.addFields({ name: `${economie.emojiMonnaie} ${economie.nomMonnaie}`, value: formaterNombre(pieces), inline: true });
   if (serie?.actuelle) embed.addFields({ name: '🔥 Série', value: `${serie.actuelle} jour${serie.actuelle > 1 ? 's' : ''} (record ${serie.record})`, inline: true });
   if (moduleActif(g, 'invites')) embed.addFields({ name: '📨 Invitations', value: String(invitations), inline: true });
-  if (membre) embed.addFields({ name: '🛡️ Accès', value: libelleNiveau(lireNiveau(membre)), inline: true });
+  if (membre) embed.addFields({ name: '🛡️ Accès', value: libelleNiveauVu(membre, spectateurId), inline: true });
   embed.addFields({ name: `🏅 Badges (${badges.length})`, value: badges.length ? tronquer(badges.map((b) => `${b.emoji} ${b.nom}`).join('\n'), 1024) : '*Aucun badge pour l’instant.*', inline: false });
   if (membre?.displayColor) embed.setColor(membre.displayColor);
   return embed;
@@ -760,7 +760,7 @@ const profil: CommandeSlash = {
   async executer(interaction) {
     const utilisateur = interaction.options.getUser('membre') ?? interaction.user;
     const membre = interaction.options.getMember('membre') ?? (utilisateur.id === interaction.user.id ? interaction.member : null);
-    await repondre(interaction, { embeds: [embedProfil(interaction.guild, utilisateur, membre instanceof GuildMember ? membre : null)] });
+    await repondre(interaction, { embeds: [embedProfil(interaction.guild, utilisateur, membre instanceof GuildMember ? membre : null, interaction.user.id)] });
   },
 };
 
@@ -850,7 +850,7 @@ const commandesPrefixeProfils: CommandePrefixe[] = [
       const membre = id ? await message.guild.members.fetch(id).catch(() => null) : message.member;
       const utilisateur = membre?.user ?? (id ? await message.client.users.fetch(id).catch(() => null) : message.author);
       if (!utilisateur) throw new ErreurUtilisateur('Membre introuvable.');
-      await message.reply({ embeds: [embedProfil(message.guild, utilisateur, membre)], allowedMentions: { repliedUser: false } });
+      await message.reply({ embeds: [embedProfil(message.guild, utilisateur, membre, message.author.id)], allowedMentions: { repliedUser: false } });
     },
   },
 ];

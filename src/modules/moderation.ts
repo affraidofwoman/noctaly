@@ -6,6 +6,7 @@ import {
   type ChatInputCommandInteraction,
   type Collection,
   EmbedBuilder,
+  type Client,
   type Guild,
   type GuildChannel,
   type GuildMember,
@@ -16,7 +17,7 @@ import {
   SlashCommandBuilder,
   type User,
 } from 'discord.js';
-import { aNiveau, emojiPour, verifierModerable } from '../coeur/acces';
+import { aNiveau, emojiPour, enseigneDe, verifierModerable } from '../coeur/acces';
 import {
   bouton,
   couleurPour,
@@ -130,8 +131,16 @@ export function compterAvertissements(serveurId: string, utilisateurId: string):
   return lire<{ n: number }>('SELECT COUNT(*) AS n FROM avertissements WHERE serveur_id = ? AND utilisateur_id = ? AND actif = 1', serveurId, utilisateurId)?.n ?? 0;
 }
 
+// - Blacklist d’enseigne -
+// Partagée entre les serveurs d’une même enseigne, jamais au-delà.
+export function porteeListeNoireEnseigne(serveurId: string): string | null {
+  const cle = enseigneDe(serveurId).cle;
+  return cle ? `enseigne:${cle}` : null;
+}
+
 export function estEnListeNoire(serveurId: string, utilisateurId: string): { portee: string; raison: string; ajoute_par: string; ajoute_le: number } | undefined {
-  return lire('SELECT portee, raison, ajoute_par, ajoute_le FROM liste_noire WHERE utilisateur_id = ? AND portee IN (?, ?) ORDER BY portee = ? DESC LIMIT 1', utilisateurId, serveurId, 'global', 'global');
+  const partagee = porteeListeNoireEnseigne(serveurId) ?? serveurId;
+  return lire('SELECT portee, raison, ajoute_par, ajoute_le FROM liste_noire WHERE utilisateur_id = ? AND portee IN (?, ?) ORDER BY portee = ? DESC LIMIT 1', utilisateurId, serveurId, partagee, partagee);
 }
 
 export function entreesListeNoire(portee: string): { utilisateur_id: string; raison: string; ajoute_par: string; ajoute_le: number }[] {
@@ -658,6 +667,16 @@ function pagesListeNoire(serveur: Guild) {
   );
 }
 
+function exigerPorteeEnseigne(serveurId: string): string {
+  const portee = porteeListeNoireEnseigne(serveurId);
+  if (!portee) throw new ErreurUtilisateur('Ce serveur n’a pas d’enseigne : utilise la blacklist du serveur.');
+  return portee;
+}
+
+function serveursEnseigne(client: Client, portee: string): Guild[] {
+  return [...client.guilds.cache.values()].filter((g) => porteeListeNoireEnseigne(g.id) === portee);
+}
+
 function ficheListeNoire(serveur: Guild, utilisateur: User) {
   const entree = estEnListeNoire(serveur.id, utilisateur.id);
   if (!entree) return info(serveur, 'Rien pour ce compte.', { titre: 'Sanction', sujet: emojiPour(serveur.id, 'sanction') });
@@ -668,7 +687,7 @@ function ficheListeNoire(serveur: Guild, utilisateur: User) {
       `**Raison** — ${entree.raison}`,
       `**Par** — <@${entree.ajoute_par}>`,
       `**Le** — ${marqueTemps(entree.ajoute_le, 'f')}`,
-      `-# ${entree.portee === 'global' ? 'Blacklist globale : tous les serveurs du bot' : 'Blacklist de ce serveur'}`,
+      `-# ${entree.portee.startsWith('enseigne:') ? 'Blacklist de l’enseigne : tous ses serveurs' : 'Blacklist de ce serveur'}`,
     ].join('\n'),
     { titre: 'Sanction', sujet: emojiPour(serveur.id, 'sanction') },
   );
@@ -1076,56 +1095,59 @@ const commandesPrefixe: CommandePrefixe[] = [
   },
   {
     nom: 'gbl',
-    domaine: 'owner',
-    categorie: 'owner',
-    description: 'Blacklist partout',
+    domaine: 'sanction',
+    categorie: 'moderation',
+    description: 'Blacklist d’enseigne',
     usage: '[id] [raison]',
-    niveau: Niveau.PROPRIETAIRE_BOT,
+    niveau: Niveau.STREAMER,
     async executer(message, parametres) {
+      const portee = exigerPorteeEnseigne(message.guildId);
       if (!parametres[0]) {
-        const lignes = entreesListeNoire('global').map((b) => `• <@${b.utilisateur_id}> \`${b.utilisateur_id}\` — ${tronquer(b.raison, 80)}`);
-        await message.reply({ embeds: [info(message.guild, tronquer(lignes.join('\n') || 'Vide.', 4000), { titre: 'Blacklist globale', sujet: '⛔' })], allowedMentions: { repliedUser: false } });
+        const lignes = entreesListeNoire(portee).map((b) => `• <@${b.utilisateur_id}> \`${b.utilisateur_id}\` — ${tronquer(b.raison, 80)}`);
+        await message.reply({ embeds: [info(message.guild, tronquer(lignes.join('\n') || 'Vide.', 4000), { titre: 'Blacklist d’enseigne', sujet: '⛔' })], allowedMentions: { repliedUser: false } });
         return;
       }
       const utilisateur = await exigerCible(message, parametres[0]);
       const raison = parametres.slice(1).join(' ') || 'Aucune raison';
       executer(
-        `INSERT INTO liste_noire (portee, utilisateur_id, raison, ajoute_par, ajoute_le) VALUES ('global', ?, ?, ?, ?)
+        `INSERT INTO liste_noire (portee, utilisateur_id, raison, ajoute_par, ajoute_le) VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(portee, utilisateur_id) DO UPDATE SET raison = excluded.raison`,
+        portee,
         utilisateur.id,
         raison,
         message.author.id,
         Date.now(),
       );
       let banni = 0;
-      for (const serveur of message.client.guilds.cache.values()) {
-        const reussi = await serveur.members.ban(utilisateur.id, { reason: `Blacklist globale : ${raison}`.slice(0, 500) }).then(() => true).catch(() => false);
+      for (const serveur of serveursEnseigne(message.client, portee)) {
+        const reussi = await serveur.members.ban(utilisateur.id, { reason: `Blacklist d’enseigne : ${raison}`.slice(0, 500) }).then(() => true).catch(() => false);
         if (reussi) {
           banni++;
-          historiser(serveur.id, 'blacklist', 'global', utilisateur.id, message.author.id, { reason: raison });
-          void journal(serveur, 'blacklist', { titre: 'Blacklist globale', ton: 'alerte', lignes: [`**Cible** : <@${utilisateur.id}> \`${utilisateur.id}\``, `**Raison** : ${raison}`], par: message.author });
+          historiser(serveur.id, 'blacklist', 'enseigne', utilisateur.id, message.author.id, { reason: raison });
+          void journal(serveur, 'blacklist', { titre: 'Blacklist d’enseigne', ton: 'alerte', lignes: [`**Cible** : <@${utilisateur.id}> \`${utilisateur.id}\``, `**Raison** : ${raison}`], par: message.author });
         }
       }
-      await message.reply({ embeds: [ok(message.guild, `<@${utilisateur.id}> blacklisté partout — banni de **${banni}** serveur(s).`)], allowedMentions: { repliedUser: false } });
+      await message.reply({ embeds: [ok(message.guild, `<@${utilisateur.id}> blacklisté sur l’enseigne — banni de **${banni}** serveur(s).`)], allowedMentions: { repliedUser: false } });
     },
   },
   {
     nom: 'ungbl',
-    domaine: 'owner',
-    categorie: 'owner',
-    description: 'Retirer partout',
+    domaine: 'sanction',
+    categorie: 'moderation',
+    description: 'Retirer de l’enseigne',
     usage: '<id>',
-    niveau: Niveau.PROPRIETAIRE_BOT,
+    niveau: Niveau.STREAMER,
     async executer(message, parametres) {
+      const portee = exigerPorteeEnseigne(message.guildId);
       const utilisateur = await exigerCible(message, parametres[0]);
-      const r = executer("DELETE FROM liste_noire WHERE portee = 'global' AND utilisateur_id = ?", utilisateur.id);
-      if (!r.changes) throw new ErreurUtilisateur('Ce compte n’est pas dans la blacklist globale.');
+      const r = executer('DELETE FROM liste_noire WHERE portee = ? AND utilisateur_id = ?', portee, utilisateur.id);
+      if (!r.changes) throw new ErreurUtilisateur('Ce compte n’est pas dans la blacklist de l’enseigne.');
       let debannis = 0;
-      for (const serveur of message.client.guilds.cache.values()) {
+      for (const serveur of serveursEnseigne(message.client, portee)) {
         if (estEnListeNoire(serveur.id, utilisateur.id)) continue;
-        if (await serveur.bans.remove(utilisateur.id, 'Retrait de la blacklist globale').then(() => true).catch(() => false)) debannis++;
+        if (await serveur.bans.remove(utilisateur.id, 'Retrait de la blacklist d’enseigne').then(() => true).catch(() => false)) debannis++;
       }
-      await message.reply({ embeds: [ok(message.guild, `<@${utilisateur.id}> retiré de la blacklist globale — débanni de **${debannis}** serveur(s).`)], allowedMentions: { repliedUser: false } });
+      await message.reply({ embeds: [ok(message.guild, `<@${utilisateur.id}> retiré de la blacklist d’enseigne — débanni de **${debannis}** serveur(s).`)], allowedMentions: { repliedUser: false } });
     },
   },
 ];
@@ -1198,11 +1220,11 @@ export const moduleModeration: ModuleBot = {
       const entree = estEnListeNoire(membre.guild.id, membre.id);
       if (!entree) return;
       try {
-        await membre.ban({ reason: `Blacklist${entree.portee === 'global' ? ' globale' : ''} : tentative de retour (${entree.raison})`.slice(0, 500) });
+        await membre.ban({ reason: `Blacklist${entree.portee.startsWith('enseigne:') ? ' d’enseigne' : ''} : tentative de retour (${entree.raison})`.slice(0, 500) });
         void journal(membre.guild, 'blacklist', {
           titre: 'Retour bloqué',
           ton: 'alerte',
-          lignes: [`**Compte** : <@${membre.id}> \`${membre.id}\``, `**Blacklist** : ${entree.portee === 'global' ? 'globale' : 'serveur'}`, `**Raison** : ${entree.raison}`],
+          lignes: [`**Compte** : <@${membre.id}> \`${membre.id}\``, `**Blacklist** : ${entree.portee.startsWith('enseigne:') ? 'enseigne' : 'serveur'}`, `**Raison** : ${entree.raison}`],
         });
         return 'stop';
       } catch (echec) {

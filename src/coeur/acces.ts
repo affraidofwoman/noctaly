@@ -231,44 +231,66 @@ export function peutGererWhitelist(niveauAuteur: Niveau, definition: DefinitionW
 
 export interface ProfilMembre {
   id: string;
-  guildOwnerId: string;
-  roleIds: string[];
-  isAdministrator: boolean;
-  canManageGuild: boolean;
-  whitelistLevel: Niveau;
-  isBotOwner: boolean;
+  proprietaireServeurId: string;
+  rolesIds: string[];
+  estAdministrateur: boolean;
+  peutGererServeur: boolean;
+  niveauWhitelist: Niveau;
+  estProprietaireBot: boolean;
 }
 
 export function calculerNiveau(membre: ProfilMembre, permissions: ConfigServeur['permissions']): Niveau {
-  if (membre.isBotOwner) return Niveau.PROPRIETAIRE_BOT;
-  let niveau = membre.whitelistLevel;
+  if (membre.estProprietaireBot) return Niveau.PROPRIETAIRE_BOT;
+  let niveau = membre.niveauWhitelist;
   const monter = (l: Niveau) => {
     if (l > niveau) niveau = l;
   };
-  const possede = (ids: string[]) => ids.some((id) => membre.roleIds.includes(id));
-  if (membre.id === membre.guildOwnerId) monter(Niveau.STREAMER);
+  const possede = (ids: string[]) => ids.some((id) => membre.rolesIds.includes(id));
+  if (membre.id === membre.proprietaireServeurId) monter(Niveau.STREAMER);
   if (possede(permissions.streamer)) monter(Niveau.STREAMER);
-  if (membre.isAdministrator || membre.canManageGuild || possede(permissions.admin)) monter(Niveau.ADMIN);
+  if (membre.estAdministrateur || membre.peutGererServeur || possede(permissions.admin)) monter(Niveau.ADMIN);
   if (possede(permissions.moderateur)) monter(Niveau.MODERATEUR);
   if (possede(permissions.staff)) monter(Niveau.STAFF);
   if (possede(permissions.support)) monter(Niveau.SUPPORT);
   return niveau;
 }
 
+function profilDe(membre: GuildMember, avecOwner = true): ProfilMembre {
+  let niveau = Niveau.MEMBRE;
+  for (const w of whitelistsMembre(membre.id, membre.guild.id)) if (w.accorde !== null && w.accorde > niveau && (avecOwner || w.id !== 'owner')) niveau = w.accorde;
+  return {
+    id: membre.id,
+    proprietaireServeurId: membre.guild.ownerId,
+    rolesIds: [...membre.roles.cache.keys()],
+    estAdministrateur: membre.permissions.has(PermissionFlagsBits.Administrator),
+    peutGererServeur: membre.permissions.has(PermissionFlagsBits.ManageGuild),
+    niveauWhitelist: niveau,
+    estProprietaireBot: avecOwner && estProprietaireBot(membre.id),
+  };
+}
+
 export function lireNiveau(membre: GuildMember): Niveau {
-  const permissions = lireConfig(membre.guild.id).permissions;
-  return calculerNiveau(
-    {
-      id: membre.id,
-      guildOwnerId: membre.guild.ownerId,
-      roleIds: [...membre.roles.cache.keys()],
-      isAdministrator: membre.permissions.has(PermissionFlagsBits.Administrator),
-      canManageGuild: membre.permissions.has(PermissionFlagsBits.ManageGuild),
-      whitelistLevel: niveauWhitelist(membre.id, membre.guild.id),
-      isBotOwner: estProprietaireBot(membre.id),
-    },
-    permissions,
-  );
+  return calculerNiveau(profilDe(membre), lireConfig(membre.guild.id).permissions);
+}
+
+// - Owners cachés -
+// Seul un owner voit qu’une personne est owner.
+export function niveauVisible(profil: ProfilMembre, permissions: ConfigServeur['permissions'], spectateurOwner: boolean): Niveau {
+  return calculerNiveau(spectateurOwner ? profil : { ...profil, estProprietaireBot: false }, permissions);
+}
+
+export function whitelistsVisibles(spectateurOwner: boolean): DefinitionWhitelist[] {
+  return WHITELISTS.filter((w) => spectateurOwner || w.id !== 'owner');
+}
+
+export function libelleNiveauVu(membre: GuildMember, spectateurId: string): string {
+  const owner = estProprietaireBot(spectateurId);
+  return libelleNiveau(niveauVisible(profilDe(membre, owner), lireConfig(membre.guild.id).permissions, owner));
+}
+
+export function whitelistsMembreVues(utilisateurId: string, serveurId: string, spectateurId: string): DefinitionWhitelist[] {
+  const owner = estProprietaireBot(spectateurId);
+  return whitelistsMembre(utilisateurId, serveurId).filter((w) => owner || w.id !== 'owner');
 }
 
 export function aNiveau(membre: GuildMember, niveau: Niveau): boolean {

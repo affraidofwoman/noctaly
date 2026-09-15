@@ -10,7 +10,7 @@ import {
   StringSelectMenuBuilder,
   type User,
 } from 'discord.js';
-import { aAcces, libelleNiveau, lireNiveau, whitelistsMembre } from '../coeur/acces';
+import { aAcces, libelleNiveau, libelleNiveauVu, lireNiveau, whitelistsMembreVues } from '../coeur/acces';
 import { boutonCorbeille, embedEnseigne, info, nomEnseigne, rangee, rangeeCorbeille, repondre } from '../coeur/affichage';
 import { type CommandePrefixe, type CommandeSlash, etatBot, lireAiguilleur, type ModuleBot, niveauRequis, sur } from '../coeur/noyau';
 import { formaterDuree, formaterNombre, marqueTemps, membreCible, resoudreUtilisateur, tronquer, type CategorieAide, CATEGORIES_AIDE, Niveau } from '../coeur/outils';
@@ -136,7 +136,7 @@ export async function surMenuAide(interaction: AnySelectMenuInteraction<'cached'
   await interaction.update(sectionAide(interaction.member, valeur as CategorieAide));
 }
 
-function embedInfoMembre(serveur: Guild, utilisateur: User, membre: GuildMember | null) {
+function embedInfoMembre(serveur: Guild, utilisateur: User, membre: GuildMember | null, spectateurId: string) {
   const embed = embedEnseigne(serveur)
     .setAuthor({ name: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) })
     .setTitle(`👤 ${membre?.displayName ?? utilisateur.displayName}`)
@@ -150,10 +150,10 @@ function embedInfoMembre(serveur: Guild, utilisateur: User, membre: GuildMember 
       .filter((r) => r.id !== serveur.id)
       .sort((a, b) => b.position - a.position)
       .map((r) => r.toString());
-    const whitelistsListe = whitelistsMembre(utilisateur.id, serveur.id);
+    const whitelistsListe = whitelistsMembreVues(utilisateur.id, serveur.id, spectateurId);
     embed.addFields(
       { name: 'Arrivée', value: membre.joinedTimestamp ? `${marqueTemps(membre.joinedTimestamp, 'D')}\n${marqueTemps(membre.joinedTimestamp, 'R')}` : '—', inline: true },
-      { name: 'Accès bot', value: libelleNiveau(lireNiveau(membre)), inline: true },
+      { name: 'Accès bot', value: libelleNiveauVu(membre, spectateurId), inline: true },
       { name: 'Whitelists', value: whitelistsListe.length ? whitelistsListe.map((w) => `${w.emoji} ${w.libelle}`).join(' · ') : '—', inline: true },
       { name: 'Booster', value: membre.premiumSinceTimestamp ? `depuis ${marqueTemps(membre.premiumSinceTimestamp, 'R')}` : 'Non', inline: true },
       { name: `Rôles (${roles.length})`, value: roles.length ? tronquer(roles.join(' '), 1024) : '—', inline: false },
@@ -253,7 +253,7 @@ const infoMembre: CommandeSlash = {
     const utilisateur = await (interaction.options.getUser('membre') ?? interaction.user).fetch();
     const membre = interaction.options.getMember('membre') ?? (utilisateur.id === interaction.user.id ? interaction.member : null);
     await repondre(interaction, {
-      embeds: [embedInfoMembre(interaction.guild, utilisateur, membre instanceof GuildMember ? membre : null)],
+      embeds: [embedInfoMembre(interaction.guild, utilisateur, membre instanceof GuildMember ? membre : null, interaction.user.id)],
       components: [rangeeCorbeille(interaction.guildId, interaction.user.id)],
     });
   },
@@ -317,7 +317,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     usage: '[membre]',
     async executer(message, parametres) {
       const { user: utilisateur, member: membre } = await membreDuPrefixe(message, parametres[0]);
-      await message.reply({ embeds: [embedInfoMembre(message.guild, utilisateur, membre)], components: [rangeeCorbeille(message.guildId, message.author.id)], allowedMentions: { repliedUser: false } });
+      await message.reply({ embeds: [embedInfoMembre(message.guild, utilisateur, membre, message.author.id)], components: [rangeeCorbeille(message.guildId, message.author.id)], allowedMentions: { repliedUser: false } });
     },
   },
   {

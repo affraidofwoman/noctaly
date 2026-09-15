@@ -339,6 +339,7 @@ export class Aiguilleur {
     const sousCommande = interaction.options.getSubcommand(false);
     const requis = niveauRequis(commande, groupe, sousCommande);
     if (requis > Niveau.MEMBRE && !aAcces(interaction.member, requis, commande.whitelist)) {
+      if (requis === Niveau.PROPRIETAIRE_BOT) return void (await repondreEmbed(interaction, refus(interaction.guild, 'Commande indisponible.')));
       await repondreEmbed(interaction, refus(interaction.guild, `Cette commande ne t’est pas ouverte.\n-# Accès requis : **${libelleNiveau(requis)}**${commande.whitelist ? ` ou whitelist **${commande.whitelist}**` : ''}.`));
       return;
     }
@@ -401,6 +402,7 @@ export class Aiguilleur {
     }
     const requis = gestionnaire.niveau ?? Niveau.MEMBRE;
     if (requis > Niveau.MEMBRE && !aAcces(interaction.member, requis, gestionnaire.whitelist)) {
+      if (requis === Niveau.PROPRIETAIRE_BOT) return void (await repondreEmbed(interaction, refus(interaction.guild, 'Action indisponible.')));
       await repondreEmbed(interaction, refus(interaction.guild, `Cette action ne t’est pas ouverte.\n-# Accès requis : **${libelleNiveau(requis)}**.`));
       return;
     }

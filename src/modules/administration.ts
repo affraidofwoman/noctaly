@@ -52,8 +52,7 @@ import {
   supprimerEnseigne,
   type WhitelistId,
   WHITELISTS,
-  whitelistsMembre,
-} from '../coeur/acces';
+  whitelistsMembre, estProprietaireBot, whitelistsVisibles } from '../coeur/acces';
 import {
   bouton,
   construireFormulaire,
@@ -277,8 +276,8 @@ function peutGerer(membre: GuildMember, definition: DefinitionWhitelist): boolea
   return peutGererWhitelist(lireNiveau(membre), definition, estProprietaireFixe(membre.id), membre.id === membre.guild.ownerId);
 }
 
-function optionsWhitelists(serveurId: string, cibleId?: string) {
-  return WHITELISTS.map((w) => {
+function optionsWhitelists(serveurId: string, spectateurId: string, cibleId?: string) {
+  return whitelistsVisibles(estProprietaireBot(spectateurId)).map((w) => {
     const possede = cibleId ? estWhitelist(w.id, cibleId, serveurId) : false;
     return {
       label: tronquer(`${w.groupe} · ${w.libelle}`, 100),
@@ -289,7 +288,7 @@ function optionsWhitelists(serveurId: string, cibleId?: string) {
   });
 }
 
-export function accueilWhitelists(serveur: Guild, note?: string) {
+export function accueilWhitelists(serveur: Guild, spectateurId: string, note?: string) {
   const embed = embedEnseigne(serveur)
     .setTitle(`${emojiPour(serveur.id, 'whitelist')} Whitelists`)
     .setDescription(
@@ -300,7 +299,7 @@ export function accueilWhitelists(serveur: Guild, note?: string) {
         ].join('\n'),
     );
   const groupes = new Map<string, DefinitionWhitelist[]>();
-  for (const w of WHITELISTS) groupes.set(w.groupe, [...(groupes.get(w.groupe) ?? []), w]);
+  for (const w of whitelistsVisibles(estProprietaireBot(spectateurId))) groupes.set(w.groupe, [...(groupes.get(w.groupe) ?? []), w]);
   for (const [groupe, liste] of groupes) {
     embed.addFields({
       name: groupe,
@@ -308,7 +307,7 @@ export function accueilWhitelists(serveur: Guild, note?: string) {
       inline: true,
     });
   }
-  const menu = new StringSelectMenuBuilder().setCustomId('wl:list').setPlaceholder('Quelle whitelist ?').addOptions(optionsWhitelists(serveur.id));
+  const menu = new StringSelectMenuBuilder().setCustomId('wl:list').setPlaceholder('Quelle whitelist ?').addOptions(optionsWhitelists(serveur.id, spectateurId));
   return { embeds: [embed], components: [rangee(menu)] };
 }
 
@@ -382,7 +381,7 @@ export function whitelistsDe(membre: GuildMember, cible: User, note?: string) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`wl:user:${cible.id}`)
     .setPlaceholder('Quelle whitelist ?')
-    .addOptions(optionsWhitelists(serveur.id, cible.id).filter((o) => peutGerer(membre, lireWhitelist(o.value)!)));
+    .addOptions(optionsWhitelists(serveur.id, membre.id, cible.id).filter((o) => peutGerer(membre, lireWhitelist(o.value)!)));
   const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = menu.options.length ? [rangee(menu)] : [];
   composants.push(rangee(bouton('wl:home', 'Toutes les whitelists', ButtonStyle.Secondary, '⬅️')));
   if (!menu.options.length) embed.setFooter({ text: 'Tu n’as le droit de modifier aucune whitelist.' });
@@ -406,8 +405,8 @@ export async function basculerWhitelist(auteur: GuildMember, listeId: WhitelistI
   if (ajouter) ajouterWhitelist(listeId, cible.id, serveur.id, auteur.id);
   else retirerWhitelist(listeId, cible.id, serveur.id);
 
-  historiser(serveur.id, 'whitelist', ajouter ? 'add' : 'remove', cible.id, auteur.id, { list: listeId });
-  void journal(serveur, 'whitelist', {
+  if (listeId !== 'owner') historiser(serveur.id, 'whitelist', ajouter ? 'add' : 'remove', cible.id, auteur.id, { list: listeId });
+  if (listeId !== 'owner') void journal(serveur, 'whitelist', {
     titre: ajouter ? 'Whitelist accordée' : 'Whitelist retirée',
     ton: ajouter ? 'ok' : 'alerte',
     lignes: [`**Whitelist** : ${definition.emoji} ${definition.libelle}${definition.portee === 'global' ? ' *(globale)*' : ''}`, `**Membre** : <@${cible.id}> \`${cible.id}\``],
@@ -422,13 +421,13 @@ export const composantWhitelists: GestionnaireComposant = {
   prefixe: 'wl',
   niveau: Niveau.STAFF,
   async bouton(interaction: ButtonInteraction<'cached'>, [action]) {
-    if (action === 'home') await interaction.update(accueilWhitelists(interaction.guild));
+    if (action === 'home') await interaction.update(accueilWhitelists(interaction.guild, interaction.user.id));
   },
   async menu(interaction: AnySelectMenuInteraction<'cached'>, [action, argument]) {
     const membre = interaction.member;
     if (action === 'list' && interaction.isStringSelectMenu()) {
       const listeId = interaction.values[0] as WhitelistId;
-      if (!lireWhitelist(listeId)) return;
+      if (!lireWhitelist(listeId) || (listeId === 'owner' && !estProprietaireBot(membre.id))) return;
       await interaction.update(listeWhitelist(membre, listeId));
       return;
     }
@@ -1176,17 +1175,8 @@ const wl: CommandeSlash = {
     .addUserOption((o) => o.setName('personne').setDescription('Qui')),
   async executer(interaction) {
     const cible = interaction.options.getUser('personne');
-    const charge = cible ? whitelistsDe(interaction.member, cible) : accueilWhitelists(interaction.guild);
+    const charge = cible ? whitelistsDe(interaction.member, cible) : accueilWhitelists(interaction.guild, interaction.user.id);
     await repondre(interaction, { ...charge, ephemeral: true });
-  },
-};
-
-const enseignes: CommandeSlash = {
-  categorie: 'owner',
-  niveau: Niveau.PROPRIETAIRE_BOT,
-  donnees: new SlashCommandBuilder().setName('custom').setDescription('Régler une enseigne'),
-  async executer(interaction) {
-    await repondre(interaction, { ...accueilEnseignes(interaction.client), ephemeral: true });
   },
 };
 
@@ -1244,7 +1234,7 @@ export const moduleAdministration: ModuleBot = {
   description: 'Setup, modules, whitelists, enseignes',
   desactivable: false,
   actifParDefaut: true,
-  commandes: [assistant, installationRapide, commandeModules, config, test, wl, enseignes],
+  commandes: [assistant, installationRapide, commandeModules, config, test, wl],
   commandesPrefixe: [...raccourcisWhitelists(), ...prefixesProprietaire],
   pagesReglage: pagesAdministration,
   composants: [
