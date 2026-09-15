@@ -43,7 +43,6 @@ import {
   lignesEnPages,
   nomEnseigne,
   ok,
-  paginer,
   rangee,
   remplirModele,
   repondre,
@@ -51,7 +50,7 @@ import {
 import { afficherPage, lirePageReglage, type PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandePrefixe, type CommandeSlash, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
+import { type CommandePrefixe, type CommandeSlash, type GestionnaireComposant, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
 import { creerRegistre, ErreurUtilisateur, identifiantDepuisTexte, marqueTemps, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, modifierConfig, type MotifTicket, type StyleBoutonTicket } from '../coeur/reglages';
 
@@ -775,80 +774,43 @@ function pagesTickets(serveur: Guild, statut: 'open' | 'closed' | 'all') {
   );
 }
 
+// - /ticket : dans un ticket, ses boutons ; ailleurs, la liste -
 const commandeTicket: CommandeSlash = {
   categorie: 'tickets',
-  niveau: Niveau.MEMBRE,
-  donnees: new SlashCommandBuilder()
-    .setName('ticket')
-    .setDescription('Les tickets')
-    .addSubcommand((s) => s.setName('setup').setDescription('Régler les tickets'))
-    .addSubcommand((s) => s.setName('config').setDescription('Réglages tickets'))
-
-    .addSubcommand((s) => s.setName('close').setDescription('Fermer ce ticket'))
-    .addSubcommand((s) => s.setName('reopen').setDescription('Rouvrir ce ticket'))
-    .addSubcommand((s) =>
-      s
-        .setName('add')
-        .setDescription('Ajouter au ticket')
-        .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('remove')
-        .setDescription('Retirer du ticket')
-        .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)),
-    )
-    .addSubcommand((s) => s.setName('claim').setDescription('Prendre le ticket'))
-    .addSubcommand((s) => s.setName('transcript').setDescription('Transcript du ticket'))
-    .addSubcommand((s) =>
-      s
-        .setName('list')
-        .setDescription('Les tickets du serveur')
-        .addStringOption((o) => o.setName('etat').setDescription('Lesquels').addChoices({ name: 'Ouverts', value: 'open' }, { name: 'Fermés', value: 'closed' }, { name: 'Tous', value: 'all' })),
-    ),
-  niveauxSousCommandes: {
-    setup: Niveau.ADMIN,
-    config: Niveau.ADMIN,
-    reopen: Niveau.SUPPORT,
-    add: Niveau.SUPPORT,
-    remove: Niveau.SUPPORT,
-    claim: Niveau.SUPPORT,
-    transcript: Niveau.SUPPORT,
-    list: Niveau.SUPPORT,
-  },
+  niveau: Niveau.SUPPORT,
+  donnees: new SlashCommandBuilder().setName('ticket').setDescription('Les tickets'),
   async executer(interaction) {
-    const sousCommande = interaction.options.getSubcommand();
     const serveur = interaction.guild;
-    switch (sousCommande) {
-      case 'setup':
-        return repondre(interaction, { ...afficherPage(serveur, lirePageReglage('tickets')!), ephemeral: true });
-      case 'config':
-        return repondre(interaction, { ...ecranMotifs(serveur), ephemeral: true });
-
-      case 'list':
-        return paginer(interaction, pagesTickets(serveur, (interaction.options.getString('etat') ?? 'open') as 'open' | 'closed' | 'all'), true);
+    const ticket = ticketDuSalon(interaction.channelId);
+    if (ticket) {
+      const ouvert = ticket.statut === 'open';
+      return repondre(interaction, {
+        embeds: [embedEnseigne(serveur).setTitle(`🎫 Ticket #${ticket.numero}`).setDescription(ouvert ? 'Tout se gère d’ici.' : 'Ce ticket est fermé.')],
+        components: ouvert ? controlesOuvert(serveur.id, Boolean(ticket.pris_par)) : controlesFerme(),
+        ephemeral: true,
+      });
     }
-    const ticket = exigerTicket(interaction.channelId);
-    const salon = interaction.channel as TextChannel;
-    switch (sousCommande) {
-      case 'close':
-        return fermerTicket(interaction, ticket);
-      case 'reopen':
-        return rouvrir(interaction, ticket, salon);
-      case 'claim':
-        return prendreEnCharge(interaction, ticket);
-      case 'transcript':
-        return envoyerTranscriptPrive(interaction, salon);
-      case 'add':
-      case 'remove': {
-        const utilisateur = interaction.options.getUser('membre', true);
-        await reglerAccesMembre(serveur, salon, ticket, utilisateur.id, sousCommande === 'add', interaction.member);
-        return repondre(interaction, { embeds: [ok(serveur, `<@${utilisateur.id}> ${sousCommande === 'add' ? 'ajouté au' : 'retiré du'} ticket.`)] });
-      }
-    }
+    const admin = aNiveau(interaction.member, Niveau.ADMIN);
+    const pages = pagesTickets(serveur, 'open');
+    await repondre(interaction, {
+      embeds: [pages[0]!],
+      components: admin ? [rangee(bouton('tkadm:reglages', 'Réglages', ButtonStyle.Secondary, '⚙️'), bouton('tkadm:motifs', 'Motifs', ButtonStyle.Secondary, '🗂️'), bouton('tkadm:fermes', 'Tickets fermés', ButtonStyle.Secondary, '📁'))] : [],
+      ephemeral: true,
+    });
   },
 };
 
+const composantTicketsAdmin: GestionnaireComposant = {
+  prefixe: 'tkadm',
+  niveau: Niveau.SUPPORT,
+  async bouton(interaction: ButtonInteraction<'cached'>, [action]) {
+    const serveur = interaction.guild;
+    if (action === 'fermes') return interaction.update({ embeds: [pagesTickets(serveur, 'closed')[0]!], components: [] });
+    if (!aNiveau(interaction.member, Niveau.ADMIN)) throw new ErreurUtilisateur('Réservé aux admins.');
+    if (action === 'motifs') return interaction.update(ecranMotifs(serveur));
+    return interaction.update(afficherPage(serveur, lirePageReglage('tickets')!));
+  },
+};
 async function rouvrir(interaction: RepliableInteraction & { member: GuildMember; guild: Guild }, ticket: LigneTicket, salon: TextChannel) {
   exigerStaff(interaction.member, ticket);
   if (ticket.statut !== 'closed') throw new ErreurUtilisateur('Ce ticket est déjà ouvert.');
@@ -942,6 +904,7 @@ export const moduleTickets: ModuleBot = {
   panneaux: [panneauTickets],
   pagesReglage: pages,
   composants: [
+    composantTicketsAdmin,
     {
       prefixe: 'tk',
       async bouton(interaction: ButtonInteraction<'cached'>, [action, argument]) {

@@ -25,6 +25,7 @@ import {
   COULEUR_DEFAUT,
   creerEnseigne,
   type DefinitionWhitelist,
+  aNiveau,
   emojiPour,
   enHexa,
   enseigneDe,
@@ -70,10 +71,10 @@ import {
 import {
   afficherAccueil,
   afficherPage,
-  afficherSection,
   lirePageReglage,
   type PageReglage,
   pagesDeSection,
+  poserOutilsAccueil,
   SECTIONS_REGLAGE,
   type SectionReglage,
   traiterBoutonReglage,
@@ -189,7 +190,7 @@ export const pagesAdministration: PageReglage[] = [
     champs: [
       { genre: 'roles', cle: 'streamer', libelle: '🎥 Streamer', lire: (c) => c.permissions.streamer, ecrire: (c, v) => void (c.permissions.streamer = v) },
       { genre: 'roles', cle: 'admin', libelle: '🛠️ Admin', lire: (c) => c.permissions.admin, ecrire: (c, v) => void (c.permissions.admin = v) },
-      { genre: 'roles', cle: 'moderator', libelle: '🛡️ Système (modération)', lire: (c) => c.permissions.moderateur, ecrire: (c, v) => void (c.permissions.moderateur = v) },
+      { genre: 'roles', cle: 'moderator', libelle: '🛡️ Modération', lire: (c) => c.permissions.moderateur, ecrire: (c, v) => void (c.permissions.moderateur = v) },
     ],
   },
   {
@@ -472,30 +473,31 @@ export const composantWhitelists: GestionnaireComposant = {
   },
 };
 
-export function raccourcisWhitelists(): CommandePrefixe[] {
-  return WHITELISTS.map((definition) => ({
-    nom: definition.raccourci,
-    domaine: definition.id === 'owner' ? 'owner' : 'general',
-    categorie: definition.id === 'owner' ? 'owner' : 'admin',
-    description: `Whitelist ${definition.libelle}`,
-    usage: '[membre]',
-    niveau: definition.id === 'owner' ? Niveau.PROPRIETAIRE_BOT : Niveau.STAFF,
-    async executer(message: Message<true>, parametres: string[]) {
-      if (!message.member) return;
-      if (!parametres[0]) {
-        await message.reply({ ...listeWhitelist(message.member, definition.id), components: [], allowedMentions: { repliedUser: false } });
-        return;
-      }
-      const cible = await resoudreUtilisateur(message.client, parametres[0]);
-      if (!cible) {
-        await message.reply({ embeds: [erreur(message.guild, 'Identifiant Discord attendu.')], allowedMentions: { repliedUser: false } });
-        return;
-      }
-      const r = await basculerWhitelist(message.member, definition.id, cible);
-      const embed = r.ok ? ok(message.guild, r.texte, { titre: 'Whitelist', sujet: definition.emoji }) : refus(message.guild, r.texte);
-      await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } });
-    },
-  }));
+// - Une seule porte pour les whitelists -
+// `=wl` la liste, `=wl @x` ses accès, `=wl @x admin` bascule d’un coup.
+export function trouverWhitelist(saisie: string): DefinitionWhitelist | undefined {
+  return trouverEntree(WHITELISTS.map((w) => ({ ...w, nom: w.libelle, alias: [w.raccourci] })), saisie);
+}
+
+export function prefixesWhitelists(): CommandePrefixe[] {
+  const executer = (liste: 'owner' | null) => async (message: Message<true>, parametres: string[]) => {
+    if (!message.member) return;
+    const repondreAvec = (charge: object) => message.reply({ ...charge, allowedMentions: { repliedUser: false } });
+    if (!parametres[0]) return repondreAvec(liste ? { ...listeWhitelist(message.member, liste), components: [] } : accueilWhitelists(message.guild, message.author.id));
+    const cible = await resoudreUtilisateur(message.client, parametres[0]);
+    if (!cible) throw new ErreurUtilisateur('Mention ou identifiant Discord attendu.');
+    const definition = liste ? lireWhitelist(liste) : parametres[1] ? trouverWhitelist(parametres.slice(1).join(' ')) : undefined;
+    if (!definition || (definition.id === 'owner' && !liste)) {
+      if (parametres[1]) throw new ErreurUtilisateur(`Whitelist inconnue : ${WHITELISTS.filter((w) => w.id !== 'owner').map((w) => `\`${w.raccourci}\``).join(', ')}.`);
+      return repondreAvec(whitelistsDe(message.member, cible));
+    }
+    const r = await basculerWhitelist(message.member, definition.id, cible);
+    return repondreAvec({ embeds: [r.ok ? ok(message.guild, r.texte, { titre: 'Whitelist', sujet: definition.emoji }) : refus(message.guild, r.texte)] });
+  };
+  return [
+    { nom: 'wl', alias: ['whitelist', 'acces'], domaine: 'general', categorie: 'acces', description: 'Donner un accès', usage: '[membre] [accès]', niveau: Niveau.STAFF, executer: executer(null) },
+    { nom: 'owner', domaine: 'owner', categorie: 'owner', description: 'Whitelist Owner bot', usage: '[membre]', niveau: Niveau.PROPRIETAIRE_BOT, executer: executer('owner') },
+  ];
 }
 
 const AUCUN = '—';
@@ -1014,91 +1016,74 @@ const assistant: CommandeSlash = {
   },
 };
 
-const commandeModules: CommandeSlash = {
-  categorie: 'admin',
-  niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder().setName('modules').setDescription('Les modules'),
-  async executer(interaction) {
-    await repondre(interaction, { ...panneauModules(interaction.guild), ephemeral: true });
-  },
-};
+// - Les outils de /setup -
+poserOutilsAccueil(() =>
+  rangee(bouton('cfg:mods', 'Modules', ButtonStyle.Primary, '🧩'), bouton('cfg:diag', 'Diagnostic', ButtonStyle.Secondary, '🩺'), bouton('cfg:resume', 'Résumé', ButtonStyle.Secondary, '📋'), bouton('cfg:reset', 'Tout remettre à zéro', ButtonStyle.Danger, '♻️')),
+);
 
-const config: CommandeSlash = {
-  categorie: 'admin',
+const composantOutils: GestionnaireComposant = {
+  prefixe: 'cfg',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('config')
-    .setDescription('Réglages du serveur')
-    .addSubcommand((s) => s.setName('voir').setDescription('Résumé des réglages'))
-    .addSubcommand((s) => s.setName('apparence').setDescription('Apparence'))
-    .addSubcommand((s) => s.setName('permissions').setDescription('Rôles d’accès'))
-    .addSubcommand((s) => s.setName('prefixes').setDescription('Préfixes'))
-    .addSubcommand((s) => s.setName('reset').setDescription('Tout remettre à zéro')),
-  niveauxSousCommandes: { reset: Niveau.STREAMER },
-  async executer(interaction) {
-    const sousCommande = interaction.options.getSubcommand();
+  async bouton(interaction: ButtonInteraction<'cached'>, [action]) {
     const serveur = interaction.guild;
-    if (sousCommande === 'apparence') return repondre(interaction, { ...afficherPage(serveur, lirePageReglage('appearance')!), ephemeral: true });
-    if (sousCommande === 'permissions') return repondre(interaction, { ...afficherSection(serveur, 'security'), ephemeral: true });
-    if (sousCommande === 'prefixes') return repondre(interaction, { ...afficherPage(serveur, lirePageReglage('prefixes')!), ephemeral: true });
-    if (sousCommande === 'reset') {
-      return demanderConfirmation(interaction, {
-        titre: 'Tout remettre à zéro ?',
-        description: 'Tous les réglages du bot **sur ce serveur** reviennent à leurs valeurs d’origine, et les modules reprennent leur état par défaut.\nLes données (warns, XP, tickets…) sont conservées.',
-        libelleConfirmation: 'Réinitialiser',
-        surConfirmation: async (i) => {
-          executer('DELETE FROM reglages_serveurs WHERE serveur_id = ?', i.guildId);
-          executer('DELETE FROM modules_serveurs WHERE serveur_id = ?', i.guildId);
-          viderCacheConfig(i.guildId);
-          viderCacheModules(i.guildId);
-          await i.update({ embeds: [ok(i.guild, 'Réglages remis à zéro.')], components: [] });
-        },
-      });
-    }
-    const reglages = lireConfig(serveur.id);
-    const roles = (ids: string[]) => (ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : '—');
-    const actif = lireEtatsModules(serveur.id).filter((s) => s.module.desactivable);
-    const embed = embedEnseigne(serveur)
-      .setTitle('⚙️ Réglages du serveur')
-      .addFields(
-        { name: 'Enseigne', value: nomEnseigne(serveur), inline: true },
-        { name: 'Thème', value: reglages.general.theme, inline: true },
-        { name: 'Fuseau', value: reglages.general.fuseau, inline: true },
-        {
-          name: 'Préfixes',
-          value: (Object.keys(DOMAINES_PREFIXES) as DomainePrefixe[]).map((d) => `${DOMAINES_PREFIXES[d].emoji} \`${reglages.prefixes[d]}\``).join(' · '),
-          inline: false,
-        },
-        {
-          name: 'Rôles d’accès',
-          value: [
-            `🎥 Streamer — ${roles(reglages.permissions.streamer)}`,
-            `🛠️ Admin — ${roles(reglages.permissions.admin)}`,
-            `🛡️ Système — ${roles(reglages.permissions.moderateur)}`,
-            `⭐ Staff — ${roles(reglages.permissions.staff)}`,
-            `🎫 Support — ${roles(reglages.permissions.support)}`,
-          ].join('\n'),
-          inline: false,
-        },
-        { name: 'Modules', value: `${actif.filter((s) => s.enabled).length}/${actif.length} actifs`, inline: true },
-        { name: 'Salons de logs', value: `${TYPES_JOURNAUX.filter((t) => salonJournalPour(serveur, t.type)).length}/${TYPES_JOURNAUX.length}`, inline: true },
-        { name: 'Ton accès', value: libelleNiveau(lireNiveau(interaction.member)), inline: true },
-      );
-    return repondre(interaction, { embeds: [embed], ephemeral: true });
+    if (action === 'mods') return void (await interaction.update(panneauModules(serveur)));
+    if (action === 'diag') return void (await interaction.update({ embeds: [diagnostic(serveur)], components: [menuTests(serveur)] }));
+    if (action === 'resume') return void (await interaction.update({ embeds: [resumeReglages(interaction.member)], components: [rangee(bouton('setup:home', 'Accueil', ButtonStyle.Secondary, '⬅️'))] }));
+    if (action !== 'reset') return;
+    if (!aNiveau(interaction.member, Niveau.STREAMER)) throw new ErreurUtilisateur('Réservé au streamer du serveur.');
+    await demanderConfirmation(interaction, {
+      titre: 'Tout remettre à zéro ?',
+      description: 'Tous les réglages du bot **sur ce serveur** reviennent à leurs valeurs d’origine, et les modules reprennent leur état par défaut.\nLes données (warns, XP, tickets…) sont conservées.',
+      libelleConfirmation: 'Réinitialiser',
+      surConfirmation: async (i) => {
+        executer('DELETE FROM reglages_serveurs WHERE serveur_id = ?', i.guildId);
+        executer('DELETE FROM modules_serveurs WHERE serveur_id = ?', i.guildId);
+        viderCacheConfig(i.guildId);
+        viderCacheModules(i.guildId);
+        await i.update({ embeds: [ok(i.guild, 'Réglages remis à zéro.')], components: [] });
+      },
+    });
   },
 };
 
-const test: CommandeSlash = {
-  categorie: 'admin',
-  niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder().setName('test').setDescription('Tester le bot'),
-  async executer(interaction) {
-    await repondre(interaction, { embeds: [diagnostic(interaction.guild)], components: [menuTests(interaction.guild)], ephemeral: true });
-  },
-};
+function resumeReglages(membre: GuildMember) {
+  const serveur = membre.guild;
+  const reglages = lireConfig(serveur.id);
+  const roles = (ids: string[]) => (ids.length ? ids.map((id) => `<@&${id}>`).join(' ') : '—');
+  const actif = lireEtatsModules(serveur.id).filter((s) => s.module.desactivable);
+  const embed = embedEnseigne(serveur)
+    .setTitle('⚙️ Réglages du serveur')
+    .addFields(
+      { name: 'Enseigne', value: nomEnseigne(serveur), inline: true },
+      { name: 'Thème', value: reglages.general.theme, inline: true },
+      { name: 'Fuseau', value: reglages.general.fuseau, inline: true },
+      {
+        name: 'Préfixes',
+        value: (Object.keys(DOMAINES_PREFIXES) as DomainePrefixe[]).map((d) => `${DOMAINES_PREFIXES[d].emoji} \`${reglages.prefixes[d]}\``).join(' · '),
+        inline: false,
+      },
+      {
+        name: 'Rôles d’accès',
+        value: [
+          `🎥 Streamer — ${roles(reglages.permissions.streamer)}`,
+          `🛠️ Admin — ${roles(reglages.permissions.admin)}`,
+          `🛡️ Modération — ${roles(reglages.permissions.moderateur)}`,
+          `⭐ Staff — ${roles(reglages.permissions.staff)}`,
+          `🎫 Support — ${roles(reglages.permissions.support)}`,
+        ].join('\n'),
+        inline: false,
+      },
+      { name: 'Modules', value: `${actif.filter((s) => s.enabled).length}/${actif.length} actifs`, inline: true },
+      { name: 'Salons de logs', value: `${TYPES_JOURNAUX.filter((t) => salonJournalPour(serveur, t.type)).length}/${TYPES_JOURNAUX.length}`, inline: true },
+      { name: 'Ton accès', value: libelleNiveau(lireNiveau(membre)), inline: true },
+    );
+  return embed;
+}
+
+
 
 const wl: CommandeSlash = {
-  categorie: 'admin',
+  categorie: 'acces',
   niveau: Niveau.STAFF,
   donnees: new SlashCommandBuilder()
     .setName('wl')
@@ -1149,7 +1134,7 @@ export function ecranAffiche(serveur: Guild) {
         `-# Au clavier : \`${lireConfig(serveur.id).prefixes.salon}<nom>\`, par exemple \`${lireConfig(serveur.id).prefixes.salon}reglement\`.`,
       ].join('\n'),
     );
-  if (!panneaux.length) return { embeds: [embed.setDescription('Aucun module à panneau n’est activé (`/modules`).')], components: [] };
+  if (!panneaux.length) return { embeds: [embed.setDescription('Aucun module à panneau n’est activé (`/setup` → Modules).')], components: [] };
   return { embeds: [embed], components: [rangee(new StringSelectMenuBuilder().setCustomId('aff:pick').setPlaceholder('Quel panneau ?').addOptions(optionsRangees(panneaux)))] };
 }
 
@@ -1179,7 +1164,7 @@ const composantAffiche: GestionnaireComposant = {
 };
 
 const affiche: CommandeSlash = {
-  categorie: 'admin',
+  categorie: 'panneaux',
   niveau: Niveau.ADMIN,
   donnees: new SlashCommandBuilder().setName('affiche').setDescription('Poser un panneau'),
   async executer(interaction) {
@@ -1248,7 +1233,7 @@ const prefixesServeur: CommandePrefixe[] = [
     nom: 'affiche',
     alias: ['panneau', 'panneaux'],
     domaine: 'salon',
-    categorie: 'admin',
+    categorie: 'panneaux',
     description: 'Poser un panneau',
     usage: '[panneau]',
     niveau: Niveau.ADMIN,
@@ -1330,14 +1315,15 @@ export const moduleAdministration: ModuleBot = {
   description: 'Setup, modules, whitelists, enseignes',
   desactivable: false,
   actifParDefaut: true,
-  commandes: [assistant, commandeModules, config, test, wl, affiche, serv],
-  commandesPrefixe: [...raccourcisWhitelists(), ...prefixesServeur, ...prefixesProprietaire],
+  commandes: [assistant, wl, affiche, serv],
+  commandesPrefixe: [...prefixesWhitelists(), ...prefixesServeur, ...prefixesProprietaire],
   pagesReglage: pagesAdministration,
   composants: [
     composantWhitelists,
     composantEnseignes,
     composantAffiche,
     composantServ,
+    composantOutils,
     {
       prefixe: 'setup',
       niveau: Niveau.ADMIN,

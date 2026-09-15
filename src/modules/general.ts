@@ -124,7 +124,7 @@ function sectionsAide(membre: GuildMember): { titre: string; lignes: string[] }[
     const aPrefixe: EntreePrefixe[] = [];
     for (const { commande, module } of aiguilleur.commandesPrefixe.values()) {
       const cle = `${commande.domaine}:${commande.nom}`;
-      if (commande.categorie !== categorie || vus.has(cle) || !moduleActif(serveurId, module.id) || !permis(commande.niveau ?? Niveau.MEMBRE, commande.whitelist)) continue;
+      if (commande.categorie !== categorie || commande.horsAide || vus.has(cle) || !moduleActif(serveurId, module.id) || !permis(commande.niveau ?? Niveau.MEMBRE, commande.whitelist)) continue;
       vus.add(cle);
       aPrefixe.push({ declencheur: `${prefixes[commande.domaine]}${commande.nom}`, nom: commande.nom, description: commande.description, usage: commande.usage });
     }
@@ -361,7 +361,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     },
   },
   {
-    nom: 'ping',
+    nom: 'ping', horsAide: true,
     domaine: 'general',
     categorie: 'general',
     description: 'La latence du bot',
@@ -370,7 +370,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     },
   },
   {
-    nom: 'bot',
+    nom: 'bot', horsAide: true,
     alias: ['botinfo'],
     domaine: 'general',
     categorie: 'general',
@@ -380,7 +380,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     },
   },
   {
-    nom: 'stats',
+    nom: 'stats', horsAide: true,
     alias: ['statistiques'],
     domaine: 'general',
     categorie: 'general',

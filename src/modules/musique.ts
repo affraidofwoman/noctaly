@@ -1015,6 +1015,7 @@ const simple = (nom: string, action: Action, description: string, alias: string[
   domaine: 'music',
   categorie: 'music',
   description,
+  horsAide: true,
   async executer(message) {
     if (!message.member) return;
     await repondreTexte(message, executerAction(message.member, action, message.channelId));
@@ -1049,7 +1050,7 @@ const commandesPrefixe: CommandePrefixe[] = [
   simple('shuffle', 'shuffle', 'Mélanger'),
   simple('annuler', 'cancelplaylist', 'Annuler la playlist'),
   {
-    nom: 'queue',
+    nom: 'queue', horsAide: true,
     alias: ['q'],
     domaine: 'music',
     categorie: 'music',
@@ -1060,7 +1061,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     },
   },
   {
-    nom: 'nowplaying',
+    nom: 'nowplaying', horsAide: true,
     alias: ['np'],
     domaine: 'music',
     categorie: 'music',
@@ -1070,7 +1071,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     },
   },
   {
-    nom: 'volume',
+    nom: 'volume', horsAide: true,
     alias: ['vol', 'v'],
     domaine: 'music',
     categorie: 'music',
@@ -1082,7 +1083,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     },
   },
   {
-    nom: 'loop',
+    nom: 'loop', horsAide: true,
     domaine: 'music',
     categorie: 'music',
     description: 'Mode de boucle',
@@ -1093,7 +1094,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     },
   },
   {
-    nom: 'remove',
+    nom: 'remove', horsAide: true,
     alias: ['rm'],
     domaine: 'music',
     categorie: 'music',

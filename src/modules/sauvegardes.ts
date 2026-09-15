@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { AttachmentBuilder, type Guild, MessageFlags, SlashCommandBuilder } from 'discord.js';
-import { oublierEnseignes, viderCacheWhitelists } from '../coeur/acces';
-import { demanderConfirmation, info, ok, repondre } from '../coeur/affichage';
+import { type ActionRowBuilder, type AnySelectMenuInteraction, AttachmentBuilder, type ButtonInteraction, ButtonStyle, type Guild, type MessageActionRowComponentBuilder, SlashCommandBuilder, StringSelectMenuBuilder } from 'discord.js';
+import { aNiveau, oublierEnseignes, viderCacheWhitelists } from '../coeur/acces';
+import { bouton, demanderConfirmation, embedEnseigne, info, ok, rangee, repondre } from '../coeur/affichage';
 import { executer, lire, lireTout, transaction } from '../coeur/base';
 import { journal } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot } from '../coeur/noyau';
-import { creerRegistre, environnement, ErreurUtilisateur, marqueTemps, Niveau } from '../coeur/outils';
+import { type CommandeSlash, type GestionnaireComposant, type ModuleBot } from '../coeur/noyau';
+import { creerRegistre, environnement, ErreurUtilisateur, marqueTemps, Niveau, tronquer } from '../coeur/outils';
 import { moduleActif, viderCacheConfig, viderCacheModules } from '../coeur/reglages';
 
 export const TABLES: { table: string; filtre: string }[] = [
@@ -109,48 +109,58 @@ export function restaurerSauvegarde(serveurId: string, sauvegardeId: number): { 
 
 const registre = creerRegistre('sauvegarde');
 
-const sauvegarde: CommandeSlash = {
-  categorie: 'admin',
-  niveau: Niveau.STREAMER,
-  donnees: new SlashCommandBuilder()
-    .setName('backup')
-    .setDescription('Sauvegardes')
-    .addSubcommand((s) => s.setName('create').setDescription('Sauvegarder'))
-    .addSubcommand((s) => s.setName('list').setDescription('Les sauvegardes'))
-    .addSubcommand((s) =>
-      s
-        .setName('restore')
-        .setDescription('Restaurer une sauvegarde')
-        .addIntegerOption((o) => o.setName('sauvegarde').setDescription('La sauvegarde').setRequired(true).setAutocomplete(true)),
-    ),
-  niveauxSousCommandes: { list: Niveau.ADMIN, create: Niveau.ADMIN },
-  async autocompletion(interaction) {
-    await interaction.respond(
-      listerSauvegardes(interaction.guildId).map((b) => ({ name: `#${b.id} · ${b.nom} · ${new Date(b.cree_le).toLocaleString('fr-FR')} · ${Math.round(b.taille / 1024)} Ko`.slice(0, 100), value: b.id })),
+// - /sauvegarde : sauvegarder, voir, restaurer -
+function ecranSauvegardes(serveur: Guild, note?: string) {
+  const liste = listerSauvegardes(serveur.id);
+  const embed = embedEnseigne(serveur)
+    .setTitle('💾 Sauvegardes')
+    .setDescription(
+      [
+        note,
+        liste.map((b) => `**#${b.id}** · ${b.nom} · ${marqueTemps(b.cree_le, 'R')} · ${Math.round(b.taille / 1024)} Ko`).join('\n') || 'Aucune sauvegarde.',
+        '',
+        '-# Réglages, modules, whitelists, Twitch, rôles, réponses, badges, boutique, formulaires et blacklist. Les salons et rôles Discord ne sont pas touchés.',
+      ]
+        .filter((l) => l !== undefined)
+        .join('\n'),
     );
-  },
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [rangee(bouton('svg:creer', 'Sauvegarder maintenant', ButtonStyle.Success, '💾'))];
+  if (liste.length) {
+    composants.push(rangee(new StringSelectMenuBuilder().setCustomId('svg:restaurer').setPlaceholder('Restaurer une sauvegarde…').addOptions(liste.slice(0, 25).map((b) => ({ label: tronquer(`#${b.id} · ${b.nom}`, 100), value: String(b.id), description: new Date(b.cree_le).toLocaleString('fr-FR') })))));
+  }
+  return { embeds: [embed], components: composants };
+}
+
+const commandeSauvegarde: CommandeSlash = {
+  categorie: 'admin',
+  niveau: Niveau.ADMIN,
+  donnees: new SlashCommandBuilder().setName('sauvegarde').setDescription('Les sauvegardes'),
   async executer(interaction) {
+    await repondre(interaction, { ...ecranSauvegardes(interaction.guild), ephemeral: true });
+  },
+};
+
+const composantSauvegardes: GestionnaireComposant = {
+  prefixe: 'svg',
+  niveau: Niveau.ADMIN,
+  async bouton(interaction: ButtonInteraction<'cached'>) {
     const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    if (sousCommande === 'create') {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const b = creerSauvegarde(serveur, interaction.user.id);
-      void journal(serveur, 'backup', {
-        titre: 'Sauvegarde créée',
-        ton: 'ok',
-        lignes: [`**#${b.id}** · ${Math.round(b.size / 1024)} Ko`],
-        fichiers: [new AttachmentBuilder(Buffer.from(JSON.stringify(b.data, null, 2)), { name: `sauvegarde-${serveur.id}-${b.id}.json` })],
-        par: interaction.user,
-      });
-      return interaction.editReply({ embeds: [ok(serveur, `Sauvegarde **#${b.id}** créée (${Math.round(b.size / 1024)} Ko).\n-# Réglages, modules, whitelists, Twitch, rôles à choisir, commandes perso, auto-réponses, badges, boutique, formulaires et blacklist.`)] });
-    }
-    if (sousCommande === 'list') {
-      const lignes = listerSauvegardes(serveur.id).map((b) => `**#${b.id}** · ${b.nom} · ${marqueTemps(b.cree_le, 'f')} · ${Math.round(b.taille / 1024)} Ko · <@${b.cree_par}>`);
-      return repondre(interaction, { embeds: [info(serveur, lignes.join('\n') || 'Aucune sauvegarde.', { titre: 'Sauvegardes', sujet: '💾' })], ephemeral: true });
-    }
-    const id = interaction.options.getInteger('sauvegarde', true);
+    const b = creerSauvegarde(serveur, interaction.user.id);
+    void journal(serveur, 'backup', {
+      titre: 'Sauvegarde créée',
+      ton: 'ok',
+      lignes: [`**#${b.id}** · ${Math.round(b.size / 1024)} Ko`],
+      fichiers: [new AttachmentBuilder(Buffer.from(JSON.stringify(b.data, null, 2)), { name: `sauvegarde-${serveur.id}-${b.id}.json` })],
+      par: interaction.user,
+    });
+    await interaction.update(ecranSauvegardes(serveur, `✅ Sauvegarde **#${b.id}** créée (${Math.round(b.size / 1024)} Ko).`));
+  },
+  async menu(interaction: AnySelectMenuInteraction<'cached'>) {
+    if (!aNiveau(interaction.member, Niveau.STREAMER)) throw new ErreurUtilisateur('Restaurer est réservé au streamer du serveur.');
+    const serveur = interaction.guild;
+    const id = Number(interaction.values[0]);
     if (!listerSauvegardes(serveur.id).some((b) => b.id === id)) throw new ErreurUtilisateur('Sauvegarde introuvable.');
-    return demanderConfirmation(interaction, {
+    await demanderConfirmation(interaction, {
       titre: 'Restaurer la sauvegarde ?',
       description: `La configuration actuelle du bot sur ce serveur sera **remplacée** par la sauvegarde **#${id}**.\nUne sauvegarde de l’état actuel est créée juste avant. Les salons et rôles Discord ne sont pas modifiés.`,
       libelleConfirmation: 'Restaurer',
@@ -173,7 +183,8 @@ export const moduleSauvegardes: ModuleBot = {
   description: 'Sauvegardes manuelles et quotidiennes de la configuration',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [sauvegarde],
+  commandes: [commandeSauvegarde],
+  composants: [composantSauvegardes],
   taches: [
     {
       nom: 'backup-daily',

@@ -27,7 +27,6 @@ import {
   embedEnseigne,
   estLienHttp,
   info,
-  ok,
   rangee,
   remplirModele,
   repondre,
@@ -910,61 +909,12 @@ const pageReglage: PageReglage = {
 
 // - Commandes -
 
-const optionPseudo = (o: import('discord.js').SlashCommandStringOption) => o.setName('chaine').setDescription('Pseudo ou lien Twitch').setRequired(true).setMaxLength(100);
-
 const twitch: CommandeSlash = {
-  categorie: 'twitch',
+  categorie: 'customization',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('twitch')
-    .setDescription('Annonces Twitch')
-    .addSubcommand((s) => s.setName('setup').setDescription('Régler les annonces'))
-    .addSubcommand((s) =>
-      s
-        .setName('add')
-        .setDescription('Suivre une chaîne')
-        .addStringOption(optionPseudo)
-        .addChannelOption((o) => o.setName('salon').setDescription('Salon d’annonce').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-        .addRoleOption((o) => o.setName('role').setDescription('Rôle à mentionner')),
-    )
-    .addSubcommand((s) => s.setName('remove').setDescription('Retirer une chaîne').addStringOption((o) => optionPseudo(o).setAutocomplete(true)))
-    .addSubcommand((s) => s.setName('list').setDescription('Les chaînes suivies'))
-    .addSubcommand((s) => s.setName('test').setDescription('Annonce de test').addStringOption((o) => optionPseudo(o).setAutocomplete(true))),
-  niveauxSousCommandes: { list: Niveau.STAFF },
-  async autocompletion(interaction) {
-    const saisie = String(interaction.options.getFocused()).toLowerCase();
-    await interaction.respond(
-      listerChaines(interaction.guildId)
-        .filter((r) => r.pseudo.includes(saisie))
-        .slice(0, 25)
-        .map((r) => ({ name: r.nom_affiche ?? r.pseudo, value: r.pseudo })),
-    );
-  },
+  donnees: new SlashCommandBuilder().setName('twitch').setDescription('Annonces Twitch'),
   async executer(interaction) {
-    const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    switch (sousCommande) {
-      case 'setup':
-        return repondre(interaction, { ...afficherPage(serveur, lirePageReglage('twitch')!), ephemeral: true });
-      case 'list':
-        return repondre(interaction, { ...ecranListe(serveur), ephemeral: true });
-      case 'add': {
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const r = await suivre(serveur, interaction.options.getString('chaine', true), interaction.options.getChannel('salon')?.id ?? null, interaction.options.getRole('role')?.id ?? null);
-        return interaction.editReply(ecranChaine(serveur, r, `✅ **${r.nom_affiche}** est suivie.`));
-      }
-      case 'remove': {
-        const pseudo = normaliserPseudo(interaction.options.getString('chaine', true));
-        if (!retirerChaine(serveur.id, pseudo)) throw new ErreurUtilisateur(`**${pseudo}** n’est pas suivie ici.`);
-        return repondre(interaction, { embeds: [ok(serveur, `**${pseudo}** n’est plus suivie.`)], ephemeral: true });
-      }
-      case 'test': {
-        const r = lireChaine(serveur.id, normaliserPseudo(interaction.options.getString('chaine', true)));
-        if (!r) throw new ErreurUtilisateur('Cette chaîne n’est pas suivie ici.');
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        return interaction.editReply({ embeds: [info(serveur, await envoyerTest(serveur, interaction.client, r))] });
-      }
-    }
+    await repondre(interaction, { ...ecranListe(interaction.guild), ephemeral: true });
   },
 };
 
@@ -973,7 +923,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     nom: 'twitch',
     alias: ['lives'],
     domaine: 'general',
-    categorie: 'twitch',
+    categorie: 'customization',
     description: 'Les chaînes suivies',
     niveau: Niveau.STAFF,
     async executer(message) {

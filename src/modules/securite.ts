@@ -1,6 +1,9 @@
 import { randomInt } from 'node:crypto';
 import {
+  type ActionRowBuilder,
+  type AnySelectMenuInteraction,
   AuditLogEvent,
+  type ButtonInteraction,
   ButtonStyle,
   EmbedBuilder,
   type Guild,
@@ -8,15 +11,17 @@ import {
   type GuildMember,
   GuildVerificationLevel,
   type Message,
+  type MessageActionRowComponentBuilder,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
+  UserSelectMenuBuilder,
 } from 'discord.js';
-import { botPeutGererRole, estExempte, estProprietaireBot, membresListe } from '../coeur/acces';
-import { bouton, construireFormulaire, couleurPour, erreur, info, ok, rangee, repondre } from '../coeur/affichage';
-import type { PageReglage } from '../coeur/assistant';
+import { aNiveau, botPeutGererRole, estExempte, estProprietaireBot, membresListe } from '../coeur/acces';
+import { bouton, construireFormulaire, couleurPour, embedEnseigne, erreur, info, ok, rangee, repondre } from '../coeur/affichage';
+import { afficherPage, lirePageReglage, type PageReglage } from '../coeur/assistant';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
+import { type CommandeSlash, type GestionnaireComposant, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
 import {
   CarteExpirante,
   creerRegistre,
@@ -25,9 +30,9 @@ import {
   joursDepuis,
   LimiteurFenetre,
   marqueTemps, Niveau } from '../coeur/outils';
-import { lireConfig, modifierConfig } from '../coeur/reglages';
+import { lireConfig, modifierConfig, moduleActif } from '../coeur/reglages';
 import { donnerRolesAuto } from './arrivees';
-import { serveurVerrouille, verrouiller } from './moderation';
+import { deverrouiller, serveurVerrouille, verrouiller } from './moderation';
 
 const registre = creerRegistre('antiraid');
 
@@ -132,51 +137,82 @@ async function surMessage(message: Message): Promise<void> {
   await alerter(message.guild, 'Anti-raid — mentions massives', [`<@${message.author.id}> a mentionné plus de **${reglages.seuilMentions}** personnes/rôles en 30 s.`, 'Message supprimé et membre mis en timeout 30 min.']);
 }
 
-const antiraid: CommandeSlash = {
+// - /securite : anti-raid et anti-nuke sur un écran -
+function ecranSecurite(serveur: Guild, note?: string) {
+  const raid = lireConfig(serveur.id).antiraid;
+  const nuke = lireConfig(serveur.id).antinuke;
+  const etat = modeRaid.get(serveur.id);
+  const embed = embedEnseigne(serveur)
+    .setTitle('🛡️ Sécurité')
+    .setDescription(note ?? (etat ? `🚨 **Mode raid actif** jusqu’à ${marqueTemps(etat.jusqua, 'R')}` : '🟢 Tout est calme.'))
+    .addFields({
+      name: '🚨 Anti-raid',
+      value: [
+        `**${raid.seuilArrivees}** arrivées en **${raid.fenetreArriveesSecondes} s** déclenchent l’alerte`,
+        `Comptes de moins de **${raid.ageCompteMinJours} j** → ${raid.actionSuspects === 'none' ? 'rien' : raid.actionSuspects === 'kick' ? 'expulsés' : 'mis en timeout'}`,
+        `Lockdown automatique : **${raid.verrouillageAuto ? 'oui' : 'non'}** · serveur ${serveurVerrouille(serveur.id) ? '🔒 fermé' : 'ouvert'}`,
+      ].join('\n'),
+      inline: false,
+    });
+  if (moduleActif(serveur.id, 'antinuke')) {
+    embed.addFields({
+      name: '💥 Anti-nuke',
+      value: [`Réaction : **${nuke.action}** au-delà des seuils, sur **${nuke.fenetreSecondes} s**`, `Confiance : ${nuke.membresDeConfiance.map((id) => `<@${id}>`).join(' ') || 'personne en plus'} (+ propriétaire, streamers)`].join('\n'),
+      inline: false,
+    });
+  }
+  const boutons = [
+    etat ? bouton('secu:fin', 'Fin du mode raid', ButtonStyle.Success, '🟢') : bouton('secu:panique', 'Mode panique', ButtonStyle.Danger, '🚨'),
+    bouton('secu:reglages', 'Réglages', ButtonStyle.Secondary, '⚙️'),
+  ];
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [rangee(...boutons)];
+  if (moduleActif(serveur.id, 'antinuke')) composants.push(rangee(new UserSelectMenuBuilder().setCustomId('secu:confiance').setPlaceholder('Ajouter ou retirer un compte de confiance').setMinValues(1).setMaxValues(1)));
+  return { embeds: [embed], components: composants };
+}
+
+const commandeSecurite: CommandeSlash = {
   categorie: 'moderation',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('antiraid')
-    .setDescription('Anti-raid')
-    .addSubcommand((s) => s.setName('status').setDescription('État de la protection'))
-    .addSubcommand((s) => s.setName('panique').setDescription('Mode raid'))
-    .addSubcommand((s) => s.setName('fin').setDescription('Terminer le mode raid')),
+  donnees: new SlashCommandBuilder().setName('securite').setDescription('Anti-raid et anti-nuke'),
   async executer(interaction) {
+    await repondre(interaction, { ...ecranSecurite(interaction.guild), ephemeral: true });
+  },
+};
+
+const composantSecurite: GestionnaireComposant = {
+  prefixe: 'secu',
+  niveau: Niveau.ADMIN,
+  async bouton(interaction: ButtonInteraction<'cached'>, [action]) {
     const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    if (sousCommande === 'panique') {
-      await interaction.deferReply({ flags: 64 });
+    if (action === 'reglages') return void (await interaction.update(afficherPage(serveur, lirePageReglage('antiraid')!)));
+    await interaction.deferUpdate();
+    if (action === 'panique') {
       await activerModeRaid(serveur);
       const r = serveurVerrouille(serveur.id) ? null : await verrouiller(serveur, 'server', serveur.id, interaction.user, 'Mode panique anti-raid').catch(() => null);
-      return interaction.editReply({ embeds: [ok(serveur, `🚨 Mode raid activé : vérification élevée${r ? `, **${r.verrouilles}** salon(s) verrouillés` : ''}.\n-# \`/antiraid fin\` puis \`&unl0all\` pour revenir à la normale.`)] });
+      return void (await interaction.editReply(ecranSecurite(serveur, `🚨 Mode raid activé : vérification élevée${r ? `, **${r.verrouilles}** salon(s) fermés` : ''}.`)));
     }
-    if (sousCommande === 'fin') {
-      const etat = modeRaid.get(serveur.id);
-      if (etat) {
-        await serveur.setVerificationLevel(etat.niveauPrecedent, 'Fin du mode raid').catch(() => undefined);
-        modeRaid.delete(serveur.id);
-      }
-      return repondre(interaction, { embeds: [ok(serveur, etat ? 'Mode raid terminé, vérification remise à son niveau habituel.' : 'Aucun mode raid en cours.')], ephemeral: true });
-    }
-    const reglages = lireConfig(serveur.id).antiraid;
     const etat = modeRaid.get(serveur.id);
-    return repondre(interaction, {
-      embeds: [
-        info(
-          serveur,
-          [
-            `• Seuil — **${reglages.seuilArrivees}** arrivées en **${reglages.fenetreArriveesSecondes} s**`,
-            `• Comptes suspects — moins de **${reglages.ageCompteMinJours} j** → ${reglages.actionSuspects === 'none' ? 'rien' : reglages.actionSuspects}`,
-            `• Lockdown automatique — **${reglages.verrouillageAuto ? 'oui' : 'non'}**`,
-            `• Mentions massives — **${reglages.seuilMentions}** en 30 s`,
-            `• Mode raid — ${etat ? `actif jusqu’à ${marqueTemps(etat.jusqua, 'R')}` : 'inactif'}`,
-            `• Lockdown serveur — ${serveurVerrouille(serveur.id) ? '🔒 en cours' : 'non'}`,
-          ].join('\n'),
-          { titre: 'Anti-raid', sujet: '🚨' },
-        ),
-      ],
-      ephemeral: true,
+    if (etat) {
+      await serveur.setVerificationLevel(etat.niveauPrecedent, 'Fin du mode raid').catch(() => undefined);
+      modeRaid.delete(serveur.id);
+    }
+    const rouverts = serveurVerrouille(serveur.id) ? await deverrouiller(serveur, 'server', serveur.id, interaction.user) : 0;
+    await interaction.editReply(ecranSecurite(serveur, `🟢 Mode raid terminé${rouverts ? `, **${rouverts}** salon(s) rouverts` : ''}.`));
+  },
+  async menu(interaction: AnySelectMenuInteraction<'cached'>) {
+    if (!aNiveau(interaction.member, Niveau.STREAMER)) throw new ErreurUtilisateur('Les comptes de confiance sont réservés au streamer.');
+    const id = interaction.values[0] ?? '';
+    if (id === interaction.client.user.id) throw new ErreurUtilisateur('Le bot est toujours de confiance.');
+    let ajoute = false;
+    modifierConfig(interaction.guildId, (c) => {
+      const liste = c.antinuke.membresDeConfiance;
+      if (liste.includes(id)) c.antinuke.membresDeConfiance = liste.filter((x) => x !== id);
+      else {
+        liste.push(id);
+        ajoute = true;
+      }
     });
+    await interaction.update(ecranSecurite(interaction.guild, `<@${id}> ${ajoute ? 'ajouté aux' : 'retiré des'} comptes de confiance.`));
   },
 };
 
@@ -217,7 +253,8 @@ export const moduleAntiraid: ModuleBot = {
   description: 'Arrivées massives, comptes suspects, mentions massives',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [antiraid],
+  commandes: [commandeSecurite],
+  composants: [composantSecurite],
   pagesReglage: [pageReglage],
   evenements: [sur('guildMemberAdd', (m) => surArrivee(m), 2), sur('messageCreate', (m) => surMessage(m), 11)],
   taches: [
@@ -328,55 +365,6 @@ async function surAudit(entree: GuildAuditLogsEntry, serveur: Guild): Promise<vo
   }
 }
 
-const antinuke: CommandeSlash = {
-  categorie: 'moderation',
-  niveau: Niveau.STREAMER,
-  donnees: new SlashCommandBuilder()
-    .setName('antinuke')
-    .setDescription('Anti-nuke')
-    .addSubcommand((s) => s.setName('status').setDescription('Seuils et réaction'))
-    .addSubcommand((s) =>
-      s
-        .setName('confiance')
-        .setDescription('Comptes de confiance')
-        .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true)),
-    ),
-  async executer(interaction) {
-    const serveur = interaction.guild;
-    if (interaction.options.getSubcommand() === 'confiance') {
-      const utilisateur = interaction.options.getUser('membre', true);
-      if (utilisateur.bot && utilisateur.id === interaction.client.user.id) throw new ErreurUtilisateur('Le bot est toujours de confiance.');
-      let ajoute = false;
-      modifierConfig(serveur.id, (c) => {
-        const liste = c.antinuke.membresDeConfiance;
-        if (liste.includes(utilisateur.id)) c.antinuke.membresDeConfiance = liste.filter((id) => id !== utilisateur.id);
-        else {
-          liste.push(utilisateur.id);
-          ajoute = true;
-        }
-      });
-      return repondre(interaction, { embeds: [ok(serveur, `<@${utilisateur.id}> ${ajoute ? 'ajouté aux' : 'retiré des'} comptes de confiance.`)], ephemeral: true });
-    }
-    const reglages = lireConfig(serveur.id).antinuke;
-    return repondre(interaction, {
-      embeds: [
-        info(
-          serveur,
-          [
-            `Fenêtre : **${reglages.fenetreSecondes} s** · réaction : **${reglages.action}**`,
-            '',
-            ...Object.values(ACTIONS).map((a) => `• ${a!.libelle} — seuil **${reglages.seuils[a!.compteur]}**`),
-            '',
-            `Comptes de confiance : ${reglages.membresDeConfiance.map((id) => `<@${id}>`).join(' ') || '*aucun*'} (+ propriétaire, streamers, owners bot)`,
-          ].join('\n'),
-          { titre: 'Anti-nuke', sujet: '💥' },
-        ),
-      ],
-      ephemeral: true,
-    });
-  },
-};
-
 const champCompteur = (compteur: Compteur, libelle: string) => ({
   genre: 'number' as const,
   cle: compteur,
@@ -424,7 +412,7 @@ export const moduleAntinuke: ModuleBot = {
   description: 'Suppressions, créations et bans en masse d’un compte compromis',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [antinuke],
+
   pagesReglage: [pageReglageAntinuke],
   evenements: [sur('guildAuditLogEntryCreate', (entree, serveur) => surAudit(entree, serveur), 1)],
 };

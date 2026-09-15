@@ -209,6 +209,14 @@ function valeurAffichee(serveur: Guild, champ: ChampReglage, reglages: ConfigSer
   }
 }
 
+// - Les outils sous l’accueil -
+// Posés par l’administration : modules, diagnostic, remise à zéro.
+let outilsAccueil: (() => ActionRowBuilder<ButtonBuilder>) | null = null;
+
+export function poserOutilsAccueil(construire: () => ActionRowBuilder<ButtonBuilder>): void {
+  outilsAccueil = construire;
+}
+
 export function afficherAccueil(serveur: Guild) {
   const reglages = lireConfig(serveur.id);
   const embed = embedEnseigne(serveur)
@@ -229,7 +237,8 @@ export function afficherAccueil(serveur: Guild) {
     .map((s) => bouton(`setup:sec:${s}`, SECTIONS_REGLAGE[s].label, ButtonStyle.Secondary, SECTIONS_REGLAGE[s].emoji));
   boutonsSections.push(bouton('setup:done', 'Terminer', ButtonStyle.Success, '✅'));
   const rangees: ActionRowBuilder<ButtonBuilder>[] = [];
-  for (let i = 0; i < boutonsSections.length && rangees.length < 5; i += 4) rangees.push(rangee(...boutonsSections.slice(i, i + 4)));
+  for (let i = 0; i < boutonsSections.length && rangees.length < 4; i += 4) rangees.push(rangee(...boutonsSections.slice(i, i + 4)));
+  if (outilsAccueil) rangees.push(outilsAccueil());
   return { embeds: [embed], components: rangees };
 }
 
@@ -377,7 +386,7 @@ export async function traiterBoutonReglage(interaction: ButtonInteraction<'cache
       });
       const embed = embedEnseigne(serveur, 'succes')
         .setTitle('✅ CONFIGURATION TERMINÉE')
-        .setDescription('Votre serveur est prêt ! 🎉\n\nTu peux revenir à tout moment avec `/setup`, voir les modules avec `/modules` ou tester les messages avec `/test`.');
+        .setDescription('Votre serveur est prêt ! 🎉\n\nTu peux revenir à tout moment avec `/setup`, les modules et le diagnostic sont en bas de cet écran.');
       await interaction.update({ embeds: [embed], components: [] });
       return;
     }

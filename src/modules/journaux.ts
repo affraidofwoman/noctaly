@@ -10,9 +10,9 @@ import {
   SlashCommandBuilder,
   type VoiceState,
 } from 'discord.js';
-import { embedEnseigne, lignesEnPages, ok, paginer, suiviReponse } from '../coeur/affichage';
+import { embedEnseigne, lignesEnPages, paginer, suiviReponse } from '../coeur/affichage';
 import { lireJson, lireTout } from '../coeur/base';
-import { creerSalonsJournal, definitionJournal, journal, type TypeJournal, TYPES_JOURNAUX } from '../coeur/journaux';
+import { definitionJournal, journal, type TypeJournal, TYPES_JOURNAUX } from '../coeur/journaux';
 import { type CommandePrefixe, type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
 import { formaterDuree, formaterNombre, joursDepuis, marqueTemps, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig } from '../coeur/reglages';
@@ -266,29 +266,14 @@ const commandeJournaux: CommandeSlash = {
   donnees: new SlashCommandBuilder()
     .setName('logs')
     .setDescription('L’historique du serveur')
-    .addSubcommand((s) =>
-      s
-        .setName('voir')
-        .setDescription('L’historique')
-        .addUserOption((o) => o.setName('membre').setDescription('Une personne'))
-        .addStringOption((o) =>
-          o
-            .setName('type')
-            .setDescription('Un type')
-            .addChoices(...TYPES_JOURNAUX.slice(0, 25).map((t) => ({ name: `${t.nom} — ${tronquer(t.description, 60)}`, value: t.type }))),
-        ),
-    )
-    .addSubcommand((s) => s.setName('salons').setDescription('Créer les salons')),
-  niveauxSousCommandes: { salons: Niveau.ADMIN },
+    .addUserOption((o) => o.setName('membre').setDescription('Une personne'))
+    .addStringOption((o) =>
+      o
+        .setName('type')
+        .setDescription('Un type')
+        .addChoices(...TYPES_JOURNAUX.slice(0, 25).map((t) => ({ name: `${t.nom} — ${tronquer(t.description, 60)}`, value: t.type }))),
+    ),
   async executer(interaction) {
-    if (interaction.options.getSubcommand() === 'salons') {
-      await interaction.deferReply({ flags: 64 });
-      const suivi = suiviReponse(interaction, interaction.guild, 'Salons de logs');
-      const { cree, titreLie } = await creerSalonsJournal(interaction.guild, (f, t) => suivi.regler(f, t));
-      await suivi.terminer();
-      await interaction.editReply({ embeds: [ok(interaction.guild, `**${cree}** créé(s), **${titreLie}** déjà présent(s).`, { titre: 'Salons de logs' })] });
-      return;
-    }
     const utilisateur = interaction.options.getUser('membre');
     const type = interaction.options.getString('type');
     await paginer(interaction, pagesHistorique(interaction.guild, utilisateur?.id ?? null, type), true);

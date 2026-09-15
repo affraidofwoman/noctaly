@@ -3,7 +3,6 @@ import {
   type AnySelectMenuInteraction,
   type ButtonInteraction,
   ButtonStyle,
-  ChannelType,
   type Client,
   EmbedBuilder,
   type Guild,
@@ -420,109 +419,13 @@ function pagesListe(serveur: Guild) {
 
 // - Commande -
 
-const optionId = (o: import('discord.js').SlashCommandIntegerOption) => o.setName('id').setDescription('Le giveaway').setRequired(true).setAutocomplete(true);
-
 const tirage: CommandeSlash = {
-  categorie: 'giveaways',
+  categorie: 'customization',
   niveau: Niveau.STAFF,
   whitelist: 'giveaway',
-  donnees: new SlashCommandBuilder()
-    .setName('giveaway')
-    .setDescription('Les giveaways')
-    .addSubcommand((s) =>
-      s
-        .setName('start')
-        .setDescription('Lancer un giveaway')
-        .addStringOption((o) => o.setName('recompense').setDescription('Ce qu’on gagne').setRequired(true).setMaxLength(200))
-        .addStringOption((o) => o.setName('duree').setDescription('Durée (30m, 2j)').setRequired(true))
-        .addIntegerOption((o) => o.setName('gagnants').setDescription('Nombre de gagnants').setMinValue(1).setMaxValue(50))
-        .addChannelOption((o) => o.setName('salon').setDescription('Salon').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-        .addRoleOption((o) => o.setName('role').setDescription('Rôle obligatoire'))
-        .addIntegerOption((o) => o.setName('niveau').setDescription('Niveau XP minimum').setMinValue(1).setMaxValue(500))
-        .addIntegerOption((o) => o.setName('compte').setDescription('Âge du compte (jours)').setMinValue(1).setMaxValue(3650))
-        .addIntegerOption((o) => o.setName('anciennete').setDescription('Ancienneté (jours)').setMinValue(1).setMaxValue(3650))
-        .addIntegerOption((o) => o.setName('participants').setDescription('Participants minimum').setMinValue(2).setMaxValue(100000))
-        .addStringOption((o) => o.setName('condition').setDescription('Condition affichée').setMaxLength(200)),
-    )
-    .addSubcommand((s) => s.setName('end').setDescription('Tirer maintenant').addIntegerOption(optionId))
-    .addSubcommand((s) =>
-      s
-        .setName('reroll')
-        .setDescription('Refaire le tirage')
-        .addIntegerOption(optionId)
-        .addIntegerOption((o) => o.setName('gagnants').setDescription('Nouveaux gagnants').setMinValue(1).setMaxValue(50)),
-    )
-    .addSubcommand((s) => s.setName('pause').setDescription('Mettre en pause').addIntegerOption(optionId))
-    .addSubcommand((s) => s.setName('resume').setDescription('Reprendre').addIntegerOption(optionId))
-    .addSubcommand((s) => s.setName('list').setDescription('Les giveaways du serveur'))
-    .addSubcommand((s) => s.setName('menu').setDescription('Menu giveaways')),
-  async autocompletion(interaction) {
-    const saisie = String(interaction.options.getFocused()).toLowerCase();
-    const sousCommande = interaction.options.getSubcommand();
-    const liste = tiragesDuServeur(interaction.guildId).filter((g) =>
-      sousCommande === 'reroll' ? g.statut === 'ended' : sousCommande === 'resume' ? g.statut === 'paused' : sousCommande === 'pause' ? g.statut === 'running' : g.statut !== 'ended',
-    );
-    await interaction.respond(liste.filter((g) => libelle(g).toLowerCase().includes(saisie)).slice(0, 25).map((g) => ({ name: libelle(g), value: g.id })));
-  },
+  donnees: new SlashCommandBuilder().setName('giveaway').setDescription('Les giveaways'),
   async executer(interaction) {
-    const sousCommande = interaction.options.getSubcommand();
-    const serveur = interaction.guild;
-    const client = interaction.client;
-    switch (sousCommande) {
-      case 'start': {
-        const duree = lireDuree(interaction.options.getString('duree', true));
-        if (!duree || duree < 10_000 || duree > DUREE_MAX) throw new ErreurUtilisateur('Durée incomprise : écris par exemple `30m`, `1h`, `2j`, `1h30m` (60 jours max).');
-        const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(serveur, lireConfig(serveur.id).tirages.salonDefautId) ?? interaction.channel) as GuildTextBasedChannel | null;
-        if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
-        const conditions: ConditionsTirage = {
-          roleId: interaction.options.getRole('role')?.id ?? null,
-          niveauMin: interaction.options.getInteger('niveau'),
-          joursCompteMin: interaction.options.getInteger('compte'),
-          joursServeurMin: interaction.options.getInteger('anciennete'),
-          participantsMin: interaction.options.getInteger('participants'),
-          note: interaction.options.getString('condition'),
-        };
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const g = await lancerTirage({
-          salon,
-          organisateur: interaction.member,
-          lot: interaction.options.getString('recompense', true),
-          gagnants: interaction.options.getInteger('gagnants') ?? 1,
-          dureeMs: duree,
-          conditions,
-        });
-        return interaction.editReply({ embeds: [ok(serveur, `Giveaway **#${g.id}** lancé dans <#${salon.id}>, tirage ${marqueTemps(g.fin_le, 'R')}.`)] });
-      }
-      case 'list':
-        return paginer(interaction, pagesListe(serveur), true);
-      case 'menu':
-        return repondre(interaction, { ...menu(serveur), ephemeral: true });
-    }
-    const g = exigerTirage(serveur.id, interaction.options.getInteger('id', true));
-    switch (sousCommande) {
-      case 'end': {
-        if (g.statut === 'ended') throw new ErreurUtilisateur('Ce giveaway est déjà terminé.');
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const gagnants = await terminerTirage(client, g.id, interaction.user.id);
-        return interaction.editReply({ embeds: [ok(serveur, gagnants.length ? `Tirage fait : ${gagnants.map((w) => `<@${w}>`).join(', ')}.` : 'Tirage fait, sans gagnant.')] });
-      }
-      case 'reroll': {
-        if (g.statut !== 'ended') throw new ErreurUtilisateur('Le giveaway doit être terminé pour refaire le tirage.');
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const gagnants = await relancerTirage(client, g, interaction.user.id, interaction.options.getInteger('gagnants') ?? undefined);
-        return interaction.editReply({ embeds: [gagnants.length ? ok(serveur, 'C’est retiré au sort.') : erreur(serveur, 'Personne n’a participé à ce giveaway.')] });
-      }
-      case 'pause':
-        if (g.statut !== 'running') throw new ErreurUtilisateur('Ce giveaway n’est pas en cours.');
-        mettreTirageEnPause(g);
-        await rafraichirMessage(client, lireTirage(g.id)!);
-        return repondre(interaction, { embeds: [ok(serveur, `⏸️ Giveaway **#${g.id}** en pause.`)], ephemeral: true });
-      case 'resume':
-        if (g.statut !== 'paused') throw new ErreurUtilisateur('Ce giveaway n’est pas en pause.');
-        reprendreTirage(g);
-        await rafraichirMessage(client, lireTirage(g.id)!);
-        return repondre(interaction, { embeds: [ok(serveur, `▶️ Giveaway **#${g.id}** repris, tirage ${marqueTemps(lireTirage(g.id)!.fin_le, 'R')}.`)], ephemeral: true });
-    }
+    await repondre(interaction, { ...menu(interaction.guild), ephemeral: true });
   },
 };
 
@@ -648,7 +551,7 @@ const commandesPrefixe: CommandePrefixe[] = [
     nom: 'giveaway',
     alias: ['gw'],
     domaine: 'general',
-    categorie: 'giveaways',
+    categorie: 'customization',
     description: 'Les giveaways',
     niveau: Niveau.STAFF,
     whitelist: 'giveaway',

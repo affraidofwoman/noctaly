@@ -3,7 +3,7 @@
 Bot Discord tout-en-un pour les serveurs de streamers Twitch, entièrement en français.
 Pensé pour **plusieurs streamers** : chaque serveur peut porter l’**enseigne** d’un streamer (nom, couleur, logo, émojis, chaîne Twitch), et tout reste cloisonné par serveur.
 
-> **Le principe :** j’ajoute le bot → `/setup` → quelques clics → le serveur est prêt.
+> **Le principe :** j’ajoute le bot → `/installer` → un clic → salons, rôles, permissions, logs et panneaux sont prêts.
 
 ---
 
@@ -47,7 +47,7 @@ Pensé pour **plusieurs streamers** : chaque serveur peut porter l’**enseigne*
 | 📜 Règlement à accepter | 🔐 Vérification (clic ou code) | 🚨 Anti-raid et 💥 anti-nuke |
 | 📝 Formulaires, partenariats, candidatures | 💾 Sauvegardes et restauration | 🌐 Site d’administration |
 
-Tous les modules s’activent ou se coupent par serveur avec `/modules`. Les commandes longues affichent une barre de progression (pourcentage, avancement, temps restant).
+Tous les modules s’activent ou se coupent par serveur dans `/setup` → Modules. Les commandes longues affichent une barre de progression (pourcentage, avancement, temps restant).
 
 ---
 
@@ -118,11 +118,10 @@ npm run deploy
 
 ## Premiers pas sur un serveur
 
-1. **`/installer`** — crée, sans rien écraser, salons, rôles, permissions, logs et panneaux.
-2. **`/setup`** — l’assistant : bienvenue, logs, tickets, giveaways, Twitch, modération, musique, rôles, communauté, sécurité, apparence.
-3. **`/modules`** — garde uniquement ce qui sert au serveur.
-4. **`/wl`** — donne les accès à l’équipe.
-5. **`/test`** — vérifie les permissions du bot et essaie les messages.
+1. **`/installer`** (ou 🏗️ dans `.custom`) — crée ce qui manque sans rien écraser : catégories Accueil, Infos, Discussion, Support, Vocal et Équipe, salons d’information en lecture seule, rôles (Modération, Staff, Membre, âge, notifications), une catégorie de logs privée, puis pose le règlement, les rôles à choisir, les tickets et les suggestions. Au choix : accès **après le règlement** ou **libre**.
+2. **`/serv`** — retoucher un réglage : bienvenue, départ, rôles automatiques, règlement, vérification, logs, apparence.
+3. **`/setup`** — l’assistant complet, avec en bas **Modules**, **Diagnostic**, **Résumé** et **Tout remettre à zéro**.
+4. **`/wl`** ou **`=wl @x admin`** — donne les accès à l’équipe.
 
 ---
 
@@ -134,14 +133,14 @@ Chaque niveau garde les droits des précédents.
 |---|---|
 | 🎥 **Streamer** | Propriétaire du serveur, rôle Streamer, whitelist **streamer** |
 | 🛠️ **Admin** | Administrateur ou Gérer le serveur, rôle Admin, whitelist **admin** |
-| 🛡️ **Système** | Rôle Système, whitelist **sys** — sanctions |
-| ⭐ **Staff** | Rôle Staff, whitelist **staff** |
-| 🎫 **Support** | Rôle Support, whitelist **support** — tickets |
+| 🛡️ **Modération** | Rôle Modération, whitelist **sys** — sanctions et salons |
+| ⭐ **Staff** | Rôle Staff, whitelist **staff** — tickets, suggestions, événements, annonces |
+| 🎫 **Support** | Rôle Support, whitelist **support** — tickets seulement |
 | **Membre** | Tout le monde |
 
 Whitelists ciblées : 🔎 **logs**, 🚧 **bypass**, 🎉 **giveaway**, 🎧 **dj**.
 
-- `/wl` : voir une liste, ajouter ou retirer ; `/wl personne:@x` : toutes les whitelists d’une personne.
+- `/wl` ou `=wl` : voir une liste, ajouter ou retirer ; `=wl @x` : ses accès ; `=wl @x staff` : bascule d’un coup.
 - On ne distribue que les whitelists **en dessous** de son niveau. Les salons de logs s’ouvrent automatiquement aux bonnes whitelists.
 - `/help` n’affiche que les commandes que la personne peut lancer ; un accès refusé ne répond rien en public.
 - Un serveur sans rôles réglés reste utilisable : le propriétaire et les administrateurs gardent la main.
@@ -166,21 +165,21 @@ Whitelists ciblées : 🔎 **logs**, 🚧 **bypass**, 🎉 **giveaway**, 🎧 **
 
 | Domaine | Défaut | Exemples |
 |---|---|---|
-| Sanctions | `+` | `+ban`, `+mute @x 10m`, `+warn`, `+gbl` |
-| Salons | `&` | `&clear 50`, `&lock`, `&l0all` |
-| Général | `=` | `=help`, `=lvl`, `=avatar`, `=remind 2h30 live` |
+| Sanctions | `+` | `+ban`, `+mute @x 10m`, `+warn`, `+gbl`, `+pic` |
+| Salons et panneaux | `&` | `&clear 50`, `&lock`, `&l0all`, `&reglement`, `&tickets`, `&roles` |
+| Général | `=` | `=help`, `=lvl`, `=wl @x staff`, `=serv`, `=de 3d20`, `=rappel 2h30 live` |
 | Musique | `m!` | `m!play`, `m!skip`, `m!panel` |
+| Owner | `.` | `.custom`, `.servers`, `.owner` |
 
-Préfixes et salons de commandes : `/config prefixes`.
+Préfixes et salons de commandes : `/serv` → Préfixes.
 
 ---
 
 ## Twitch
 
 1. Crée une application sur <https://dev.twitch.tv/console/apps>, puis renseigne `TWITCH_CLIENT_ID` et `TWITCH_CLIENT_SECRET`.
-2. `/twitch setup` → salon, rôle, messages, couleur.
-3. `/twitch add` pour chaque chaîne suivie (salon, rôle, message et options propres).
-4. `/twitch test` pour voir le rendu.
+2. `/twitch` → **Ajouter une chaîne**, puis salon, rôle, message et options propres à chaque chaîne.
+3. **Réglages Twitch** dans le même écran pour les valeurs par défaut.
 
 Annonce unique par live même après un redémarrage, tolérance aux micro-coupures, message mis à jour pendant le live puis résumé à la fin. La carte de bienvenue prend automatiquement la bannière Twitch du streamer.
 
@@ -206,16 +205,16 @@ Pages : accueil, modules, tickets, giveaways, Twitch, modération, logs, personn
 
 ## Liste des commandes
 
-Peu de commandes slash : chacune ouvre un panneau clair. Les gestes rapides passent par les préfixes.
+32 commandes slash, aucune sous-commande : chacune ouvre un panneau clair. Les gestes rapides passent par les préfixes. `/help` range tout façon tableau, par usage, et ne montre que ce que la personne peut lancer.
 
 ### 📌 Pour tout le monde
-`/help` · `/info` · `/contact` · `=help` · `=ui` · `=si` · `=bot` · `=stats` · `+pic` · `+banner`
+`/help` · `/info` · `/contact` · `=ui` · `=si` · `+pic` · `+banner`
 
 ### 🌟 Progression
-`/profil` · `=lvl` · `=lb` · `=rangs` · `=quest` · `=avatar` · `=inv` · `=shop` · `=daily` · `=gold` · `=give` · `=rep` · `=bio` · `=settings` · `=jeu`
+`/profil` · `=lvl` · `=lb` · `=quest` · `=daily` · `=gold` · `=shop` · `=jeu`
 
-### ⭐ Communauté
-`/sondage` · `/afk` · `/anniversaire` · `/rappel` · `/evenement` · `/badge` · `/boost` · `/contest` · `=suggest` · `=invites` · `=anniv` · `=rappel`
+### 💬 La commu
+`/sondage` · `/afk` · `/anniversaire` · `/rappel` · `/evenement` · `/badge` · `/boost` · `/concours` · `=suggest` · `=invites` · `=anniv`
 
 ### 🎲 Mini-jeux
 `/jeux` · `=8ball` · `=pf` · `=de` · `=rps`
@@ -223,20 +222,23 @@ Peu de commandes slash : chacune ouvre un panneau clair. Les gestes rapides pass
 ### 🎵 Musique
 `/musique` · `m!play` · `m!panel` · `m!help`
 
-### 🔴 Twitch · 🎫 Tickets · 🎉 Giveaways
-`/twitch` · `/ticket` · `/giveaway`
+### 🎫 Support
+`/ticket` · `=tickets`
 
-### 🎭 Rôles
-`/reactionrole` · `/notificationrole`
-
-### 🛡️ Sanctions et salons
-`/sanction` · `/salon` · `/antiraid` · `/antinuke` · `+ban` · `+kick` · `+mute` · `+warn` · `+warns` · `+unbanall` · `+gbl` · `&clear` · `&lock` · `&unlock` · `&l0all` · `&bl`
+### 🛡️ Sanctions · 🔑 Tenir les salons
+`/sanction` · `/salon` · `/securite` · `+ban` · `+kick` · `+mute` · `+warn` · `+warns` · `+unbanall` · `+gbl` · `&bl` · `&clear` · `&lock` · `&unlock` · `&l0all` · `&slowmode`
 
 ### 📝 Poster et animer
-`/announce` · `/embed` · `/customcommand` · `/autoresponse`
+`/annonce` · `/reponses` · `/giveaway` · `/twitch` · `/roles`
+
+### 🪧 Poser un panneau
+`/affiche` · `&reglement` · `&verif` · `&tickets` · `&roles` · `&suggestions` · `&formulaire` · `&musique`
+
+### 🗝️ Donner des accès
+`/wl` · `=wl`
 
 ### ⚙️ Le serveur
-`/setup` · `/installer` · `/serv` · `/affiche` · `/modules` · `/config` · `/test` · `/wl` · `/logs` · `/progression` · `/formulaire` · `/backup`
+`/installer` · `/serv` · `/setup` · `/logs` · `/progression` · `/formulaire` · `/sauvegarde` · `=bienvenue` · `=depart` · `=autorole`
 
 **Variables** utilisables dans les messages : `{user}` `{mention}` `{username}` `{userid}` `{server}` `{membercount}` `{createdat}` `{channel}` `{role}` `{date}` `{time}` `{streamer}` `{game}` `{title}` `{viewers}` `{url}` `{level}` `{boosts}` `{brand}` `{twitch}`.
 
@@ -263,7 +265,7 @@ Chaque module est isolé : une erreur dans un module n’interrompt jamais les a
 
 - SQLite (`node:sqlite`, mode WAL) dans `data/bot.sqlite`, créé automatiquement ; migrations versionnées dans `src/coeur/base.ts`.
 - Tout est persistant et reprend après un redémarrage.
-- `/backup create` sauvegarde la configuration du serveur ; une sauvegarde automatique est faite chaque jour (7 conservées). `/backup restore` crée d’abord une sauvegarde de sécurité.
+- `/sauvegarde` sauvegarde la configuration du serveur ; une sauvegarde automatique est faite chaque jour (7 conservées). Restaurer crée d’abord une sauvegarde de sécurité.
 
 ---
 
@@ -298,8 +300,8 @@ npm ci && npm run build && npm start
 | `Jeton Discord invalide` | Vérifie `DISCORD_TOKEN` |
 | Les commandes n’apparaissent pas | Attends quelques minutes ou renseigne `DEV_GUILD_ID`, puis `npm run deploy` |
 | « Je ne peux pas donner ce rôle » | Monte le rôle du bot au-dessus du rôle concerné |
-| Aucune annonce Twitch | `/test` → état de la connexion Twitch, vérifie les clés et le salon |
-| Pas de son | `/test` → état du lecteur ; au premier démarrage, yt-dlp met une minute à se télécharger |
+| Aucune annonce Twitch | `/setup` → Diagnostic → état de la connexion Twitch, vérifie les clés et le salon |
+| Pas de son | `/setup` → Diagnostic → état du lecteur ; au premier démarrage, yt-dlp met une minute à se télécharger |
 | Pas d’image (bienvenue, cartes) | `npm install` sur l’hébergeur (module `@napi-rs/canvas`) |
 
 Le bot ne montre jamais d’erreur technique aux membres : les détails vont dans la console et le salon `#sante-log`.

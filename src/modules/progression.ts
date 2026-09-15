@@ -1149,16 +1149,16 @@ const commandesPrefixe: CommandePrefixe[] = [
   { nom: 'lb', alias: ['top', 'classement'], domaine: 'general', categorie: 'progression', description: 'Classements', async executer(message) {
     await repondreMessage(message, () => ecranClassement(message.guild, message.author.id, 'xp', 'semaine'));
   } },
-  { nom: 'rangs', alias: ['paliers'], domaine: 'general', categorie: 'progression', description: 'Paliers de rang', async executer(message) {
+  { nom: 'rangs', horsAide: true, alias: ['paliers'], domaine: 'general', categorie: 'progression', description: 'Paliers de rang', async executer(message) {
     await repondreMessage(message, () => ecranRangs(message.member!));
   } },
   { nom: 'quest', alias: ['quetes', 'quests'], domaine: 'general', categorie: 'progression', description: 'Tes quêtes', async executer(message) {
     await repondreMessage(message, () => ecranQuetes(message.member!));
   } },
-  { nom: 'avatar', alias: ['perso'], domaine: 'general', categorie: 'progression', description: 'Ton personnage', async executer(message) {
+  { nom: 'avatar', horsAide: true, alias: ['perso'], domaine: 'general', categorie: 'progression', description: 'Ton personnage', async executer(message) {
     await repondreMessage(message, () => ecranAvatar(message.member!));
   } },
-  { nom: 'inv', alias: ['inventaire'], domaine: 'general', categorie: 'progression', description: 'Ton inventaire', async executer(message) {
+  { nom: 'inv', horsAide: true, alias: ['inventaire'], domaine: 'general', categorie: 'progression', description: 'Ton inventaire', async executer(message) {
     await repondreMessage(message, () => ecranInventaire(message.member!));
   } },
   { nom: 'shop', alias: ['boutique', 'coffres'], domaine: 'general', categorie: 'progression', description: 'Coffres et articles', async executer(message) {
@@ -1171,24 +1171,24 @@ const commandesPrefixe: CommandePrefixe[] = [
     const { utilisateur } = await membreVise(message, parametres[0]);
     await message.reply({ embeds: [embedGold(message.guild, utilisateur)], allowedMentions: { repliedUser: false } });
   } },
-  { nom: 'give', alias: ['donner'], domaine: 'general', categorie: 'progression', description: 'Donner du gold', usage: '<membre> <montant>', async executer(message, parametres) {
+  { nom: 'give', horsAide: true, alias: ['donner'], domaine: 'general', categorie: 'progression', description: 'Donner du gold', usage: '<membre> <montant>', async executer(message, parametres) {
     const { utilisateur } = await membreVise(message, parametres[0]);
     const montant = Number(parametres[1]);
     if (!parametres[0] || !Number.isInteger(montant) || montant <= 0) throw new ErreurUtilisateur('Usage : `give @membre 100`.');
     await message.reply({ embeds: [ok(message.guild, donnerGold(message.guildId, message.author.id, utilisateur, montant))], allowedMentions: { users: [utilisateur.id], repliedUser: false } });
   } },
-  { nom: 'rep', alias: ['reputation'], domaine: 'general', categorie: 'progression', description: 'Donner de la réputation', usage: '<membre>', async executer(message, parametres) {
+  { nom: 'rep', horsAide: true, alias: ['reputation'], domaine: 'general', categorie: 'progression', description: 'Donner de la réputation', usage: '<membre>', async executer(message, parametres) {
     if (!parametres[0]) throw new ErreurUtilisateur('Usage : `rep @membre`.');
     const { utilisateur } = await membreVise(message, parametres[0]);
     if (utilisateur.bot) throw new ErreurUtilisateur('Choisis un membre, pas un bot.');
     donnerReputation(message.guildId, message.author.id, utilisateur.id);
     await message.reply({ embeds: [ok(message.guild, `Un point de réputation pour <@${utilisateur.id}> ⭐ (${reputationDe(message.guildId, utilisateur.id)} au total).`)], allowedMentions: { users: [utilisateur.id], repliedUser: false } });
   } },
-  { nom: 'bio', domaine: 'general', categorie: 'progression', description: 'Modifier ta bio', usage: '<texte>', async executer(message, parametres) {
+  { nom: 'bio', horsAide: true, domaine: 'general', categorie: 'progression', description: 'Modifier ta bio', usage: '<texte>', async executer(message, parametres) {
     poserBio(message.member!, parametres.join(' '));
     await message.reply({ embeds: [ok(message.guild, parametres.length ? 'Bio mise à jour.' : 'Bio effacée.')], allowedMentions: { repliedUser: false } });
   } },
-  { nom: 'settings', alias: ['parametres', 'bonus'], domaine: 'general', categorie: 'progression', description: 'Paramètres et bonus', async executer(message) {
+  { nom: 'settings', horsAide: true, alias: ['parametres', 'bonus'], domaine: 'general', categorie: 'progression', description: 'Paramètres et bonus', async executer(message) {
     await repondreMessage(message, () => ecranParametres(message.member!));
   } },
   { nom: 'jeu', alias: ['commandes', 'cmds'], domaine: 'general', categorie: 'progression', description: 'Centre de commandes', async executer(message) {

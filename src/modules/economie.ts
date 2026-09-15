@@ -1,10 +1,10 @@
-import { EmbedBuilder, type GuildMember, type Message, MessageType, SlashCommandBuilder } from 'discord.js';
-import { botPeutGererRole, emojiPour } from '../coeur/acces';
-import { couleurPour, embedEnseigne, info, ok, remplirModele, repondre } from '../coeur/affichage';
+import { type ActionRowBuilder, type AnySelectMenuInteraction, type ButtonInteraction, ButtonStyle, EmbedBuilder, type Guild, type GuildMember, type Message, type MessageActionRowComponentBuilder, MessageFlags, MessageType, type ModalSubmitInteraction, RoleSelectMenuBuilder, SlashCommandBuilder, StringSelectMenuBuilder } from 'discord.js';
+import { aNiveau, botPeutGererRole, emojiPour } from '../coeur/acces';
+import { bouton, construireFormulaire, couleurPour, embedEnseigne, info, rangee, remplirModele, repondre } from '../coeur/affichage';
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout, transaction } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { type CommandeSlash, type GestionnaireComposant, type ModuleBot, sur } from '../coeur/noyau';
 import { cleJour, cleJourPrecedent, ErreurUtilisateur, formaterNombre, medaille, Niveau, tronquer } from '../coeur/outils';
 import { lireConfig, modifierConfig, moduleActif } from '../coeur/reglages';
 import { donnerBadge, emettreActivite, lireBadge, noterActivite } from './niveaux';
@@ -204,61 +204,84 @@ async function enregistrerBoost(membre: GuildMember): Promise<void> {
   await salon.send({ content: `<@${membre.id}>`, embeds: [embed], allowedMentions: { users: [membre.id] } }).catch(() => undefined);
 }
 
+// - /boost : les boosters et leurs récompenses -
+function ecranBoosts(serveur: Guild, admin: boolean, note?: string) {
+  const rangees = lireTout<{ utilisateur_id: string; nombre: number }>('SELECT utilisateur_id, nombre FROM boosts WHERE serveur_id = ? ORDER BY nombre DESC, premier_boost_le LIMIT 10', serveur.id);
+  const recompenses = [...lireConfig(serveur.id).boosts.recompenses].sort((a, b) => a.nombre - b.nombre);
+  const decrire = (r: (typeof recompenses)[number]) => [r.roleId ? `<@&${r.roleId}>` : null, r.badgeId ? `badge \`${r.badgeId}\`` : null, r.pieces ? `${formaterNombre(r.pieces)} gold` : null].filter(Boolean).join(' · ');
+  const embed = embedEnseigne(serveur)
+    .setTitle('🚀 Boosts')
+    .setDescription(note ?? `**${serveur.premiumSubscriptionCount ?? 0}** boosts · niveau **${serveur.premiumTier}**`)
+    .addFields(
+      { name: 'Les boosters', value: rangees.map((r, i) => `${medaille(i + 1)} <@${r.utilisateur_id}> — **${r.nombre}**`).join('\n') || '—', inline: true },
+      { name: 'Les récompenses', value: recompenses.map((r) => `**${r.nombre}** boost(s) → ${decrire(r)}`).join('\n') || '—', inline: true },
+    );
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+  if (admin) {
+    composants.push(rangee(bouton('bst:ajout', 'Nouvelle récompense', ButtonStyle.Success, '➕')));
+    if (recompenses.length) composants.push(rangee(new StringSelectMenuBuilder().setCustomId('bst:retrait').setPlaceholder('Retirer un palier').addOptions(recompenses.slice(0, 25).map((r) => ({ label: `${r.nombre} boost(s)`, value: String(r.nombre) })))));
+  }
+  return { embeds: [embed], components: composants };
+}
+
 const boost: CommandeSlash = {
   categorie: 'community',
-  niveau: Niveau.MEMBRE,
-  donnees: new SlashCommandBuilder()
-    .setName('boost')
-    .setDescription('Les boosts du serveur')
-    .addSubcommand((s) => s.setName('top').setDescription('Les boosters du serveur'))
-    .addSubcommand((s) =>
-      s
-        .setName('recompense')
-        .setDescription('Nouvelle récompense')
-        .addIntegerOption((o) => o.setName('boosts').setDescription('Nombre de boosts').setRequired(true).setMinValue(1).setMaxValue(100))
-        .addRoleOption((o) => o.setName('role').setDescription('Rôle donné'))
-        .addStringOption((o) => o.setName('badge').setDescription('Badge donné (identifiant)').setMaxLength(32))
-        .addIntegerOption((o) => o.setName('pieces').setDescription('Pièces données').setMinValue(0).setMaxValue(10_000_000)),
-    )
-    .addSubcommand((s) => s.setName('recompenses').setDescription('Les récompenses'))
-    .addSubcommand((s) =>
-      s
-        .setName('retirer')
-        .setDescription('Retirer un palier')
-        .addIntegerOption((o) => o.setName('boosts').setDescription('Le palier').setRequired(true).setMinValue(1).setMaxValue(100)),
-    ),
-  niveauxSousCommandes: { recompense: Niveau.ADMIN, retirer: Niveau.ADMIN, recompenses: Niveau.STAFF },
+  donnees: new SlashCommandBuilder().setName('boost').setDescription('Les boosts du serveur'),
   async executer(interaction) {
-    const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    if (sousCommande === 'top') {
-      const rangees = lireTout<{ utilisateur_id: string; nombre: number }>('SELECT utilisateur_id, nombre FROM boosts WHERE serveur_id = ? ORDER BY nombre DESC, premier_boost_le LIMIT 25', serveur.id);
-      return repondre(interaction, {
-        embeds: [embedEnseigne(serveur).setTitle('🚀 Boosters').setDescription(rangees.map((r, i) => `${medaille(i + 1)} <@${r.utilisateur_id}> — **${r.nombre}** boost(s)`).join('\n') || '*Aucun boost enregistré.*').setFooter({ text: `${serveur.premiumSubscriptionCount ?? 0} boosts · niveau ${serveur.premiumTier}` })],
-      });
-    }
-    if (sousCommande === 'recompenses') {
-      const recompenses = lireConfig(serveur.id).boosts.recompenses;
-      return repondre(interaction, {
-        embeds: [info(serveur, recompenses.map((r) => `**${r.nombre} boost(s)** → ${[r.roleId ? `<@&${r.roleId}>` : null, r.badgeId ? `badge \`${r.badgeId}\`` : null, r.pieces ? `${r.pieces} pièces` : null].filter(Boolean).join(', ')}`).join('\n') || 'Aucune récompense.', { titre: 'Récompenses de boost', sujet: '🚀' })],
-        ephemeral: true,
-      });
-    }
-    const nombre = interaction.options.getInteger('boosts', true);
-    if (sousCommande === 'retirer') {
-      modifierConfig(serveur.id, (c) => void (c.boosts.recompenses = c.boosts.recompenses.filter((r) => r.nombre !== nombre)));
-      return repondre(interaction, { embeds: [ok(serveur, `Récompenses du palier ${nombre} retirées.`)], ephemeral: true });
-    }
-    const role = interaction.options.getRole('role');
-    const badgeId = interaction.options.getString('badge');
-    const pieces = interaction.options.getInteger('pieces') ?? 0;
-    if (!role && !badgeId && !pieces) throw new ErreurUtilisateur('Choisis au moins un rôle, un badge ou des pièces.');
-    if (role && !botPeutGererRole(serveur, serveur.roles.cache.get(role.id)!)) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle.');
-    if (badgeId && !lireBadge(serveur.id, badgeId)) throw new ErreurUtilisateur('Badge introuvable (voir `/badge liste`).');
-    modifierConfig(serveur.id, (c) => c.boosts.recompenses.push({ nombre, roleId: role?.id ?? null, badgeId, pieces }));
-    return repondre(interaction, { embeds: [ok(serveur, `Récompense ajoutée au palier **${nombre} boost(s)**.`)], ephemeral: true });
+    await repondre(interaction, { ...ecranBoosts(interaction.guild, aNiveau(interaction.member, Niveau.ADMIN)), ephemeral: true });
   },
 };
+
+const composantBoosts: GestionnaireComposant = {
+  prefixe: 'bst',
+  niveau: Niveau.ADMIN,
+  async bouton(interaction: ButtonInteraction<'cached'>, [action, palier, pieces, badgeId]) {
+    if (action === 'ajout') {
+      return interaction.showModal(
+        construireFormulaire('bst:palier', 'Nouvelle récompense', [
+          { id: 'palier', libelle: 'À partir de combien de boosts ?', valeur: '1', longueurMax: 3 },
+          { id: 'pieces', libelle: 'Gold offert (facultatif)', obligatoire: false, indication: '5000', longueurMax: 8 },
+          { id: 'badge', libelle: 'Badge offert (identifiant, facultatif)', obligatoire: false, longueurMax: 32 },
+        ]),
+      );
+    }
+    enregistrerRecompense(interaction.guild, Number(palier), null, badgeId || null, Number(pieces) || 0);
+    await interaction.update(ecranBoosts(interaction.guild, true, `✅ Récompense ajoutée au palier **${palier}**.`));
+  },
+  async menu(interaction: AnySelectMenuInteraction<'cached'>, [action, palier, pieces, badgeId]) {
+    const serveur = interaction.guild;
+    if (action === 'retrait') {
+      const nombre = Number(interaction.values[0]);
+      modifierConfig(serveur.id, (c) => void (c.boosts.recompenses = c.boosts.recompenses.filter((r) => r.nombre !== nombre)));
+      return interaction.update(ecranBoosts(serveur, true, `🗑️ Palier **${nombre}** retiré.`));
+    }
+    enregistrerRecompense(serveur, Number(palier), interaction.values[0] ?? null, badgeId || null, Number(pieces) || 0);
+    await interaction.update(ecranBoosts(serveur, true, `✅ Récompense ajoutée au palier **${palier}**.`));
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>) {
+    const palier = Number(interaction.fields.getTextInputValue('palier'));
+    const pieces = Number(interaction.fields.getTextInputValue('pieces').replace(/\s/g, '') || 0);
+    const badgeId = interaction.fields.getTextInputValue('badge').trim();
+    if (!Number.isInteger(palier) || palier < 1 || palier > 100) throw new ErreurUtilisateur('Un nombre de boosts entre 1 et 100.');
+    if (!Number.isInteger(pieces) || pieces < 0) throw new ErreurUtilisateur('Le gold doit être un nombre positif.');
+    if (badgeId && !lireBadge(interaction.guildId, badgeId)) throw new ErreurUtilisateur('Badge introuvable (voir `/badge`).');
+    const charge = {
+      embeds: [info(interaction.guild, 'Un rôle en plus ? Choisis-le, ou continue sans.', { titre: `Palier ${palier}`, sujet: '🚀' })],
+      components: [
+        rangee(new RoleSelectMenuBuilder().setCustomId(`bst:role:${palier}:${pieces}:${badgeId}`).setPlaceholder('Le rôle offert')),
+        rangee(bouton(`bst:sansrole:${palier}:${pieces}:${badgeId}`, 'Sans rôle', ButtonStyle.Secondary)),
+      ],
+    };
+    if (interaction.isFromMessage()) await interaction.update(charge);
+    else await interaction.reply({ ...charge, flags: MessageFlags.Ephemeral });
+  },
+};
+
+function enregistrerRecompense(serveur: Guild, nombre: number, roleId: string | null, badgeId: string | null, pieces: number): void {
+  if (!roleId && !badgeId && !pieces) throw new ErreurUtilisateur('Choisis au moins un rôle, un badge ou du gold.');
+  if (roleId && !botPeutGererRole(serveur, serveur.roles.cache.get(roleId)!)) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle.');
+  modifierConfig(serveur.id, (c) => c.boosts.recompenses.push({ nombre, roleId, badgeId, pieces }));
+}
 
 const pageReglageBoosts: PageReglage = {
   id: 'boosts',
@@ -283,6 +306,7 @@ export const moduleBoosts: ModuleBot = {
   desactivable: true,
   actifParDefaut: true,
   commandes: [boost],
+  composants: [composantBoosts],
   pagesReglage: [pageReglageBoosts],
   evenements: [
     sur('messageCreate', async (message: Message) => {

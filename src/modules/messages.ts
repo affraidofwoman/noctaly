@@ -41,8 +41,8 @@ import {
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout, transaction } from '../coeur/base';
 import { journal } from '../coeur/journaux';
-import { type CommandeSlash, lireAiguilleur, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
-import { CarteExpirante, creerRegistre, Delais, ErreurUtilisateur, idCourt, neutraliserMentions, tronquer, Niveau } from '../coeur/outils';
+import { type CommandeSlash, type GestionnaireComposant, lireAiguilleur, type ModuleBot, type PanneauAffiche, prefixePanneau, sur } from '../coeur/noyau';
+import { CarteExpirante, creerRegistre, Delais, ErreurUtilisateur, idCourt, neutraliserMentions, simplifier, tronquer, Niveau } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 
 export interface Brouillon {
@@ -340,26 +340,102 @@ export async function surFenetreRedaction(interaction: ModalSubmitInteraction<'c
   await repondreEcran(interaction, d, action === 'announcem' ? '📢 Vérifie l’aperçu, choisis le salon et la mention, puis publie.' : undefined);
 }
 
+// - /annonce : publier ou retoucher un message -
+function ecranPublier(serveur: Guild) {
+  const embeds = moduleActif(serveur.id, 'embeds');
+  const embed = embedEnseigne(serveur)
+    .setTitle('📢 Publier')
+    .setDescription(
+      [
+        '📢 **Annonce** — titre, texte, image et bouton, avec un aperçu avant de publier',
+        embeds ? '📦 **Embed libre** — chaque détail se règle au clic' : null,
+        embeds ? '✏️ **Modifier** — un message déjà posté par le bot' : null,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    );
+  return {
+    embeds: [embed],
+    components: [
+      rangee(
+        bouton('pub:annonce', 'Annonce', ButtonStyle.Primary, '📢'),
+        ...(embeds ? [bouton('pub:embed', 'Embed libre', ButtonStyle.Secondary, '📦'), bouton('pub:modifier', 'Modifier un message', ButtonStyle.Secondary, '✏️')] : []),
+      ),
+    ],
+  };
+}
+
+function fenetreAnnonce(serveur: Guild, utilisateurId: string) {
+  const brouillon = nouveauBrouillon(serveur, utilisateurId, 'announce');
+  brouillon.salonId = lireConfig(serveur.id).annonces.salonDefautId;
+  stockerBrouillon(brouillon);
+  const boutonParDefaut = brouillon.boutons[0] ? `${brouillon.boutons[0].libelle} | ${brouillon.boutons[0].url}` : '';
+  return construireFormulaire(`an:announcem:${brouillon.id}`, 'Nouvelle annonce', [
+    { id: 'title', libelle: 'Titre', valeur: '📢 Nouvelle annonce', longueurMax: 256, indication: '🎮 Live ce soir !' },
+    { id: 'message', libelle: 'Message', long: true, longueurMax: 4000, indication: 'Rendez-vous à 21h !' },
+    { id: 'image', libelle: 'Image (lien, facultatif)', obligatoire: false, longueurMax: 500 },
+    { id: 'color', libelle: 'Couleur (facultatif)', obligatoire: false, valeur: enHexa(brouillon.couleur), longueurMax: 30 },
+    { id: 'button', libelle: 'Bouton « Texte | lien » (facultatif)', obligatoire: false, valeur: boutonParDefaut, longueurMax: 300 },
+  ]);
+}
+
+async function brouillonDepuisLien(serveur: Guild, utilisateurId: string, lien: string): Promise<Brouillon> {
+  const brouillon = nouveauBrouillon(serveur, utilisateurId, 'embed');
+  const m = /channels\/(\d+)\/(\d+)\/(\d+)/.exec(lien);
+  if (!m || m[1] !== serveur.id) throw new ErreurUtilisateur('Lien de message invalide (il doit venir de ce serveur).');
+  const salon = serveur.channels.cache.get(m[2]!);
+  const message = salon?.isTextBased() ? await salon.messages.fetch(m[3]!).catch(() => null) : null;
+  if (!message) throw new ErreurUtilisateur('Message introuvable.');
+  if (message.author.id !== serveur.client.user.id) throw new ErreurUtilisateur('Je ne peux modifier que mes propres messages.');
+  const source = message.embeds[0];
+  Object.assign(brouillon, {
+    title: source?.title ?? '',
+    description: source?.description ?? '',
+    color: source?.color ?? brouillon.couleur,
+    url: source?.url ?? '',
+    authorName: source?.author?.name ?? '',
+    authorIcon: source?.author?.iconURL ?? '',
+    footer: source?.footer?.text ?? '',
+    image: source?.image?.url ?? '',
+    thumbnail: source?.thumbnail?.url ?? '',
+    timestamp: !!source?.timestamp,
+    fields: source?.fields.map((f) => ({ name: f.name, value: f.value, inline: !!f.inline })) ?? [],
+    content: message.content,
+    editMessage: { channelId: salon!.id, messageId: message.id },
+  });
+  stockerBrouillon(brouillon);
+  return brouillon;
+}
+
 const annonce: CommandeSlash = {
   categorie: 'customization',
   niveau: Niveau.STAFF,
-  donnees: new SlashCommandBuilder().setName('announce').setDescription('Rédiger une annonce'),
+  donnees: new SlashCommandBuilder().setName('annonce').setDescription('Publier un message'),
   async executer(interaction) {
-    const brouillon = nouveauBrouillon(interaction.guild, interaction.user.id, 'announce');
-    brouillon.salonId = lireConfig(interaction.guildId).annonces.salonDefautId;
-    stockerBrouillon(brouillon);
-    const boutonParDefaut = brouillon.boutons[0] ? `${brouillon.boutons[0].libelle} | ${brouillon.boutons[0].url}` : '';
-    await interaction.showModal(
-      construireFormulaire(`an:announcem:${brouillon.id}`, 'Nouvelle annonce', [
-        { id: 'title', libelle: 'Titre', valeur: '📢 NOUVELLE ANNONCE', longueurMax: 256, indication: '🎮 STREAM CE SOIR !' },
-        { id: 'message', libelle: 'Message', long: true, longueurMax: 4000, indication: 'Rendez-vous à 21h !' },
-        { id: 'image', libelle: 'Image (lien, facultatif)', obligatoire: false, longueurMax: 500 },
-        { id: 'color', libelle: 'Couleur (facultatif)', obligatoire: false, valeur: enHexa(brouillon.couleur), longueurMax: 30 },
-        { id: 'button', libelle: 'Bouton « Texte | lien » (facultatif)', obligatoire: false, valeur: boutonParDefaut, longueurMax: 300 },
-      ]),
-    );
+    await repondre(interaction, { ...ecranPublier(interaction.guild), ephemeral: true });
   },
 };
+
+const composantPublier: GestionnaireComposant = {
+  prefixe: 'pub',
+  niveau: Niveau.STAFF,
+  async bouton(interaction: ButtonInteraction<'cached'>, [action]) {
+    if (action === 'annonce') return interaction.showModal(fenetreAnnonce(interaction.guild, interaction.user.id));
+    if (action === 'modifier') return interaction.showModal(construireFormulaire('pub:lien', 'Modifier un message', [{ id: 'lien', libelle: 'Lien du message (clic droit → Copier le lien)', longueurMax: 200 }]));
+    if (action === 'embed') return interaction.update(affichageEditeur(interaction.guild, nouveauBrouillonStocke(interaction.guild, interaction.user.id)));
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>) {
+    const brouillon = await brouillonDepuisLien(interaction.guild, interaction.user.id, interaction.fields.getTextInputValue('lien').trim());
+    if (interaction.isFromMessage()) await interaction.update(affichageEditeur(interaction.guild, brouillon));
+    else await interaction.reply({ ...affichageEditeur(interaction.guild, brouillon), flags: MessageFlags.Ephemeral });
+  },
+};
+
+function nouveauBrouillonStocke(serveur: Guild, utilisateurId: string): Brouillon {
+  const brouillon = nouveauBrouillon(serveur, utilisateurId, 'embed');
+  stockerBrouillon(brouillon);
+  return brouillon;
+}
 
 const pageReglage: PageReglage = {
   id: 'announcements',
@@ -368,7 +444,7 @@ const pageReglage: PageReglage = {
   emoji: '📣',
   moduleId: 'announcements',
   ordre: 7,
-  description: '`/announce` ouvre un formulaire, montre l’aperçu, puis publie (et diffuse automatiquement dans un salon d’annonces).',
+  description: '`/annonce` ouvre un formulaire, montre l’aperçu, puis publie (et diffuse automatiquement dans un salon d’annonces).',
   champs: [{ genre: 'channel', cle: 'channel', libelle: 'Salon des annonces par défaut', lire: (c) => c.annonces.salonDefautId, ecrire: (c, v) => void (c.annonces.salonDefautId = v) }],
 };
 
@@ -382,6 +458,7 @@ export const moduleAnnonces: ModuleBot = {
   commandes: [annonce],
   pagesReglage: [pageReglage],
   composants: [
+    composantPublier,
     {
       prefixe: 'an',
       niveau: Niveau.STAFF,
@@ -392,51 +469,6 @@ export const moduleAnnonces: ModuleBot = {
   ],
 };
 
-const embed: CommandeSlash = {
-  categorie: 'customization',
-  niveau: Niveau.STAFF,
-  donnees: new SlashCommandBuilder()
-    .setName('embed')
-    .setDescription('Les embeds')
-    .addSubcommand((s) => s.setName('create').setDescription('Nouvel embed'))
-    .addSubcommand((s) =>
-      s
-        .setName('edit')
-        .setDescription('Modifier un embed')
-        .addStringOption((o) => o.setName('lien').setDescription('Lien du message').setRequired(true)),
-    ),
-  async executer(interaction) {
-    const serveur = interaction.guild;
-    const brouillon = nouveauBrouillon(serveur, interaction.user.id, 'embed');
-    if (interaction.options.getSubcommand() === 'edit') {
-      const m = /channels\/(\d+)\/(\d+)\/(\d+)/.exec(interaction.options.getString('lien', true));
-      if (!m || m[1] !== serveur.id) throw new ErreurUtilisateur('Lien de message invalide (il doit venir de ce serveur).');
-      const salon = serveur.channels.cache.get(m[2]!);
-      const message = salon?.isTextBased() ? await salon.messages.fetch(m[3]!).catch(() => null) : null;
-      if (!message) throw new ErreurUtilisateur('Message introuvable.');
-      if (message.author.id !== interaction.client.user.id) throw new ErreurUtilisateur('Je ne peux modifier que mes propres messages.');
-      const source = message.embeds[0];
-      Object.assign(brouillon, {
-        title: source?.title ?? '',
-        description: source?.description ?? '',
-        color: source?.color ?? brouillon.couleur,
-        url: source?.url ?? '',
-        authorName: source?.author?.name ?? '',
-        authorIcon: source?.author?.iconURL ?? '',
-        footer: source?.footer?.text ?? '',
-        image: source?.image?.url ?? '',
-        thumbnail: source?.thumbnail?.url ?? '',
-        timestamp: !!source?.timestamp,
-        fields: source?.fields.map((f) => ({ name: f.name, value: f.value, inline: !!f.inline })) ?? [],
-        content: message.content,
-        editMessage: { channelId: salon!.id, messageId: message.id },
-      });
-      stockerBrouillon(brouillon);
-    }
-    await repondre(interaction, { ...affichageEditeur(serveur, brouillon), ephemeral: true });
-  },
-};
-
 export const moduleRedaction: ModuleBot = {
   id: 'embeds',
   nom: 'Embed builder',
@@ -444,7 +476,6 @@ export const moduleRedaction: ModuleBot = {
   description: 'Créer et modifier des embeds au clic',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [embed],
   composants: [
     {
       prefixe: 'eb',
@@ -497,58 +528,76 @@ async function retirerCommandeServeur(serveur: Guild, rangee: LigneCommandePerso
   if (rangee.commande_discord_id) await serveur.commands.delete(rangee.commande_discord_id).catch(() => undefined);
 }
 
+// - /reponses : commandes perso et réponses automatiques -
+function ecranReponses(serveur: Guild, note?: string) {
+  const prefixe = lireConfig(serveur.id).commandesPerso.prefixe;
+  const commandes = lireTout<LigneCommandePerso>('SELECT * FROM commandes_perso WHERE serveur_id = ? ORDER BY nom', serveur.id);
+  const auto = moduleActif(serveur.id, 'autoresponses') ? liste(serveur.id) : null;
+  const embed = embedEnseigne(serveur)
+    .setTitle('🧩 Réponses du bot')
+    .setDescription(note ?? 'Des réponses toutes prêtes : une commande qu’on tape, ou un mot qui déclenche une réponse.')
+    .addFields({ name: `🧩 Commandes (${commandes.length})`, value: tronquer(commandes.map((r) => `**${prefixe}${r.nom}** — ${tronquer(r.description || r.reponse, 50)}`).join('\n') || '—', 1024), inline: false });
+  if (auto) embed.addFields({ name: `💬 Réponses automatiques (${auto.length})`, value: tronquer(auto.map((r) => `« ${tronquer(r.declencheur, 30)} » → ${tronquer(r.reponse, 50)}`).join('\n') || '—', 1024), inline: false });
+  const supprimables = [
+    ...commandes.map((r) => ({ label: tronquer(`${prefixe}${r.nom}`, 100), value: `c:${r.nom}`, emoji: '🧩' })),
+    ...(auto ?? []).map((r) => ({ label: tronquer(`« ${r.declencheur} »`, 100), value: `a:${r.id}`, emoji: '💬' })),
+  ].slice(0, 25);
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [
+    rangee(bouton('rpn:cmd', 'Nouvelle commande', ButtonStyle.Success, '🧩'), ...(auto ? [bouton('rpn:auto', 'Nouvelle réponse auto', ButtonStyle.Success, '💬')] : [])),
+  ];
+  if (supprimables.length) composants.push(rangee(new StringSelectMenuBuilder().setCustomId('rpn:del').setPlaceholder('Supprimer…').addOptions(supprimables)));
+  return { embeds: [embed], components: composants };
+}
+
 const commandePerso: CommandeSlash = {
   categorie: 'customization',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('customcommand')
-    .setDescription('Commandes personnalisées')
-    .addSubcommand((s) =>
-      s
-        .setName('add')
-        .setDescription('Écrire une commande')
-        .addStringOption((o) => o.setName('nom').setDescription('Nom du lien').setRequired(true).setMaxLength(32))
-        .addBooleanOption((o) => o.setName('embed').setDescription('Répondre dans un embed')),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('remove')
-        .setDescription('Supprimer une commande')
-        .addStringOption((o) => o.setName('nom').setDescription('La commande').setRequired(true).setAutocomplete(true)),
-    )
-    .addSubcommand((s) => s.setName('list').setDescription('Commandes perso')),
-  async autocompletion(interaction) {
-    const saisie = String(interaction.options.getFocused()).toLowerCase();
-    const rangees = lireTout<LigneCommandePerso>('SELECT * FROM commandes_perso WHERE serveur_id = ? ORDER BY nom', interaction.guildId);
-    await interaction.respond(rangees.filter((r) => r.nom.includes(saisie)).slice(0, 25).map((r) => ({ name: r.nom, value: r.nom })));
-  },
+  donnees: new SlashCommandBuilder().setName('reponses').setDescription('Réponses du bot'),
   async executer(interaction) {
-    const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    const prefixe = lireConfig(serveur.id).commandesPerso.prefixe;
-    if (sousCommande === 'list') {
-      const rangees = lireTout<LigneCommandePerso>('SELECT * FROM commandes_perso WHERE serveur_id = ? ORDER BY nom', serveur.id);
-      const lignes = rangees.map((r) => `**${prefixe}${r.nom}**${r.commande_discord_id ? ` · /${r.nom}` : ''} — ${tronquer(r.description || r.reponse, 60)} \`${r.utilisations}×\``);
-      return repondre(interaction, { embeds: [info(serveur, lignes.join('\n') || 'Aucune commande personnalisée.', { titre: 'Commandes personnalisées', sujet: '🧩' })], ephemeral: true });
+    await repondre(interaction, { ...ecranReponses(interaction.guild), ephemeral: true });
+  },
+};
+
+const composantReponses: GestionnaireComposant = {
+  prefixe: 'rpn',
+  niveau: Niveau.ADMIN,
+  async bouton(interaction: ButtonInteraction<'cached'>, [action]) {
+    if (action === 'cmd') {
+      return interaction.showModal(
+        construireFormulaire('cc:nouveau', 'Nouvelle commande', [
+          { id: 'nom', libelle: 'Nom (a-z, 0-9, - et _)', indication: 'reseaux', longueurMax: 32 },
+          { id: 'response', libelle: 'Réponse', long: true, longueurMax: 2000, indication: '🐦 Twitter : https://x.com/…  ({user}, {server}, {membercount})' },
+          { id: 'description', libelle: 'Description courte (facultatif)', obligatoire: false, longueurMax: 100 },
+          { id: 'embed', libelle: 'Dans un joli cadre ? (oui / non)', obligatoire: false, valeur: 'oui', longueurMax: 3 },
+        ]),
+      );
     }
-    const nom = interaction.options.getString('nom', true).toLowerCase();
-    if (sousCommande === 'remove') {
-      const rangee = trouverCommande(serveur.id, nom);
-      if (!rangee) throw new ErreurUtilisateur('Commande introuvable.');
-      await retirerCommandeServeur(serveur, rangee);
-      executer('DELETE FROM commandes_perso WHERE serveur_id = ? AND nom = ?', serveur.id, nom);
-      return repondre(interaction, { embeds: [ok(serveur, `Commande **${nom}** supprimée.`)], ephemeral: true });
-    }
-    if (!MOTIF_NOM.test(nom)) throw new ErreurUtilisateur('Nom invalide : 1 à 32 caractères parmi a-z, 0-9, - et _.');
-    const existant = trouverCommande(serveur.id, nom);
-    await interaction.showModal(
-      construireFormulaire(`cc:save:${nom}:${interaction.options.getBoolean('embed') ? 1 : existant?.en_embed ?? 0}`, `Commande ${prefixe}${nom}`.slice(0, 45), [
-        { id: 'response', libelle: 'Réponse', long: true, valeur: existant?.reponse, longueurMax: 2000, indication: '🐦 Twitter : https://x.com/…  ({user}, {server}, {membercount})' },
-        { id: 'description', libelle: 'Description (pour /help et la commande slash)', valeur: existant?.description, obligatoire: false, longueurMax: 100 },
+    return interaction.showModal(
+      construireFormulaire('ar:nouveau', 'Nouvelle réponse automatique', [
+        { id: 'trigger', libelle: 'Le mot ou la phrase', indication: 'youtube', longueurMax: 100 },
+        { id: 'mode', libelle: 'Quand ? contient / mot / début / exact', valeur: 'contient', longueurMax: 10 },
+        { id: 'response', libelle: 'Réponse', long: true, longueurMax: 2000, indication: '🎥 Tu peux retrouver les vidéos ici !' },
       ]),
     );
   },
+  async menu(interaction: AnySelectMenuInteraction<'cached'>) {
+    const serveur = interaction.guild;
+    const [genre, cle] = (interaction.values[0] ?? '').split(':');
+    if (genre === 'c') {
+      const rangee = trouverCommande(serveur.id, cle ?? '');
+      if (rangee) {
+        await retirerCommandeServeur(serveur, rangee);
+        executer('DELETE FROM commandes_perso WHERE serveur_id = ? AND nom = ?', serveur.id, rangee.nom);
+      }
+    } else {
+      executer('DELETE FROM reponses_auto WHERE id = ? AND serveur_id = ?', Number(cle), serveur.id);
+      cache.delete(serveur.id);
+    }
+    await interaction.update(ecranReponses(serveur, '🗑️ Supprimé.'));
+  },
 };
+
+export const MODES_REPONSE: Record<string, TypeCorrespondance> = { contient: 'contains', mot: 'word', debut: 'startswith', exact: 'exact' };
 
 async function traiterSlash(interaction: ChatInputCommandInteraction<'cached'>): Promise<boolean> {
   if (!moduleActif(interaction.guildId, 'customcommands')) return false;
@@ -576,7 +625,7 @@ const pageReglageCommandesPerso: PageReglage = {
   emoji: '🧩',
   moduleId: 'customcommands',
   ordre: 8,
-  description: `Des réponses rapides créées avec \`/customcommand add\`, utilisables avec le préfixe choisi et en commande slash du serveur.\n-# Variables : ${['user', 'username', 'server', 'membercount', 'brand', 'twitch'].map((v) => `\`{${v}}\``).join(' ')}`,
+  description: `Des réponses rapides créées avec \`/reponses\`, utilisables avec le préfixe choisi et en commande slash du serveur.\n-# Variables : ${['user', 'username', 'server', 'membercount', 'brand', 'twitch'].map((v) => `\`{${v}}\``).join(' ')}`,
   champs: [
     {
       genre: 'text',
@@ -601,12 +650,16 @@ export const moduleCommandesPerso: ModuleBot = {
   commandes: [commandePerso],
   pagesReglage: [pageReglageCommandesPerso],
   composants: [
+    composantReponses,
     {
       prefixe: 'cc',
       niveau: Niveau.ADMIN,
-      async fenetre(interaction, [, nom, enEmbed]) {
+      async fenetre(interaction, [action, nomBrut, embedBrut]) {
         const serveur = interaction.guild;
-        if (!nom || !MOTIF_NOM.test(nom)) throw new ErreurUtilisateur('Nom invalide.');
+        const nouveau = action === 'nouveau';
+        const nom = nouveau ? interaction.fields.getTextInputValue('nom').trim().toLowerCase() : nomBrut;
+        const enEmbed = nouveau ? (/^n/i.test(interaction.fields.getTextInputValue('embed').trim()) ? '0' : '1') : embedBrut;
+        if (!nom || !MOTIF_NOM.test(nom)) throw new ErreurUtilisateur('Nom invalide : 1 à 32 caractères parmi a-z, 0-9, - et _.');
         const reponse = interaction.fields.getTextInputValue('response').trim();
         const description = interaction.fields.getTextInputValue('description').trim();
         const nombre = lire<{ n: number }>('SELECT COUNT(*) AS n FROM commandes_perso WHERE serveur_id = ?', serveur.id)?.n ?? 0;
@@ -629,6 +682,10 @@ export const moduleCommandesPerso: ModuleBot = {
           await serveur.commands.edit(rangee.commande_discord_id, { description: tronquer(description || `Commande personnalisée /${nom}`, 100) }).catch(() => undefined);
         }
         const prefixe = lireConfig(serveur.id).commandesPerso.prefixe;
+        if (nouveau && interaction.isFromMessage()) {
+          await interaction.update(ecranReponses(serveur, `✅ **${prefixe}${nom}** ${existant ? 'modifiée' : 'créée'}${slashId ? ` · aussi en **/${nom}**` : ''}.`));
+          return;
+        }
         await interaction.reply({
           embeds: [ok(serveur, `Commande **${prefixe}${nom}** ${existant ? 'modifiée' : 'créée'}${slashId ? ` · aussi disponible en **/${nom}**` : ''}.\n\n**Variables :**\n${aideVariables(['user', 'username', 'server', 'membercount'])}`)],
           flags: MessageFlags.Ephemeral,
@@ -701,58 +758,6 @@ async function surMessage(message: Message): Promise<void> {
     .catch(() => undefined);
 }
 
-const reponseAuto: CommandeSlash = {
-  categorie: 'customization',
-  niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('autoresponse')
-    .setDescription('Réponses automatiques')
-    .addSubcommand((s) =>
-      s
-        .setName('add')
-        .setDescription('Nouvelle réponse')
-        .addStringOption((o) => o.setName('declencheur').setDescription('Ex : youtube').setRequired(true).setMaxLength(100))
-        .addStringOption((o) =>
-          o
-            .setName('mode')
-            .setDescription('Quand répondre')
-            .addChoices({ name: 'Le message contient', value: 'contains' }, { name: 'Mot entier', value: 'word' }, { name: 'Commence par', value: 'startswith' }, { name: 'Message exact', value: 'exact' }),
-        ),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('remove')
-        .setDescription('Retirer une réponse')
-        .addIntegerOption((o) => o.setName('reponse').setDescription('La réponse').setRequired(true).setAutocomplete(true)),
-    )
-    .addSubcommand((s) => s.setName('list').setDescription('Les réponses automatiques')),
-  async autocompletion(interaction) {
-    await interaction.respond(liste(interaction.guildId).slice(0, 25).map((r) => ({ name: tronquer(`#${r.id} « ${r.declencheur} » → ${r.reponse}`, 100), value: r.id })));
-  },
-  async executer(interaction) {
-    const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    if (sousCommande === 'list') {
-      const lignes = liste(serveur.id).map((r) => `**#${r.id}** ${LIBELLE_CORRESPONDANCE[r.correspondance]} « ${tronquer(r.declencheur, 40)} » → ${tronquer(r.reponse, 60)}`);
-      return repondre(interaction, { embeds: [info(serveur, lignes.join('\n') || 'Aucune réponse automatique.', { titre: 'Réponses automatiques', sujet: '💬' })], ephemeral: true });
-    }
-    if (sousCommande === 'remove') {
-      const r = executer('DELETE FROM reponses_auto WHERE id = ? AND serveur_id = ?', interaction.options.getInteger('reponse', true), serveur.id);
-      cache.delete(serveur.id);
-      return repondre(interaction, { embeds: [ok(serveur, r.changes ? 'Réponse automatique supprimée.' : 'Introuvable.')], ephemeral: true });
-    }
-    if (liste(serveur.id).length >= 50) throw new ErreurUtilisateur('50 réponses automatiques maximum.');
-    const declencheur = interaction.options.getString('declencheur', true);
-    const mode = interaction.options.getString('mode') ?? 'contains';
-    await interaction.showModal(
-      construireFormulaire(`ar:save:${mode}`, `Réponse à « ${tronquer(declencheur, 25)} »`, [
-        { id: 'trigger', libelle: 'Déclencheur', valeur: declencheur, longueurMax: 100 },
-        { id: 'response', libelle: 'Réponse', long: true, longueurMax: 2000, indication: '🎥 Tu peux retrouver les vidéos ici !' },
-      ]),
-    );
-  },
-};
-
 export const moduleReponsesAuto: ModuleBot = {
   id: 'autoresponses',
   nom: 'Réponses automatiques',
@@ -760,12 +765,12 @@ export const moduleReponsesAuto: ModuleBot = {
   description: 'Le bot répond quand un mot-clé est écrit',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [reponseAuto],
   composants: [
     {
       prefixe: 'ar',
       niveau: Niveau.ADMIN,
-      async fenetre(interaction, [, mode]) {
+      async fenetre(interaction, [action, modeBrut]) {
+        const mode = action === 'nouveau' ? MODES_REPONSE[simplifier(interaction.fields.getTextInputValue('mode')).replace(/^d.*/, 'debut')] ?? 'contains' : modeBrut;
         const declencheur = interaction.fields.getTextInputValue('trigger').trim();
         const reponse = neutraliserMentions(interaction.fields.getTextInputValue('response').trim());
         if (normaliser(declencheur).length < 2) throw new ErreurUtilisateur('Déclencheur trop court (2 caractères minimum).');
@@ -779,6 +784,10 @@ export const moduleReponsesAuto: ModuleBot = {
           Date.now(),
         );
         cache.delete(interaction.guildId);
+        if (action === 'nouveau' && interaction.isFromMessage()) {
+          await interaction.update(ecranReponses(interaction.guild, `✅ Réponse à « **${tronquer(declencheur, 60)}** » enregistrée.`));
+          return;
+        }
         await interaction.reply({ embeds: [ok(interaction.guild, `Quand un message ${LIBELLE_CORRESPONDANCE[(mode as TypeCorrespondance) ?? 'contains']} « **${tronquer(declencheur, 60)}** », je répondrai :\n> ${tronquer(reponse, 300)}`)], flags: MessageFlags.Ephemeral });
       },
     },
@@ -941,155 +950,126 @@ async function surReaction(reaction: MessageReaction | PartialMessageReaction, u
   }
 }
 
-function autocompletionPanneaux(serveurId: string, saisie: string) {
-  return lireTout<LignePanneau>('SELECT * FROM panneaux_roles WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 100', serveurId)
-    .filter((p) => `${p.id} ${p.titre}`.toLowerCase().includes(saisie.toLowerCase()))
-    .slice(0, 25)
-    .map((p) => ({ name: tronquer(`#${p.id} · ${p.titre} (${p.type})`, 100), value: p.id }));
+// - /roles : les panneaux de rôles au clic -
+function ecranRoles(serveur: Guild, note?: string) {
+  const panneaux = lireTout<LignePanneau>('SELECT * FROM panneaux_roles WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 25', serveur.id);
+  const embed = embedEnseigne(serveur)
+    .setTitle('🎭 Rôles à choisir')
+    .setDescription(
+      [
+        note,
+        panneaux.map((p) => `**${tronquer(p.titre, 60)}** — ${entrees(p.id).length} rôle(s) · <#${p.salon_id}>`).join('\n') || 'Aucun panneau pour l’instant.',
+        '',
+        '-# Un nouveau panneau est posé dans ce salon. `/affiche` le déplace ailleurs.',
+      ]
+        .filter((l) => l !== undefined)
+        .join('\n'),
+    );
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [
+    rangee(bouton('rra:nouveau', 'Nouveau panneau', ButtonStyle.Success, '➕'), bouton('rra:notifs', 'Panneau de notifications', ButtonStyle.Primary, '🔔')),
+  ];
+  if (panneaux.length) {
+    const options = panneaux.map((p) => ({ label: tronquer(p.titre, 100), value: String(p.id), description: `${entrees(p.id).length} rôle(s)` }));
+    composants.push(rangee(new StringSelectMenuBuilder().setCustomId('rra:modifier').setPlaceholder('Changer les rôles d’un panneau').addOptions(options)));
+    composants.push(rangee(new StringSelectMenuBuilder().setCustomId('rra:suppr').setPlaceholder('Supprimer un panneau').addOptions(options)));
+  }
+  return { embeds: [embed], components: composants };
 }
 
-const panneauRoles: CommandeSlash = {
-  categorie: 'roles',
+function choixRoles(serveur: Guild, panneau: LignePanneau) {
+  const actuels = entrees(panneau.id).map((e) => e.role_id);
+  return {
+    embeds: [info(serveur, 'Coche les rôles à proposer (25 maximum). Ceux que tu décoches disparaissent du panneau.', { titre: panneau.titre, sujet: '🎭' })],
+    components: [rangee(new RoleSelectMenuBuilder().setCustomId(`rra:roles:${panneau.id}`).setPlaceholder('Les rôles').setMinValues(0).setMaxValues(25).setDefaultRoles(actuels.slice(0, 25)))],
+  };
+}
+
+// - Les rôles de notification -
+// Repris s’ils existent, créés sinon : le panneau est prêt en un clic.
+export const NOTIFICATIONS = [
+  { nom: 'Notif Lives', emoji: '🔴', libelle: 'Lives' },
+  { nom: 'Notif Annonces', emoji: '📢', libelle: 'Annonces' },
+  { nom: 'Notif Giveaways', emoji: '🎉', libelle: 'Giveaways' },
+  { nom: 'Notif Événements', emoji: '📅', libelle: 'Événements' },
+];
+
+const commandeRoles: CommandeSlash = {
+  categorie: 'customization',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('reactionrole')
-    .setDescription('Panneaux de rôles')
-    .addSubcommand((s) =>
-      s
-        .setName('creer')
-        .setDescription('Créer un panneau')
-        .addStringOption((o) => o.setName('titre').setDescription('Titre du panneau').setRequired(true).setMaxLength(200))
-        .addStringOption((o) =>
-          o.setName('type').setDescription('Comment choisir').setRequired(true).addChoices({ name: 'Boutons', value: 'button' }, { name: 'Réactions', value: 'reaction' }, { name: 'Menu déroulant', value: 'select' }),
-        )
-        .addChannelOption((o) => o.setName('salon').setDescription('Où (ici par défaut)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-        .addStringOption((o) => o.setName('description').setDescription('Texte du panneau').setMaxLength(1000))
-        .addStringOption((o) =>
-          o.setName('mode').setDescription('Règle').addChoices({ name: 'Ajoute / enlève', value: 'toggle' }, { name: 'Un seul rôle à la fois', value: 'unique' }, { name: 'Ajout seulement', value: 'add' }),
-        ),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('ajouter')
-        .setDescription('Ajouter un rôle')
-        .addIntegerOption((o) => o.setName('panneau').setDescription('Le panneau').setRequired(true).setAutocomplete(true))
-        .addRoleOption((o) => o.setName('role').setDescription('Le rôle').setRequired(true))
-        .addStringOption((o) => o.setName('label').setDescription('Texte du bouton').setMaxLength(80))
-        .addStringOption((o) => o.setName('emoji').setDescription('Émoji').setMaxLength(64)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('retirer')
-        .setDescription('Retirer un rôle')
-        .addIntegerOption((o) => o.setName('panneau').setDescription('Le panneau').setRequired(true).setAutocomplete(true))
-        .addRoleOption((o) => o.setName('role').setDescription('Le rôle').setRequired(true)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('supprimer')
-        .setDescription('Supprimer un panneau')
-        .addIntegerOption((o) => o.setName('panneau').setDescription('Le panneau').setRequired(true).setAutocomplete(true)),
-    )
-    .addSubcommand((s) => s.setName('liste').setDescription('Les panneaux du serveur')),
-  async autocompletion(interaction) {
-    await interaction.respond(autocompletionPanneaux(interaction.guildId, String(interaction.options.getFocused())));
-  },
+  donnees: new SlashCommandBuilder().setName('roles').setDescription('Les rôles à choisir'),
   async executer(interaction) {
-    const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    if (sousCommande === 'liste') {
-      const panneaux = lireTout<LignePanneau>('SELECT * FROM panneaux_roles WHERE serveur_id = ? ORDER BY cree_le DESC', serveur.id);
-      const lignes = panneaux.map((p) => `**#${p.id}** ${tronquer(p.titre, 60)} — ${p.type} · ${entrees(p.id).length} rôle(s) · <#${p.salon_id}>`);
-      return repondre(interaction, { embeds: [info(serveur, lignes.join('\n') || 'Aucun panneau.', { titre: 'Panneaux de rôles', sujet: '🎭' })], ephemeral: true });
-    }
-    if (sousCommande === 'creer') {
-      const salon = interaction.options.getChannel('salon') ?? interaction.channel;
-      if (!salon) return;
-      const r = executer(
-        'INSERT INTO panneaux_roles (serveur_id, salon_id, titre, description, type, mode, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        serveur.id,
-        salon.id,
-        interaction.options.getString('titre', true),
-        interaction.options.getString('description') ?? '',
-        interaction.options.getString('type', true),
-        interaction.options.getString('mode') ?? 'toggle',
-        Date.now(),
-      );
-      return repondre(interaction, { embeds: [ok(serveur, `Panneau **#${r.lastInsertRowid}** créé. Ajoute des rôles avec \`/reactionrole ajouter\` : il sera publié automatiquement.`)], ephemeral: true });
-    }
-    const panneauBoutons = exigerPanneau(serveur.id, interaction.options.getInteger('panneau', true));
-    if (sousCommande === 'supprimer') {
-      const salon = serveur.channels.cache.get(panneauBoutons.salon_id);
-      if (salon?.isTextBased() && panneauBoutons.message_id) await salon.messages.delete(panneauBoutons.message_id).catch(() => undefined);
-      executer('DELETE FROM panneaux_roles WHERE id = ?', panneauBoutons.id);
-      return repondre(interaction, { embeds: [ok(serveur, `Panneau #${panneauBoutons.id} supprimé.`)], ephemeral: true });
-    }
-    const role = interaction.options.getRole('role', true);
-    if (sousCommande === 'retirer') {
-      executer('DELETE FROM roles_panneaux WHERE panneau_id = ? AND role_id = ?', panneauBoutons.id, role.id);
-      const url = await publierPanneauxRoles(serveur, panneauBoutons);
-      return repondre(interaction, { embeds: [ok(serveur, `<@&${role.id}> retiré du panneau. ${url}`)], ephemeral: true });
-    }
-    const emoji = interaction.options.getString('emoji');
-    if (panneauBoutons.type === 'reaction' && !emoji) throw new ErreurUtilisateur('Un émoji est obligatoire pour un panneau à réactions.');
-    if (!botPeutGererRole(serveur, serveur.roles.cache.get(role.id)!)) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle : place mon rôle au-dessus.');
-    if (entrees(panneauBoutons.id).length >= 25) throw new ErreurUtilisateur('25 rôles maximum par panneau.');
-    transaction(() => {
-      const position = entrees(panneauBoutons.id).length;
-      executer(
-        'INSERT OR REPLACE INTO roles_panneaux (panneau_id, role_id, emoji, libelle, position) VALUES (?, ?, ?, ?, ?)',
-        panneauBoutons.id,
-        role.id,
-        emoji,
-        interaction.options.getString('label') ?? role.name,
-        position,
-      );
-    });
-    const url = await publierPanneauxRoles(serveur, panneauBoutons);
-    return repondre(interaction, { embeds: [ok(serveur, `<@&${role.id}> ajouté au panneau. ${url}`)], ephemeral: true });
+    await repondre(interaction, { ...ecranRoles(interaction.guild), ephemeral: true });
   },
 };
 
-const roleNotifications: CommandeSlash = {
-  categorie: 'roles',
+const composantRolesAdmin: GestionnaireComposant = {
+  prefixe: 'rra',
   niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder()
-    .setName('notificationrole')
-    .setDescription('Rôles de notification')
-    .addRoleOption((o) => o.setName('lives').setDescription('Rôle 🔴 Lives Twitch'))
-    .addRoleOption((o) => o.setName('youtube').setDescription('Rôle 🎥 YouTube'))
-    .addRoleOption((o) => o.setName('giveaways').setDescription('Rôle 🎉 Giveaways'))
-    .addRoleOption((o) => o.setName('annonces').setDescription('Rôle 📢 Annonces'))
-    .addRoleOption((o) => o.setName('evenements').setDescription('Rôle 🎮 Événements'))
-    .addChannelOption((o) => o.setName('salon').setDescription('Où (ici par défaut)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
-  async executer(interaction) {
+  async bouton(interaction: ButtonInteraction<'cached'>, [action]) {
     const serveur = interaction.guild;
-    const choix: [string, string, string][] = [
-      ['lives', '🔴', 'Lives Twitch'],
-      ['youtube', '🎥', 'YouTube'],
-      ['giveaways', '🎉', 'Giveaways'],
-      ['annonces', '📢', 'Annonces'],
-      ['evenements', '🎮', 'Événements'],
-    ];
-    const choisis = choix.map(([option, emoji, libelle]) => ({ role: interaction.options.getRole(option), emoji, label: libelle })).filter((p) => p.role);
-    if (!choisis.length) throw new ErreurUtilisateur('Choisis au moins un rôle.');
-    const bloques = choisis.filter((c) => !botPeutGererRole(serveur, serveur.roles.cache.get(c.role!.id)!));
-    if (bloques.length) throw new ErreurUtilisateur(`Je ne peux pas donner ${bloques.map((b) => `<@&${b.role!.id}>`).join(', ')} : place mon rôle au-dessus.`);
-    const salon = interaction.options.getChannel('salon') ?? interaction.channel;
-    if (!salon) return;
-    const panneauId = transaction(() => {
-      const r = executer(
-        "INSERT INTO panneaux_roles (serveur_id, salon_id, titre, description, type, mode, genre, cree_le) VALUES (?, ?, '🔔 NOTIFICATIONS', ?, 'button', 'toggle', 'notification', ?)",
-        serveur.id,
-        salon.id,
-        'Choisis toi-même les notifications que tu veux recevoir.',
-        Date.now(),
+    if (action === 'nouveau') {
+      return interaction.showModal(
+        construireFormulaire('rra:creer', 'Nouveau panneau de rôles', [
+          { id: 'titre', libelle: 'Titre', indication: '🎮 Tes jeux', longueurMax: 200 },
+          { id: 'description', libelle: 'Texte (facultatif)', long: true, obligatoire: false, longueurMax: 1000, indication: 'Choisis les jeux auxquels tu joues.' },
+          { id: 'forme', libelle: 'Boutons ou menu ?', valeur: 'boutons', longueurMax: 10 },
+          { id: 'regle', libelle: 'Plusieurs rôles ou un seul ?', valeur: 'plusieurs', longueurMax: 10 },
+        ]),
       );
-      choisis.forEach((c, i) => executer('INSERT INTO roles_panneaux (panneau_id, role_id, emoji, libelle, position) VALUES (?, ?, ?, ?, ?)', r.lastInsertRowid, c.role!.id, c.emoji, c.label, i));
-      return r.lastInsertRowid;
+    }
+    const salon = interaction.channel as GuildTextBasedChannel | null;
+    if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
+    await interaction.deferUpdate();
+    const roles: { id: string; emoji: string; libelle: string }[] = [];
+    for (const n of NOTIFICATIONS) {
+      const role = serveur.roles.cache.find((r) => simplifier(r.name) === simplifier(n.nom)) ?? (await serveur.roles.create({ name: n.nom, mentionable: false, reason: 'Panneau de notifications' }));
+      roles.push({ id: role.id, emoji: n.emoji, libelle: n.libelle });
+    }
+    const url = await poserPanneauRolesModele(salon, { titre: '🔔 Tes notifications', description: 'Choisis ce qui mérite une mention. Tu peux changer d’avis quand tu veux.', mode: 'toggle', genre: 'notification', roles });
+    await interaction.editReply(ecranRoles(serveur, `✅ Panneau posé : ${url}`));
+  },
+  async menu(interaction: AnySelectMenuInteraction<'cached'>, [action, id]) {
+    const serveur = interaction.guild;
+    if (action === 'suppr') {
+      const panneau = exigerPanneau(serveur.id, interaction.values[0]);
+      const salon = serveur.channels.cache.get(panneau.salon_id);
+      if (salon?.isTextBased() && panneau.message_id) await salon.messages.delete(panneau.message_id).catch(() => undefined);
+      executer('DELETE FROM panneaux_roles WHERE id = ?', panneau.id);
+      return interaction.update(ecranRoles(serveur, `🗑️ **${panneau.titre}** supprimé.`));
+    }
+    if (action === 'modifier') return interaction.update(choixRoles(serveur, exigerPanneau(serveur.id, interaction.values[0])));
+    if (action !== 'roles') return;
+    const panneau = exigerPanneau(serveur.id, id);
+    const bloques = interaction.values.filter((r) => !botPeutGererRole(serveur, serveur.roles.cache.get(r)!));
+    if (bloques.length) throw new ErreurUtilisateur(`Je ne peux pas donner ${bloques.map((r) => `<@&${r}>`).join(', ')} : place mon rôle au-dessus.`);
+    const anciens = new Map(entrees(panneau.id).map((e) => [e.role_id, e]));
+    transaction(() => {
+      executer('DELETE FROM roles_panneaux WHERE panneau_id = ?', panneau.id);
+      interaction.values.forEach((roleId, i) => {
+        const ancien = anciens.get(roleId);
+        executer('INSERT INTO roles_panneaux (panneau_id, role_id, emoji, libelle, position) VALUES (?, ?, ?, ?, ?)', panneau.id, roleId, ancien?.emoji ?? null, ancien?.libelle ?? serveur.roles.cache.get(roleId)?.name ?? 'Rôle', i);
+      });
     });
-    const url = await publierPanneauxRoles(serveur, exigerPanneau(serveur.id, panneauId));
-    await repondre(interaction, { embeds: [ok(serveur, `Panneau de notifications publié : ${url}`)], ephemeral: true });
+    await interaction.deferUpdate();
+    const url = interaction.values.length ? await publierPanneauxRoles(serveur, panneau) : null;
+    await interaction.editReply(ecranRoles(serveur, url ? `✅ **${panneau.titre}** : ${interaction.values.length} rôle(s) · ${url}` : `**${panneau.titre}** n’a plus de rôle.`));
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>) {
+    const serveur = interaction.guild;
+    const champ = (id: string) => interaction.fields.getTextInputValue(id).trim();
+    const r = executer(
+      'INSERT INTO panneaux_roles (serveur_id, salon_id, titre, description, type, mode, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      serveur.id,
+      interaction.channelId,
+      champ('titre'),
+      champ('description'),
+      /^m/i.test(champ('forme')) ? 'select' : 'button',
+      /^(un|1|u)/i.test(simplifier(champ('regle'))) ? 'unique' : 'toggle',
+      Date.now(),
+    );
+    const charge = choixRoles(serveur, exigerPanneau(serveur.id, Number(r.lastInsertRowid)));
+    if (interaction.isFromMessage()) await interaction.update(charge);
+    else await interaction.reply({ ...charge, flags: MessageFlags.Ephemeral });
   },
 };
 
@@ -1123,10 +1103,11 @@ export const moduleRolesAChoisir: ModuleBot = {
   description: 'Panneaux de rôles : réactions, boutons, menus et notifications',
   desactivable: true,
   actifParDefaut: true,
-  commandes: [panneauRoles, roleNotifications],
+  commandes: [commandeRoles],
   panneaux: [panneauRoles_],
   commandesPrefixe: [prefixePanneau(panneauRoles_, 'Poser des rôles')],
   composants: [
+    composantRolesAdmin,
     {
       prefixe: 'rr',
       async bouton(interaction: ButtonInteraction<'cached'>, [, panneauId, roleId]) {

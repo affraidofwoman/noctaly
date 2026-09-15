@@ -1,4 +1,5 @@
 import {
+  type ActionRowBuilder,
   type AnySelectMenuInteraction,
   type ButtonInteraction,
   ButtonStyle,
@@ -8,6 +9,7 @@ import {
   EmbedBuilder,
   type Guild,
   type GuildTextBasedChannel,
+  type MessageActionRowComponentBuilder,
   MessageFlags,
   type ModalSubmitInteraction,
   SlashCommandBuilder,
@@ -18,7 +20,7 @@ import { bouton, type ChampFenetre, construireFormulaire, couleurPour, estLienHt
 import type { PageReglage } from '../coeur/assistant';
 import { executer, lire, lireJson, lireTout } from '../coeur/base';
 import { historiser, journal, resoudreSalonTexte } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot, type PanneauAffiche, prefixePanneau } from '../coeur/noyau';
+import { type CommandeSlash, type GestionnaireComposant, type ModuleBot, type PanneauAffiche, prefixePanneau } from '../coeur/noyau';
 import {
   ErreurUtilisateur,
   identifiantDepuisTexte,
@@ -158,84 +160,87 @@ async function conclure(client: Client, c: LigneConcours): Promise<void> {
   await rafraichir(client, modifie);
 }
 
+// - /concours : créer et faire avancer -
+function ecranConcours(serveur: Guild, staff: boolean, note?: string) {
+  const rangees = lireTout<LigneConcours>('SELECT * FROM concours WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 15', serveur.id);
+  const phase = (c: LigneConcours) => (c.statut === 'submissions' ? '📝 participations' : c.statut === 'voting' ? '🗳️ votes' : '🏁 terminé');
+  const embed = new EmbedBuilder()
+    .setColor(couleurPour(serveur))
+    .setTitle('🏆 Concours')
+    .setDescription([note, rangees.map((c) => `**${tronquer(c.nom, 60)}** — ${phase(c)} · ${participationsDe(c.id).length} participation(s)`).join('\n') || 'Aucun concours.'].filter(Boolean).join('\n\n'));
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+  if (staff) {
+    composants.push(rangee(bouton('cct:nouveau', 'Nouveau concours', ButtonStyle.Success, '➕')));
+    const enCours = rangees.filter((c) => c.statut !== 'ended');
+    if (enCours.length) composants.push(rangee(new StringSelectMenuBuilder().setCustomId('cct:suivant').setPlaceholder('Passer à la phase suivante').addOptions(enCours.map((c) => ({ label: tronquer(c.nom, 100), value: String(c.id), description: c.statut === 'submissions' ? 'Ouvrir les votes' : 'Désigner le gagnant' })))));
+  }
+  return { embeds: [embed], components: composants };
+}
+
 const concours: CommandeSlash = {
   categorie: 'community',
-  niveau: Niveau.STAFF,
-  donnees: new SlashCommandBuilder()
-    .setName('contest')
-    .setDescription('Les concours')
-    .addSubcommand((s) =>
-      s
-        .setName('create')
-        .setDescription('Créer un concours')
-        .addStringOption((o) => o.setName('nom').setDescription('Nom du concours').setRequired(true).setMaxLength(100))
-        .addStringOption((o) => o.setName('participations').setDescription('Durée des dépôts').setRequired(true))
-        .addStringOption((o) => o.setName('votes').setDescription('Durée des votes').setRequired(true))
-        .addStringOption((o) => o.setName('description').setDescription('Règles et thème').setMaxLength(1500))
-        .addChannelOption((o) => o.setName('salon').setDescription('Où').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
-        .addRoleOption((o) => o.setName('jury').setDescription('Rôle du jury'))
-        .addIntegerOption((o) => o.setName('pieces').setDescription('Pièces pour le gagnant').setMinValue(0).setMaxValue(10_000_000))
-        .addIntegerOption((o) => o.setName('xp').setDescription('XP pour le gagnant').setMinValue(0).setMaxValue(1_000_000))
-        .addRoleOption((o) => o.setName('role').setDescription('Rôle pour le gagnant')),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('next')
-        .setDescription('Phase suivante')
-        .addIntegerOption((o) => o.setName('concours').setDescription('Le concours').setRequired(true).setAutocomplete(true)),
-    )
-    .addSubcommand((s) => s.setName('list').setDescription('Les concours')),
-  niveauxSousCommandes: { list: Niveau.MEMBRE },
-  async autocompletion(interaction) {
-    const rangees = lireTout<LigneConcours>("SELECT * FROM concours WHERE serveur_id = ? AND statut != 'ended' ORDER BY cree_le DESC LIMIT 25", interaction.guildId);
-    await interaction.respond(rangees.map((c) => ({ name: tronquer(`#${c.id} · ${c.nom} (${c.statut})`, 100), value: c.id })));
-  },
+  donnees: new SlashCommandBuilder().setName('concours').setDescription('Les concours'),
   async executer(interaction) {
+    await repondre(interaction, { ...ecranConcours(interaction.guild, aNiveau(interaction.member, Niveau.STAFF)), ephemeral: true });
+  },
+};
+
+const composantConcoursStaff: GestionnaireComposant = {
+  prefixe: 'cct',
+  niveau: Niveau.STAFF,
+  async bouton(interaction: ButtonInteraction<'cached'>) {
+    await interaction.showModal(
+      construireFormulaire('cct:creer', 'Nouveau concours', [
+        { id: 'nom', libelle: 'Le nom', indication: 'Concours de fan art', longueurMax: 100 },
+        { id: 'description', libelle: 'Thème et règles (facultatif)', long: true, obligatoire: false, longueurMax: 1500 },
+        { id: 'participations', libelle: 'Temps pour participer', valeur: '3j', longueurMax: 10 },
+        { id: 'votes', libelle: 'Temps pour voter', valeur: '1j', longueurMax: 10 },
+        { id: 'pieces', libelle: 'Gold pour le gagnant (facultatif)', obligatoire: false, indication: '10000', longueurMax: 8 },
+      ]),
+    );
+  },
+  async menu(interaction: AnySelectMenuInteraction<'cached'>) {
     const serveur = interaction.guild;
-    const sousCommande = interaction.options.getSubcommand();
-    if (sousCommande === 'list') {
-      const rangees = lireTout<LigneConcours>('SELECT * FROM concours WHERE serveur_id = ? ORDER BY cree_le DESC LIMIT 15', serveur.id);
-      return repondre(interaction, {
-        embeds: [new EmbedBuilder().setColor(couleurPour(serveur)).setTitle('🏆 Concours').setDescription(rangees.map((c) => `**#${c.id}** ${tronquer(c.nom, 60)} — ${c.statut === 'submissions' ? '📝 participations' : c.statut === 'voting' ? '🗳️ votes' : '🏁 terminé'} · ${participationsDe(c.id).length} participation(s)`).join('\n') || '*Aucun concours.*')],
-        ephemeral: true,
-      });
-    }
-    if (sousCommande === 'next') {
-      const c = exigerConcours(serveur.id, interaction.options.getInteger('concours', true));
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      if (c.statut === 'submissions') {
-        executer('UPDATE concours SET fin_participations_le = ?, fin_votes_le = MAX(fin_votes_le - (fin_participations_le - ?), ? + 3600000) WHERE id = ?', Date.now(), Date.now(), Date.now(), c.id);
-        await ouvrirVotes(interaction.client, exigerConcours(serveur.id, c.id));
-      } else if (c.statut === 'voting') await conclure(interaction.client, c);
-      return interaction.editReply({ embeds: [ok(serveur, 'Phase suivante lancée.')] });
-    }
-    const soumettre = lireDuree(interaction.options.getString('participations', true));
-    const vote = lireDuree(interaction.options.getString('votes', true));
+    const c = exigerConcours(serveur.id, Number(interaction.values[0]));
+    await interaction.deferUpdate();
+    if (c.statut === 'submissions') {
+      executer('UPDATE concours SET fin_participations_le = ?, fin_votes_le = MAX(fin_votes_le - (fin_participations_le - ?), ? + 3600000) WHERE id = ?', Date.now(), Date.now(), Date.now(), c.id);
+      await ouvrirVotes(interaction.client, exigerConcours(serveur.id, c.id));
+    } else if (c.statut === 'voting') await conclure(interaction.client, c);
+    await interaction.editReply(ecranConcours(serveur, true, `✅ **${c.nom}** passe à la phase suivante.`));
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>) {
+    const serveur = interaction.guild;
+    const champ = (id: string) => interaction.fields.getTextInputValue(id).trim();
+    const soumettre = lireDuree(champ('participations'));
+    const vote = lireDuree(champ('votes'));
     if (!soumettre || !vote || soumettre > 60 * 86_400_000 || vote > 60 * 86_400_000) throw new ErreurUtilisateur('Durées invalides (ex : `3j`, `12h`, 60 jours max).');
-    const role = interaction.options.getRole('role');
-    if (role && !botPeutGererRole(serveur, serveur.roles.cache.get(role.id)!)) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle de récompense.');
-    const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(serveur, lireConfig(serveur.id).concours.salonDefautId) ?? interaction.channel) as GuildTextBasedChannel | null;
+    const pieces = Number(champ('pieces').replace(/\s/g, '') || 0);
+    if (!Number.isInteger(pieces) || pieces < 0) throw new ErreurUtilisateur('Le gold doit être un nombre positif.');
+    const salon = (resoudreSalonTexte(serveur, lireConfig(serveur.id).concours.salonDefautId) ?? interaction.channel) as GuildTextBasedChannel | null;
     if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
     const maintenant = Date.now();
     const r = executer(
       'INSERT INTO concours (serveur_id, salon_id, nom, description, fin_participations_le, fin_votes_le, role_jury_id, recompense_pieces, recompense_xp, recompense_role_id, cree_par, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       serveur.id,
       salon.id,
-      neutraliserMentions(interaction.options.getString('nom', true)),
-      neutraliserMentions(interaction.options.getString('description') ?? ''),
+      neutraliserMentions(champ('nom')),
+      neutraliserMentions(champ('description')),
       maintenant + soumettre,
       maintenant + soumettre + vote,
-      interaction.options.getRole('jury')?.id ?? null,
-      interaction.options.getInteger('pieces') ?? 0,
-      interaction.options.getInteger('xp') ?? 0,
-      role?.id ?? null,
+      null,
+      pieces,
+      0,
+      null,
       interaction.user.id,
       maintenant,
     );
     const c = exigerConcours(serveur.id, r.lastInsertRowid);
     const message = await salon.send(messageConcours(serveur, c));
     executer('UPDATE concours SET message_id = ? WHERE id = ?', message.id, c.id);
-    return repondre(interaction, { embeds: [ok(serveur, `Concours publié : ${message.url}`)], ephemeral: true });
+    const charge = ecranConcours(serveur, true, `✅ Publié dans <#${salon.id}>.`);
+    if (interaction.isFromMessage()) await interaction.update(charge);
+    else await interaction.reply({ ...charge, flags: MessageFlags.Ephemeral });
   },
 };
 
@@ -260,6 +265,7 @@ export const moduleConcours: ModuleBot = {
   commandes: [concours],
   pagesReglage: [pageReglage],
   composants: [
+    composantConcoursStaff,
     {
       prefixe: 'ct',
       async bouton(interaction: ButtonInteraction<'cached'>, [action, id]) {

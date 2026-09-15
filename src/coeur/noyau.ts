@@ -65,6 +65,7 @@ export interface CommandePrefixe {
   usage?: string;
   niveau?: Niveau;
   whitelist?: string;
+  horsAide?: boolean;
   executer(message: Message<true>, parametres: string[]): Promise<unknown>;
 }
 
@@ -129,7 +130,7 @@ export function prefixePanneau(panneau: PanneauAffiche, description: string): Co
     nom: panneau.id,
     alias: panneau.alias,
     domaine: 'salon',
-    categorie: 'admin',
+    categorie: 'panneaux',
     description,
     usage: panneau.choix ? '<lequel>' : undefined,
     niveau: Niveau.ADMIN,
@@ -372,7 +373,7 @@ export class Aiguilleur {
 
     const { commande, module } = entree;
     if (!moduleActif(interaction.guildId, module.id)) {
-      await repondreEmbed(interaction, refus(interaction.guild, `Le module **${module.emoji} ${module.nom}** est désactivé ici.\n-# Un admin peut l’activer avec /modules.`));
+      await repondreEmbed(interaction, refus(interaction.guild, `Le module **${module.emoji} ${module.nom}** est désactivé ici.\n-# Un admin peut l’activer dans /setup → Modules.`));
       return;
     }
 

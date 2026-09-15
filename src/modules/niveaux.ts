@@ -1,10 +1,10 @@
-import { type Client, type Guild, GuildMember, SlashCommandBuilder, type VoiceState } from 'discord.js';
-import { lireNiveau, rolesAttribuables } from '../coeur/acces';
-import { embedEnseigne, info, ok, repondre, suiviReponse } from '../coeur/affichage';
+import { type ActionRowBuilder, type AnySelectMenuInteraction, type ButtonInteraction, ButtonStyle, type Client, type Guild, GuildMember, type MessageActionRowComponentBuilder, MessageFlags, type ModalSubmitInteraction, SlashCommandBuilder, StringSelectMenuBuilder, type VoiceState } from 'discord.js';
+import { aNiveau, estEmoji, lireNiveau, rolesAttribuables } from '../coeur/acces';
+import { bouton, construireFormulaire, embedEnseigne, rangee, repondre, suiviReponse } from '../coeur/affichage';
 import type { ChampReglage, PageReglage } from '../coeur/assistant';
 import { executer, lire, lireTout } from '../coeur/base';
 import { journal } from '../coeur/journaux';
-import { type CommandeSlash, type ModuleBot, sur } from '../coeur/noyau';
+import { type CommandeSlash, type GestionnaireComposant, type ModuleBot, sur } from '../coeur/noyau';
 import {
   cleJour,
   creerRegistre,
@@ -14,6 +14,7 @@ import {
   identifiantDepuisTexte,
   joursDepuis,
   Niveau,
+  tronquer,
 } from '../coeur/outils';
 import { lireConfig, moduleActif } from '../coeur/reglages';
 
@@ -491,76 +492,93 @@ export function synchroniserBadgesAuto(membre: GuildMember): void {
   if (lireXp(g, membre.id).niveau >= 10) donnerBadge(g, membre.id, 'actif');
 }
 
+// - /badge : la liste, ou les badges d’un membre -
+function ecranBadges(serveur: Guild, membre: GuildMember, cibleId: string | null, note?: string) {
+  const g = serveur.id;
+  const badges = listerBadges(g);
+  const staff = aNiveau(membre, Niveau.STAFF);
+  const admin = aNiveau(membre, Niveau.ADMIN);
+  if (cibleId) {
+    const possedes = new Set(badgesMembre(g, cibleId).map((b) => b.badge_id));
+    const embed = embedEnseigne(serveur)
+      .setTitle('🏅 Badges')
+      .setDescription([note, `<@${cibleId}>`, '', badges.filter((b) => possedes.has(b.badge_id)).map((b) => `${b.emoji} **${b.nom}**`).join(' · ') || 'Aucun badge.'].filter((l) => l !== undefined).join('\n'));
+    const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+    if (staff && badges.length) {
+      composants.push(
+        rangee(
+          new StringSelectMenuBuilder()
+            .setCustomId(`bdg:membre:${cibleId}`)
+            .setPlaceholder('Coche ses badges')
+            .setMinValues(0)
+            .setMaxValues(Math.min(25, badges.length))
+            .addOptions(badges.slice(0, 25).map((b) => ({ label: tronquer(b.nom, 100), value: b.badge_id, emoji: estEmoji(b.emoji) ? b.emoji : undefined, default: possedes.has(b.badge_id) }))),
+        ),
+      );
+    }
+    return { embeds: [embed], components: composants };
+  }
+  const embed = embedEnseigne(serveur)
+    .setTitle('🏅 Badges du serveur')
+    .setDescription([note, badges.map((b) => `${b.emoji} **${b.nom}** — ${b.description || '—'}`).join('\n') || 'Aucun badge pour l’instant.', staff ? '\n-# Pour en donner : `/badge membre:@quelqu’un`.' : null].filter((l) => l !== undefined && l !== null).join('\n'));
+  const composants: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+  if (admin) {
+    composants.push(rangee(bouton('bdg:creer', 'Nouveau badge', ButtonStyle.Success, '➕')));
+    if (badges.length) composants.push(rangee(new StringSelectMenuBuilder().setCustomId('bdg:suppr').setPlaceholder('Supprimer un badge').addOptions(badges.slice(0, 25).map((b) => ({ label: tronquer(b.nom, 100), value: b.badge_id })))));
+  }
+  return { embeds: [embed], components: composants };
+}
+
 const badge: CommandeSlash = {
   categorie: 'community',
-  niveau: Niveau.MEMBRE,
   donnees: new SlashCommandBuilder()
     .setName('badge')
     .setDescription('Les badges')
-    .addSubcommand((s) => s.setName('liste').setDescription('Les badges du serveur'))
-    .addSubcommand((s) =>
-      s
-        .setName('donner')
-        .setDescription('Donner un badge')
-        .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-        .addStringOption((o) => o.setName('badge').setDescription('Le badge').setRequired(true).setAutocomplete(true)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('retirer')
-        .setDescription('Retirer un badge')
-        .addUserOption((o) => o.setName('membre').setDescription('Qui').setRequired(true))
-        .addStringOption((o) => o.setName('badge').setDescription('Le badge').setRequired(true).setAutocomplete(true)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('creer')
-        .setDescription('Écrire un badge')
-        .addStringOption((o) => o.setName('nom').setDescription('Nom').setRequired(true).setMaxLength(40))
-        .addStringOption((o) => o.setName('emoji').setDescription('Émoji').setRequired(true).setMaxLength(64))
-        .addStringOption((o) => o.setName('description').setDescription('Description').setMaxLength(120)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName('supprimer')
-        .setDescription('Supprimer un badge')
-        .addStringOption((o) => o.setName('badge').setDescription('Le badge').setRequired(true).setAutocomplete(true)),
-    ),
-  niveauxSousCommandes: { donner: Niveau.STAFF, retirer: Niveau.STAFF, creer: Niveau.ADMIN, supprimer: Niveau.ADMIN },
-  async autocompletion(interaction) {
-    const saisie = String(interaction.options.getFocused()).toLowerCase();
-    await interaction.respond(
-      listerBadges(interaction.guildId)
-        .filter((b) => b.nom.toLowerCase().includes(saisie) || b.badge_id.includes(saisie))
-        .slice(0, 25)
-        .map((b) => ({ name: `${b.emoji} ${b.nom}`.slice(0, 100), value: b.badge_id })),
+    .addUserOption((o) => o.setName('membre').setDescription('Ses badges')),
+  async executer(interaction) {
+    await repondre(interaction, { ...ecranBadges(interaction.guild, interaction.member, interaction.options.getUser('membre')?.id ?? null), ephemeral: true });
+  },
+};
+
+const composantBadges: GestionnaireComposant = {
+  prefixe: 'bdg',
+  niveau: Niveau.STAFF,
+  async bouton(interaction: ButtonInteraction<'cached'>) {
+    if (!aNiveau(interaction.member, Niveau.ADMIN)) throw new ErreurUtilisateur('Réservé aux admins.');
+    await interaction.showModal(
+      construireFormulaire('bdg:nouveau', 'Nouveau badge', [
+        { id: 'nom', libelle: 'Nom', indication: 'Pilier du chat', longueurMax: 40 },
+        { id: 'emoji', libelle: 'Émoji', indication: '💬', longueurMax: 64 },
+        { id: 'description', libelle: 'Description (facultatif)', obligatoire: false, longueurMax: 120 },
+      ]),
     );
   },
-  async executer(interaction) {
+  async menu(interaction: AnySelectMenuInteraction<'cached'>, [action, cibleId]) {
     const g = interaction.guildId;
-    const sousCommande = interaction.options.getSubcommand();
-    if (sousCommande === 'liste') {
-      return repondre(interaction, { embeds: [info(interaction.guild, listerBadges(g).map((b) => `${b.emoji} **${b.nom}** — ${b.description || '—'} \`${b.badge_id}\``).join('\n') || 'Aucun badge.', { titre: 'Badges', sujet: '🏅' })], ephemeral: true });
+    if (action === 'suppr') {
+      if (!aNiveau(interaction.member, Niveau.ADMIN)) throw new ErreurUtilisateur('Réservé aux admins.');
+      const definition = lireBadge(g, interaction.values[0] ?? '');
+      if (definition) supprimerBadge(g, definition.badge_id);
+      return interaction.update(ecranBadges(interaction.guild, interaction.member, null, `🗑️ ${definition?.nom ?? 'Badge'} supprimé.`));
     }
-    if (sousCommande === 'creer') {
-      const nom = interaction.options.getString('nom', true);
-      const id = identifiantDepuisTexte(nom, 32);
-      enregistrerBadge(g, { badge_id: id, nom, emoji: interaction.options.getString('emoji', true), description: interaction.options.getString('description') ?? '' });
-      return repondre(interaction, { embeds: [ok(interaction.guild, `Badge **${nom}** enregistré (\`${id}\`).`)], ephemeral: true });
+    const voulus = new Set(interaction.values);
+    const avant = new Set(badgesMembre(g, cibleId!).map((b) => b.badge_id));
+    let modifies = 0;
+    for (const b of listerBadges(g).slice(0, 25)) {
+      if (voulus.has(b.badge_id) && !avant.has(b.badge_id) && donnerBadge(g, cibleId!, b.badge_id, interaction.user.id)) modifies++;
+      if (!voulus.has(b.badge_id) && avant.has(b.badge_id) && retirerBadge(g, cibleId!, b.badge_id)) modifies++;
     }
-    const badgeId = interaction.options.getString('badge', true);
-    const definition = lireBadge(g, badgeId);
-    if (!definition) throw new ErreurUtilisateur('Badge introuvable.');
-    if (sousCommande === 'supprimer') {
-      supprimerBadge(g, badgeId);
-      return repondre(interaction, { embeds: [ok(interaction.guild, `Badge **${definition.nom}** supprimé.`)], ephemeral: true });
-    }
-    const utilisateur = interaction.options.getUser('membre', true);
-    const change = sousCommande === 'donner' ? donnerBadge(g, utilisateur.id, badgeId, interaction.user.id) : retirerBadge(g, utilisateur.id, badgeId);
-    return repondre(interaction, {
-      embeds: [ok(interaction.guild, change ? `${definition.emoji} **${definition.nom}** ${sousCommande === 'donner' ? 'donné à' : 'retiré à'} <@${utilisateur.id}>.` : `Rien n’a changé pour <@${utilisateur.id}>.`)],
-      ephemeral: true,
-    });
+    await interaction.update(ecranBadges(interaction.guild, interaction.member, cibleId!, modifies ? `✅ ${modifies} changement(s).` : 'Rien n’a changé.'));
+  },
+  async fenetre(interaction: ModalSubmitInteraction<'cached'>) {
+    if (!aNiveau(interaction.member, Niveau.ADMIN)) throw new ErreurUtilisateur('Réservé aux admins.');
+    const nom = interaction.fields.getTextInputValue('nom').trim();
+    const emoji = interaction.fields.getTextInputValue('emoji').trim();
+    if (!estEmoji(emoji)) throw new ErreurUtilisateur('Émoji attendu : un émoji unicode ou `<:nom:id>`.');
+    enregistrerBadge(interaction.guildId, { badge_id: identifiantDepuisTexte(nom, 32), nom, emoji, description: interaction.fields.getTextInputValue('description').trim() });
+    const charge = ecranBadges(interaction.guild, interaction.member, null, `✅ ${emoji} **${nom}** créé.`);
+    if (interaction.isFromMessage()) await interaction.update(charge);
+    else await interaction.reply({ ...charge, flags: MessageFlags.Ephemeral });
   },
 };
 
@@ -572,6 +590,7 @@ export const moduleProfils: ModuleBot = {
   desactivable: true,
   actifParDefaut: true,
   commandes: [badge],
+  composants: [composantBadges],
   pagesReglage: [
     {
       id: 'profiles',

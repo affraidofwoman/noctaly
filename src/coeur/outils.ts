@@ -560,7 +560,7 @@ export const LIBELLES_NIVEAUX: Record<Niveau, string> = {
   [Niveau.MEMBRE]: 'Membre',
   [Niveau.SUPPORT]: 'Support',
   [Niveau.STAFF]: 'Staff',
-  [Niveau.MODERATEUR]: 'Système',
+  [Niveau.MODERATEUR]: 'Modération',
   [Niveau.ADMIN]: 'Admin',
   [Niveau.STREAMER]: 'Streamer',
   [Niveau.PROPRIETAIRE_BOT]: 'Owner bot',
@@ -571,30 +571,32 @@ export type CategorieAide =
   | 'moderation'
   | 'salons'
   | 'tickets'
-  | 'giveaways'
+
   | 'music'
-  | 'twitch'
+
   | 'community'
-  | 'roles'
+
   | 'economy'
   | 'progression'
   | 'customization'
+  | 'panneaux'
+  | 'acces'
   | 'admin'
   | 'owner';
 
 export const CATEGORIES_AIDE: Record<CategorieAide, { label: string; emoji: string }> = {
   general: { label: 'Pour tout le monde', emoji: '📌' },
-  community: { label: 'Communauté', emoji: '⭐' },
   progression: { label: 'Progression', emoji: '🌟' },
+  community: { label: 'La commu', emoji: '💬' },
   economy: { label: 'Mini-jeux', emoji: '🎲' },
   music: { label: 'Musique', emoji: '🎵' },
-  twitch: { label: 'Twitch', emoji: '🔴' },
-  tickets: { label: 'Tickets', emoji: '🎫' },
-  giveaways: { label: 'Giveaways', emoji: '🎉' },
-  roles: { label: 'Rôles', emoji: '🎭' },
+  tickets: { label: 'Support', emoji: '🎫' },
   moderation: { label: 'Sanctions', emoji: '🛡️' },
   salons: { label: 'Tenir les salons', emoji: '🔑' },
   customization: { label: 'Poster et animer', emoji: '📝' },
+
+  panneaux: { label: 'Poser un panneau', emoji: '🪧' },
+  acces: { label: 'Donner des accès', emoji: '🗝️' },
   admin: { label: 'Le serveur', emoji: '⚙️' },
   owner: { label: 'Réglages du bot', emoji: '👑' },
 };
