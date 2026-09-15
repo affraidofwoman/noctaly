@@ -6,6 +6,7 @@ import { moduleAutomod } from './automod';
 import { moduleAfk, moduleInvitations, moduleReglement, moduleSignalements, moduleSondages, moduleSuggestions } from './communaute';
 import { moduleBoosts } from './economie';
 import { moduleGeneral } from './general';
+import { moduleInstallation } from './installation';
 import { moduleJeux } from './jeux';
 import { moduleJournaux } from './journaux';
 import { moduleAnnonces, moduleCommandesPerso, moduleRedaction, moduleReponsesAuto, moduleRolesAChoisir } from './messages';
@@ -24,6 +25,7 @@ export const modules: ModuleBot[] = [
   // - Cœur (toujours actifs) -
   moduleGeneral,
   moduleAdministration,
+  moduleInstallation,
   // - Accueil -
   moduleBienvenue,
   moduleDeparts,

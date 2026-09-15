@@ -118,7 +118,7 @@ npm run deploy
 
 ## Premiers pas sur un serveur
 
-1. **`/quicksetup`** — crée, sans rien écraser, les salons de base et les catégories de logs.
+1. **`/installer`** — crée, sans rien écraser, salons, rôles, permissions, logs et panneaux.
 2. **`/setup`** — l’assistant : bienvenue, logs, tickets, giveaways, Twitch, modération, musique, rôles, communauté, sécurité, apparence.
 3. **`/modules`** — garde uniquement ce qui sert au serveur.
 4. **`/wl`** — donne les accès à l’équipe.
@@ -234,7 +234,7 @@ Pages : accueil, modules, tickets, giveaways, Twitch, modération, logs, personn
 `/announce` · `/embed` · `/customcommand` · `/autoresponse`
 
 ### ⚙️ Le serveur
-`/setup` · `/quicksetup` · `/modules` · `/config` · `/test` · `/wl` · `/logs` · `/progression` · `/affiche` · `/form` · `/backup`
+`/setup` · `/installer` · `/modules` · `/config` · `/test` · `/wl` · `/logs` · `/progression` · `/affiche` · `/form` · `/backup`
 
 **Variables** utilisables dans les messages : `{user}` `{mention}` `{username}` `{userid}` `{server}` `{membercount}` `{createdat}` `{channel}` `{role}` `{date}` `{time}` `{streamer}` `{game}` `{title}` `{viewers}` `{url}` `{level}` `{boosts}` `{brand}` `{twitch}`.
 

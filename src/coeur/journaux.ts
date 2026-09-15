@@ -238,11 +238,7 @@ export async function synchroniserAccesJournaux(serveur: Guild): Promise<number>
   let modifie = 0;
   for (const definition of STRUCTURE_JOURNAUX) {
     const permissionsSalon = permissionsJournaux(serveur, definition);
-    const categorie = serveur.channels.cache.find((c) => c.type === ChannelType.GuildCategory && c.name === definition.categorie);
-    const cibles = [
-      categorie,
-      ...definition.salons.map((salonVise) => salonJournalPour(serveur, salonVise.type)).filter((c) => c && 'parentId' in c && c.parentId === categorie?.id),
-    ];
+    const cibles = definition.salons.map((salonVise) => salonJournalPour(serveur, salonVise.type));
     for (const cible of cibles) {
       if (!cible || !('permissionOverwrites' in cible)) continue;
       try {
@@ -256,25 +252,30 @@ export async function synchroniserAccesJournaux(serveur: Guild): Promise<number>
   return modifie;
 }
 
+// - Une seule catégorie de logs -
+// Chaque salon garde ses propres accès, selon son sujet.
+export const CATEGORIE_JOURNAUX = '📜 Logs';
+
 export async function creerSalonsJournal(serveur: Guild, progression?: (fait: number, total: number) => void): Promise<{ cree: number; titreLie: number }> {
   let cree = 0;
   let titreLie = 0;
-  const total = STRUCTURE_JOURNAUX.reduce((n, d) => n + 1 + d.salons.length, 0);
+  const total = 1 + TYPES_JOURNAUX.length;
   let fait = 0;
   const pas = () => progression?.(++fait, total);
   const salons: Partial<Record<TypeJournal, string>> = {};
+  let categorie = serveur.channels.cache.find((c) => c.type === ChannelType.GuildCategory && (c.name === CATEGORIE_JOURNAUX || c.name.toLowerCase() === 'logs'));
+  if (!categorie) {
+    const moi = serveur.members.me;
+    categorie = await serveur.channels.create({
+      name: CATEGORIE_JOURNAUX,
+      type: ChannelType.GuildCategory,
+      permissionOverwrites: [{ id: serveur.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }, ...(moi ? [{ id: moi.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }] : [])],
+      reason: 'Création des salons de logs',
+    });
+    cree++;
+  }
+  pas();
   for (const definition of STRUCTURE_JOURNAUX) {
-    let categorie = serveur.channels.cache.find((c) => c.type === ChannelType.GuildCategory && c.name === definition.categorie);
-    if (!categorie) {
-      categorie = await serveur.channels.create({
-        name: definition.categorie,
-        type: ChannelType.GuildCategory,
-        permissionOverwrites: permissionsJournaux(serveur, definition),
-        reason: 'Création des salons de logs',
-      });
-      cree++;
-    }
-    pas();
     for (const salonVise of definition.salons) {
       const existant = serveur.channels.cache.find((c) => c.name === salonVise.nom && c.type === ChannelType.GuildText);
       if (existant) {

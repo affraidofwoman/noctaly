@@ -1,4 +1,5 @@
 import {
+  ButtonBuilder,
   type ButtonInteraction,
   ButtonStyle,
   type Client,
@@ -21,6 +22,7 @@ import {
   embedEnseigne,
   info,
   lignesEnPages,
+  nomEnseigne,
   ok,
   paginer,
   rangee,
@@ -183,6 +185,32 @@ const pageReglage: PageReglage = {
   ],
 };
 
+const panneauSuggestions: PanneauAffiche = {
+  id: 'suggestions',
+  alias: ['idees'],
+  nom: 'Suggestions',
+  emoji: '💡',
+  groupe: 'Le serveur',
+  quoi: 'Le bouton pour proposer une idée',
+  async poser(salon, membre) {
+    const serveur = membre.guild;
+    const embed = new EmbedBuilder()
+      .setColor(couleurPour(serveur))
+      .setTitle('💡 Une idée pour la commu ?')
+      .setDescription(
+        [
+          'Un salon, un événement, une amélioration : propose-la ici.',
+          '',
+          '**1.** Clique sur le bouton et écris ton idée.',
+          '**2.** Tout le monde vote 👍 ou 👎.',
+          '**3.** Le staff répond, et on en discute dans le fil.',
+        ].join('\n'),
+      );
+    const envoye = await salon.send({ embeds: [embed], components: [rangee(bouton('sg:new', 'Proposer une idée', ButtonStyle.Primary, '💡'))] });
+    return `Panneau posté : ${envoye.url}`;
+  },
+};
+
 export const moduleSuggestions: ModuleBot = {
   id: 'suggestions',
   nom: 'Suggestions',
@@ -191,12 +219,17 @@ export const moduleSuggestions: ModuleBot = {
   desactivable: true,
   actifParDefaut: true,
   commandes: [suggerer],
-  commandesPrefixe,
+  commandesPrefixe: [...commandesPrefixe, prefixePanneau(panneauSuggestions, 'Poser les suggestions')],
+  panneaux: [panneauSuggestions],
   pagesReglage: [pageReglage],
   composants: [
     {
       prefixe: 'sg',
       async bouton(interaction: ButtonInteraction<'cached'>, [action, id]) {
+        if (action === 'new') {
+          await interaction.showModal(construireFormulaire('sg:new', 'Nouvelle suggestion', [{ id: 'content', libelle: 'Ton idée', long: true, longueurMin: 10, longueurMax: 2000, indication: 'Créer une soirée communautaire…' }]));
+          return;
+        }
         const s = exigerSuggestion(interaction.guildId, id);
         if (action === 'up' || action === 'down') {
           if (s.statut !== 'pending') throw new ErreurUtilisateur('Cette suggestion est close.');
@@ -633,12 +666,24 @@ export const moduleAfk: ModuleBot = {
   evenements: [sur('messageCreate', (m) => surMessage(m), 120)],
 };
 
+// - Le règlement -
+// Une intro, les règles aérées, puis une seule action claire.
 function panneauBoutons(serveur: import('discord.js').Guild) {
   const reglages = lireConfig(serveur.id).reglement;
-  const embed = new EmbedBuilder().setColor(couleurPour(serveur)).setTitle(tronquer(reglages.titre, 256));
-  for (const s of reglages.sections.slice(0, 25)) embed.addFields({ name: tronquer(s.titre, 256), value: tronquer(s.contenu, 1024), inline: false });
-  embed.setFooter({ text: `${serveur.name} · en restant ici, tu acceptes ces règles` });
-  return { embeds: [embed], components: reglages.roleAcceptationId ? [rangee(bouton('rules:accept', 'J’accepte le règlement', ButtonStyle.Success, '✅'))] : [] };
+  const avecBouton = Boolean(reglages.roleAcceptationId);
+  const embed = new EmbedBuilder()
+    .setColor(couleurPour(serveur))
+    .setTitle(tronquer(reglages.titre, 256))
+    .setDescription(`Bienvenue sur **${serveur.name}** ! 💜\nCes quelques règles gardent la commu agréable pour tout le monde. Deux minutes de lecture, promis.`)
+    .setThumbnail(serveur.iconURL({ size: 256 }))
+    .setFooter({ text: `${nomEnseigne(serveur)} · les règles de Discord s’appliquent aussi` });
+  for (const s of reglages.sections.slice(0, 23)) embed.addFields({ name: tronquer(s.titre, 256), value: tronquer(s.contenu, 1024), inline: false });
+  embed.addFields({ name: '​', value: avecBouton ? '✅ **Tout est clair ?** Clique sur le bouton : tu accèdes à tout le serveur.' : '-# En restant ici, tu acceptes ces règles.', inline: false });
+  const boutons = [
+    ...(avecBouton ? [bouton('rules:accept', 'J’accepte le règlement', ButtonStyle.Success, '✅')] : []),
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setURL('https://discord.com/guidelines').setLabel('Règles de Discord'),
+  ];
+  return { embeds: [embed], components: [rangee(...boutons)] };
 }
 
 export function lireSections(saisie: string): { titre: string; contenu: string }[] {
@@ -718,7 +763,11 @@ export const moduleReglement: ModuleBot = {
         if (retirer && botPeutGererRole(serveur, retirer)) await interaction.member.roles.remove(retirer, 'Règlement accepté').catch(() => undefined);
         executer('INSERT OR IGNORE INTO membres (serveur_id, utilisateur_id, vu_le) VALUES (?, ?, ?)', serveur.id, interaction.user.id, Date.now());
         void journal(serveur, 'autorole', { titre: 'Règlement accepté', ton: 'ok', lignes: [`<@${interaction.user.id}> a reçu <@&${role.id}>`] });
-        await interaction.reply({ embeds: [ok(serveur, `Merci ! Tu as maintenant accès au serveur avec le rôle <@&${role.id}>.`)], flags: MessageFlags.Ephemeral });
+        const panneauRoles = lire<{ salon_id: string }>("SELECT salon_id FROM panneaux_roles WHERE serveur_id = ? ORDER BY cree_le LIMIT 1", serveur.id);
+        await interaction.reply({
+          embeds: [ok(serveur, `Bienvenue parmi nous ! Tout le serveur t’est ouvert.${panneauRoles ? `\n\n🎭 Passe dans <#${panneauRoles.salon_id}> pour choisir tes rôles et tes notifications.` : ''}`, { titre: 'Règlement accepté', sujet: '✅' })],
+          flags: MessageFlags.Ephemeral,
+        });
       },
     },
   ],

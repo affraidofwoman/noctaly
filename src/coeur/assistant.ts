@@ -220,7 +220,7 @@ export function afficherAccueil(serveur: Guild) {
         'Nous allons configurer votre serveur **étape par étape**.',
         'Chaque section est indépendante : configure uniquement ce dont tu as besoin.',
         '',
-        '💡 *Astuce : `/quicksetup` crée automatiquement les salons de base.*',
+        '💡 *Astuce : `/installer` crée salons, rôles, permissions, logs et panneaux d’un coup.*',
         reglages.assistant.termineLe ? `\n✅ Dernière configuration terminée <t:${Math.floor(reglages.assistant.termineLe / 1000)}:R>.` : '',
       ].join('\n'),
     );

@@ -3,18 +3,15 @@ import {
   type AnySelectMenuInteraction,
   type ButtonInteraction,
   ButtonStyle,
-  type CategoryChannel,
   ChannelType,
   type Client,
   EmbedBuilder,
   type Guild,
-  type GuildBasedChannel,
   type GuildMember,
   type GuildTextBasedChannel,
   type Message,
   type MessageActionRowComponentBuilder,
   type ModalSubmitInteraction,
-  OverwriteType,
   PermissionFlagsBits,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
@@ -86,18 +83,18 @@ import {
 import { executer, lireJson } from '../coeur/base';
 import { creerSalonsJournal, historiser, journal, salonJournalPour, synchroniserAccesJournaux, TYPES_JOURNAUX } from '../coeur/journaux';
 import { type CommandePrefixe, type CommandeSlash, type GestionnaireComposant, type ModuleBot, type PanneauAffiche, prefixePanneau } from '../coeur/noyau';
-import { ErreurUtilisateur, fuseauValide, identifiantDepuisTexte, marqueTemps, resoudreUtilisateur, tronquer, trouverEntree, type DomainePrefixe, DOMAINES_PREFIXES, Niveau } from '../coeur/outils';
+import { ErreurUtilisateur, fuseauValide, marqueTemps, resoudreUtilisateur, tronquer, trouverEntree, type DomainePrefixe, DOMAINES_PREFIXES, Niveau } from '../coeur/outils';
 import {
   activerModule,
   lireConfig,
   lireEtatsModules,
   lireModules,
-  modifierConfig,
   moduleActif,
   THEMES,
   viderCacheConfig,
   viderCacheModules,
 } from '../coeur/reglages';
+import { menuServeursInstallation } from './installation';
 
 const champPrefixe = (domaine: DomainePrefixe) => ({
   genre: 'text' as const,
@@ -603,7 +600,11 @@ export function ecranEnseigne(client: Client, cle: string, note?: string) {
     embeds: [apercu, reglages],
     components: [
       rangee(quoi),
-      rangee(bouton('cu:home', 'Toutes les enseignes', ButtonStyle.Secondary, '⬅️'), bouton(`cu:del:${cle}`, 'Supprimer', ButtonStyle.Danger, '🗑️')),
+      rangee(
+        bouton('cu:home', 'Toutes les enseignes', ButtonStyle.Secondary, '⬅️'),
+        bouton(`cu:inst:${cle}`, 'Installer un serveur', ButtonStyle.Success, '🏗️').setDisabled(!s.guilds.length),
+        bouton(`cu:del:${cle}`, 'Supprimer', ButtonStyle.Danger, '🗑️'),
+      ),
     ],
   };
 }
@@ -730,6 +731,15 @@ export const composantEnseignes: GestionnaireComposant = {
       case 'emop':
         await interaction.update(ecranEmojis(cle!, Number(extra) || 0));
         return;
+      case 'inst': {
+        const serveurs = exigerEnseigne(cle).guilds.map((id) => client.guilds.cache.get(id)).filter((g): g is Guild => Boolean(g));
+        if (!serveurs.length) throw new ErreurUtilisateur('Choisis d’abord les serveurs de l’enseigne.');
+        await interaction.update({
+          embeds: [info(interaction.guild, 'Quel serveur installer ? Tu verras le plan avant que quoi que ce soit ne soit créé.', { titre: 'Installer un serveur', sujet: '🏗️' })],
+          components: [menuServeursInstallation(serveurs), rangee(bouton(`cu:m:${cle}`, 'Retour', ButtonStyle.Secondary, '⬅️'))],
+        });
+        return;
+      }
       case 'del': {
         const s = exigerEnseigne(cle);
         await demanderConfirmation(interaction, {
@@ -793,7 +803,7 @@ export const composantEnseignes: GestionnaireComposant = {
       case 'srv': {
         const ids = interaction.values.filter((v) => v !== 'none');
         poserServeursEnseigne(cle!, ids);
-        await interaction.update(ecranEnseigne(client, cle!, `✅ ${ids.length} serveur(s) couvert(s).`));
+        await interaction.update(ecranEnseigne(client, cle!, `✅ ${ids.length} serveur(s) couvert(s).${ids.length ? ' Pour tout y créer d’un coup : 🏗️ **Installer un serveur**.' : ''}`));
         return;
       }
       case 'emo': {
@@ -934,94 +944,6 @@ export function panneauModules(serveur: Guild, note?: string) {
   return { embeds: [embed], components: composants };
 }
 
-// - /quicksetup -
-
-interface SalonRapide {
-  nom: string;
-  lectureSeule?: boolean;
-  lien?: (c: import('../coeur/reglages').ConfigServeur, id: string) => void;
-}
-
-const STRUCTURE_RAPIDE: { categorie: string; channels: SalonRapide[] }[] = [
-  {
-    categorie: '📁 INFORMATION',
-    channels: [
-      { nom: 'bienvenue', lectureSeule: true, lien: (c, id) => void (c.bienvenue.salonId ??= id) },
-      { nom: 'règlement', lectureSeule: true, lien: (c, id) => void (c.reglement.salonId ??= id) },
-      { nom: 'annonces', lectureSeule: true, lien: (c, id) => void (c.annonces.salonDefautId ??= id) },
-      { nom: 'lives', lectureSeule: true, lien: (c, id) => void (c.twitch.salonDefautId ??= id) },
-    ],
-  },
-  {
-    categorie: '📁 COMMUNAUTÉ',
-    channels: [
-      { nom: 'général' },
-      { nom: 'médias' },
-      { nom: 'suggestions', lien: (c, id) => void (c.suggestions.salonId ??= id) },
-    ],
-  },
-  { categorie: '📁 SUPPORT', channels: [{ nom: 'tickets', lectureSeule: true, lien: (c, id) => void (c.tickets.salonPanneauId ??= id) }] },
-  { categorie: '📁 GIVEAWAYS', channels: [{ nom: 'giveaways', lectureSeule: true, lien: (c, id) => void (c.tirages.salonDefautId ??= id) }] },
-];
-
-function normaliserNom(nom: string): string {
-  return identifiantDepuisTexte(nom.replace(/^[^\p{L}\p{N}]+/u, ''));
-}
-
-function trouverSalon(serveur: Guild, nom: string, type: ChannelType): GuildBasedChannel | undefined {
-  const cible = normaliserNom(nom);
-  return serveur.channels.cache.find((c) => c.type === type && normaliserNom(c.name) === cible);
-}
-
-async function lancerInstallationRapide(serveur: Guild, progression?: (fait: number, total: number) => void): Promise<string[]> {
-  const signalement: string[] = [];
-  const totalRapide = STRUCTURE_RAPIDE.reduce((n, g) => n + 1 + g.channels.length, 0);
-  let faitRapide = 0;
-  const pas = () => progression?.(++faitRapide, totalRapide * 2);
-  const liens: { link: SalonRapide['lien']; id: string }[] = [];
-  const tousMembres = serveur.roles.everyone.id;
-  for (const groupe of STRUCTURE_RAPIDE) {
-    let categorie = trouverSalon(serveur, groupe.categorie, ChannelType.GuildCategory) as CategoryChannel | undefined;
-    if (!categorie) {
-      categorie = await serveur.channels.create({ name: groupe.categorie, type: ChannelType.GuildCategory, reason: '/quicksetup' });
-      signalement.push(`➕ Catégorie **${groupe.categorie}**`);
-    } else {
-      signalement.push(`✔️ Catégorie **${categorie.name}** déjà présente`);
-    }
-    pas();
-    for (const salonVise of groupe.channels) {
-      const existant = trouverSalon(serveur, salonVise.nom, ChannelType.GuildText);
-      if (existant) {
-        signalement.push(`　✔️ <#${existant.id}> déjà présent`);
-        liens.push({ link: salonVise.lien, id: existant.id });
-        pas();
-        continue;
-      }
-      const cree = await serveur.channels.create({
-        name: salonVise.nom,
-        type: ChannelType.GuildText,
-        parent: categorie.id,
-        reason: '/quicksetup',
-        permissionOverwrites: salonVise.lectureSeule
-          ? [
-              { id: tousMembres, deny: [PermissionFlagsBits.SendMessages], type: OverwriteType.Role },
-              { id: serveur.members.me!.id, allow: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks], type: OverwriteType.Member },
-            ]
-          : [],
-      });
-      signalement.push(`　➕ <#${cree.id}>`);
-      liens.push({ link: salonVise.lien, id: cree.id });
-      pas();
-    }
-  }
-  modifierConfig(serveur.id, (c) => {
-    for (const { link: lien, id } of liens) lien?.(c, id);
-  });
-  const journaux = await creerSalonsJournal(serveur, (f, t) => progression?.(totalRapide + Math.round((f / t) * totalRapide), totalRapide * 2));
-  signalement.push(`📜 Logs : **${journaux.cree}** créé(s), **${journaux.titreLie}** relié(s)`);
-  return signalement;
-}
-
 // - /test -
 
 const PERMISSIONS_REQUISES: [bigint, string][] = [
@@ -1089,27 +1011,6 @@ const assistant: CommandeSlash = {
   donnees: new SlashCommandBuilder().setName('setup').setDescription('Régler le serveur'),
   async executer(interaction) {
     await repondre(interaction, { ...afficherAccueil(interaction.guild), ephemeral: true });
-  },
-};
-
-const installationRapide: CommandeSlash = {
-  categorie: 'admin',
-  niveau: Niveau.ADMIN,
-  donnees: new SlashCommandBuilder().setName('quicksetup').setDescription('Salons de base'),
-  async executer(interaction) {
-    const apercu = STRUCTURE_RAPIDE.map((b) => `**${b.categorie}**\n${b.channels.map((c) => `　#${c.nom}`).join('\n')}`).join('\n');
-    await demanderConfirmation(interaction, {
-      titre: 'Créer la structure du serveur ?',
-      description: `${apercu}\n**📜 Logs · …** (un salon par type)\n\n-# Aucun salon existant n’est modifié ni écrasé.`,
-      libelleConfirmation: 'Créer',
-      surConfirmation: async (i) => {
-        await i.update({ embeds: [info(i.guild, 'Création en cours…')], components: [] });
-        const suivi = suiviReponse(i, i.guild, 'Structure du serveur');
-        const signalement = await lancerInstallationRapide(i.guild, (f, t) => suivi.regler(f, t));
-        await suivi.terminer();
-        await i.editReply({ embeds: [ok(i.guild, tronquer(signalement.join('\n'), 4000), { titre: 'Structure prête' })] });
-      },
-    });
   },
 };
 
@@ -1305,7 +1206,7 @@ function pagesServ(): (EntreeMenu & { page: PageReglage })[] {
 export function ecranServ(serveur: Guild) {
   const embed = embedEnseigne(serveur)
     .setTitle('🏠 Le serveur')
-    .setDescription(['Choisis le réglage à ouvrir.', '', '-# Tout le reste est dans `/setup`. Pour tout créer d’un coup : `/quicksetup`.'].join('\n'));
+    .setDescription(['Choisis le réglage à ouvrir.', '', '-# Tout le reste est dans `/setup`. Pour tout créer d’un coup : `/installer`.'].join('\n'));
   return { embeds: [embed], components: [rangee(new StringSelectMenuBuilder().setCustomId('srv:pick').setPlaceholder('Quel réglage ?').addOptions(optionsRangees(pagesServ())))] };
 }
 
@@ -1429,7 +1330,7 @@ export const moduleAdministration: ModuleBot = {
   description: 'Setup, modules, whitelists, enseignes',
   desactivable: false,
   actifParDefaut: true,
-  commandes: [assistant, installationRapide, commandeModules, config, test, wl, affiche, serv],
+  commandes: [assistant, commandeModules, config, test, wl, affiche, serv],
   commandesPrefixe: [...raccourcisWhitelists(), ...prefixesServeur, ...prefixesProprietaire],
   pagesReglage: pagesAdministration,
   composants: [

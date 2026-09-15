@@ -859,6 +859,26 @@ function afficher(serveur: Guild, panneauBoutons: LignePanneau) {
   return { embeds: [embed], components: [] };
 }
 
+// - Panneau de rôles prêt à l’emploi -
+export async function poserPanneauRolesModele(salon: GuildTextBasedChannel, modele: { titre: string; description: string; mode: ModePanneau; genre: string; roles: { id: string; emoji: string; libelle: string }[] }): Promise<string> {
+  const serveur = salon.guild;
+  const id = transaction(() => {
+    const r = executer(
+      "INSERT INTO panneaux_roles (serveur_id, salon_id, titre, description, type, mode, genre, cree_le) VALUES (?, ?, ?, ?, 'button', ?, ?, ?)",
+      serveur.id,
+      salon.id,
+      modele.titre,
+      modele.description,
+      modele.mode,
+      modele.genre,
+      Date.now(),
+    );
+    modele.roles.forEach((e, i) => executer('INSERT INTO roles_panneaux (panneau_id, role_id, emoji, libelle, position) VALUES (?, ?, ?, ?, ?)', r.lastInsertRowid, e.id, e.emoji, e.libelle, i));
+    return r.lastInsertRowid;
+  });
+  return publierPanneauxRoles(serveur, exigerPanneau(serveur.id, Number(id)));
+}
+
 async function publierPanneauxRoles(serveur: Guild, panneauBoutons: LignePanneau): Promise<string> {
   const salon = serveur.channels.cache.get(panneauBoutons.salon_id) as GuildTextBasedChannel | undefined;
   if (!salon?.isTextBased()) throw new ErreurUtilisateur('Le salon du panneau est introuvable.');
