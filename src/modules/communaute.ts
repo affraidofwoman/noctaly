@@ -111,13 +111,13 @@ function exigerSuggestion(serveurId: string, id: string | undefined): LigneSugge
 async function creer(membre: GuildMember, contenu: string): Promise<string> {
   const serveur = membre.guild;
   const reglages = lireConfig(serveur.id).suggestions;
-  const salon = resoudreSalonTexte(serveur, reglages.channelId);
+  const salon = resoudreSalonTexte(serveur, reglages.salonId);
   if (!salon) throw new ErreurUtilisateur('Le salon des suggestions n’est pas configuré (`/setup` → Communauté).');
   const texte = neutraliserMentions(contenu.trim());
   if (texte.length < 10) throw new ErreurUtilisateur('Ta suggestion est trop courte (10 caractères minimum).');
   const recents = lire<{ n: number }>('SELECT COUNT(*) AS n FROM suggestions WHERE serveur_id = ? AND auteur_id = ? AND cree_le > ?', serveur.id, membre.id, Date.now() - 3_600_000)?.n ?? 0;
   if (recents >= 5 && !aNiveau(membre, Niveau.STAFF)) throw new ErreurUtilisateur('Tu as déjà proposé 5 suggestions cette heure-ci. Reviens un peu plus tard !');
-  const numero = modifierConfig(serveur.id, (c) => void (c.suggestions.counter += 1)).suggestions.counter;
+  const numero = modifierConfig(serveur.id, (c) => void (c.suggestions.compteur += 1)).suggestions.compteur;
   const r = executer('INSERT INTO suggestions (serveur_id, numero, salon_id, auteur_id, contenu, cree_le) VALUES (?, ?, ?, ?, ?, ?)', serveur.id, numero, salon.id, membre.id, texte, Date.now());
   const s = exigerSuggestion(serveur.id, String(r.lastInsertRowid));
   const message = await salon.send(afficher(serveur, s));
@@ -180,7 +180,7 @@ const pageReglage: PageReglage = {
   ordre: 2,
   description: 'Les membres proposent avec `/suggest`, votent 👍/👎, et le staff accepte ou refuse avec un commentaire.',
   champs: [
-    { genre: 'channel', cle: 'channel', libelle: 'Salon des suggestions', lire: (c) => c.suggestions.channelId, ecrire: (c, v) => void (c.suggestions.channelId = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des suggestions', lire: (c) => c.suggestions.salonId, ecrire: (c, v) => void (c.suggestions.salonId = v) },
     { genre: 'toggle', cle: 'thread', libelle: 'Fil de discussion', lire: (c) => c.suggestions.creerFil, ecrire: (c, v) => void (c.suggestions.creerFil = v) },
   ],
 };
@@ -430,7 +430,7 @@ async function envoyerSignalement(membre: GuildMember, cible: User, raison: stri
     }
   }
 
-  const salon = resoudreSalonTexte(serveur, reglages.signalements.channelId ?? reglages.general.salonStaffId);
+  const salon = resoudreSalonTexte(serveur, reglages.signalements.salonId ?? reglages.general.salonStaffId);
   if (!salon) throw new ErreurUtilisateur('Le salon des signalements n’est pas configuré. Ouvre plutôt un ticket.');
   await salon.send({
     embeds: [
@@ -495,8 +495,8 @@ const pageReglageSignalements: PageReglage = {
   ordre: 5,
   description: 'Où arrivent `/report` et `/feedback`. Sans salon, c’est le salon staff général qui est utilisé.',
   champs: [
-    { genre: 'channel', cle: 'reports', libelle: 'Salon des signalements', lire: (c) => c.signalements.channelId, ecrire: (c, v) => void (c.signalements.channelId = v) },
-    { genre: 'channel', cle: 'feedback', libelle: 'Salon des feedbacks', lire: (c) => c.avis.channelId, ecrire: (c, v) => void (c.avis.channelId = v) },
+    { genre: 'channel', cle: 'reports', libelle: 'Salon des signalements', lire: (c) => c.signalements.salonId, ecrire: (c, v) => void (c.signalements.salonId = v) },
+    { genre: 'channel', cle: 'feedback', libelle: 'Salon des feedbacks', lire: (c) => c.avis.salonId, ecrire: (c, v) => void (c.avis.salonId = v) },
     {
       genre: 'choice',
       cle: 'mode',
@@ -538,7 +538,7 @@ export const moduleSignalements: ModuleBot = {
         if (action !== 'feedback') return;
         const serveur = interaction.guild;
         const reglages = lireConfig(serveur.id);
-        const salon = resoudreSalonTexte(serveur, reglages.avis.channelId ?? reglages.general.salonStaffId);
+        const salon = resoudreSalonTexte(serveur, reglages.avis.salonId ?? reglages.general.salonStaffId);
         if (!salon) throw new ErreurUtilisateur('Le salon des feedbacks n’est pas configuré.');
         const note = Number(interaction.fields.getTextInputValue('rating'));
         const etoiles = Number.isInteger(note) && note >= 1 && note <= 5 ? `${'⭐'.repeat(note)}${'☆'.repeat(5 - note)}` : null;
@@ -637,18 +637,18 @@ export const moduleAfk: ModuleBot = {
 
 function panneauBoutons(serveur: import('discord.js').Guild) {
   const reglages = lireConfig(serveur.id).reglement;
-  const embed = new EmbedBuilder().setColor(couleurPour(serveur)).setTitle(tronquer(reglages.title, 256));
-  for (const s of reglages.sections.slice(0, 25)) embed.addFields({ name: tronquer(s.title, 256), value: tronquer(s.content, 1024), inline: false });
+  const embed = new EmbedBuilder().setColor(couleurPour(serveur)).setTitle(tronquer(reglages.titre, 256));
+  for (const s of reglages.sections.slice(0, 25)) embed.addFields({ name: tronquer(s.titre, 256), value: tronquer(s.contenu, 1024), inline: false });
   embed.setFooter({ text: `${serveur.name} · en restant ici, tu acceptes ces règles` });
   return { embeds: [embed], components: reglages.roleAcceptationId ? [rangee(bouton('rules:accept', 'J’accepte le règlement', ButtonStyle.Success, '✅'))] : [] };
 }
 
-export function lireSections(saisie: string): { title: string; content: string }[] {
-  const sortie: { title: string; content: string }[] = [];
+export function lireSections(saisie: string): { titre: string; contenu: string }[] {
+  const sortie: { titre: string; contenu: string }[] = [];
   for (const groupe of saisie.split(/^##\s*/m).map((b) => b.trim()).filter(Boolean)) {
     const [titre, ...reste] = groupe.split('\n');
     const contenu = reste.join('\n').trim();
-    if (titre && contenu) sortie.push({ title: titre.trim(), content: contenu });
+    if (titre && contenu) sortie.push({ titre: titre.trim(), contenu });
   }
   return sortie.slice(0, 25);
 }
@@ -662,7 +662,7 @@ const reglement: CommandeSlash = {
     .addChannelOption((o) => o.setName('salon').setDescription('Salon').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
   async executer(interaction) {
     const reglages = lireConfig(interaction.guildId).reglement;
-    const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(interaction.guild, reglages.channelId) ?? interaction.channel) as GuildTextBasedChannel | null;
+    const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(interaction.guild, reglages.salonId) ?? interaction.channel) as GuildTextBasedChannel | null;
     if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
     const envoye = await salon.send(panneauBoutons(interaction.guild));
     await repondre(interaction, { embeds: [ok(interaction.guild, `Règlement posté : ${envoye.url}${reglages.roleAcceptationId ? '' : '\n-# Aucun rôle d’acceptation réglé : le bouton n’apparaît pas.'}`)], ephemeral: true });
@@ -678,10 +678,10 @@ const pageReglageReglement: PageReglage = {
   ordre: 1,
   description: 'Le panneau `/rules` avec un bouton « J’accepte » qui donne le rôle membre.\n-# Sections : une ligne `## Titre` puis le texte, répété.',
   champs: [
-    { genre: 'channel', cle: 'channel', libelle: 'Salon du règlement', lire: (c) => c.reglement.channelId, ecrire: (c, v) => void (c.reglement.channelId = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon du règlement', lire: (c) => c.reglement.salonId, ecrire: (c, v) => void (c.reglement.salonId = v) },
     { genre: 'role', cle: 'accept', libelle: 'Rôle donné en acceptant', attribuable: true, lire: (c) => c.reglement.roleAcceptationId, ecrire: (c, v) => void (c.reglement.roleAcceptationId = v) },
     { genre: 'role', cle: 'remove', libelle: 'Rôle retiré en acceptant', attribuable: true, lire: (c) => c.reglement.roleRetireId, ecrire: (c, v) => void (c.reglement.roleRetireId = v) },
-    { genre: 'text', cle: 'title', libelle: 'Titre', longueurMax: 200, obligatoire: true, lire: (c) => c.reglement.title, ecrire: (c, v) => void (c.reglement.title = v) },
+    { genre: 'text', cle: 'title', libelle: 'Titre', longueurMax: 200, obligatoire: true, lire: (c) => c.reglement.titre, ecrire: (c, v) => void (c.reglement.titre = v) },
     {
       genre: 'text',
       cle: 'sections',
@@ -689,7 +689,7 @@ const pageReglageReglement: PageReglage = {
       long: true,
       longueurMax: 4000,
       obligatoire: true,
-      lire: (c) => c.reglement.sections.map((s) => `## ${s.title}\n${s.content}`).join('\n\n'),
+      lire: (c) => c.reglement.sections.map((s) => `## ${s.titre}\n${s.contenu}`).join('\n\n'),
       ecrire: (c, v) => void (c.reglement.sections = lireSections(v)),
       validate: (v) => (lireSections(v).length ? null : 'Au moins une section : `## Titre` puis le texte.'),
     },
@@ -799,7 +799,7 @@ async function surArrivee(membre: GuildMember): Promise<void> {
       ? `<@${membre.id}> a été invité par <@${parrainId}> (\`${code}\`) — **${comptes(serveur.id, parrainId).valid}** invitation(s) valides.`
       : `<@${membre.id}> a rejoint, invitation inconnue.`;
   void journal(serveur, 'invite', { titre: 'Invitation utilisée', ton: faux ? 'alerte' : 'ok', lignes: [texte, faux ? '⚠️ Compte récent : compté comme **fake**.' : null] });
-  const salon = resoudreSalonTexte(serveur, lireConfig(serveur.id).invitations.channelId);
+  const salon = resoudreSalonTexte(serveur, lireConfig(serveur.id).invitations.salonId);
   if (salon) await salon.send({ content: `📨 ${texte}`, allowedMentions: { parse: [] } }).catch(() => undefined);
 }
 
@@ -859,7 +859,7 @@ const pageReglageInvitations: PageReglage = {
   ordre: 12,
   description: 'Qui a invité qui. Nécessite la permission « Gérer le serveur ». Les comptes trop récents comptent comme fake.',
   champs: [
-    { genre: 'channel', cle: 'channel', libelle: 'Salon des arrivées (facultatif)', lire: (c) => c.invitations.channelId, ecrire: (c, v) => void (c.invitations.channelId = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des arrivées (facultatif)', lire: (c) => c.invitations.salonId, ecrire: (c, v) => void (c.invitations.salonId = v) },
     { genre: 'number', cle: 'fake', libelle: 'Compte « fake » si plus jeune que', min: 0, max: 365, unite: 'j', lire: (c) => c.invitations.joursCompteFaux, ecrire: (c, v) => void (c.invitations.joursCompteFaux = v) },
   ],
 };

@@ -72,10 +72,10 @@ async function traiterServeur(serveur: Guild): Promise<void> {
     }
   }
 
-  if (maintenant.heure < reglages.hour) return;
+  if (maintenant.heure < reglages.heure) return;
   const echus = lireTout<LigneAnniversaire>('SELECT * FROM anniversaires WHERE serveur_id = ? AND (annee_annoncee IS NULL OR annee_annoncee < ?)', serveur.id, maintenant.annee).filter((r) => estAnniversaire(r, maintenant));
   if (!echus.length) return;
-  const salon = resoudreSalonTexte(serveur, reglages.channelId);
+  const salon = resoudreSalonTexte(serveur, reglages.salonId);
   for (const r of echus) {
     executer('UPDATE anniversaires SET annee_annoncee = ? WHERE serveur_id = ? AND utilisateur_id = ?', maintenant.annee, serveur.id, r.utilisateur_id);
     const membre = await serveur.members.fetch(r.utilisateur_id).catch(() => null);
@@ -130,7 +130,7 @@ const commandeAnniversaire: CommandeSlash = {
       if (!anniversaireValide(jour, mois)) throw new ErreurUtilisateur('Cette date n’existe pas.');
       const annee = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau).annee;
       const aujourdhui = partiesFuseau(Date.now(), lireConfig(serveur.id).general.fuseau);
-      const ignorerCetteAnnee = estAnniversaire({ jour, mois }, aujourdhui) && aujourdhui.heure >= lireConfig(serveur.id).anniversaires.hour;
+      const ignorerCetteAnnee = estAnniversaire({ jour, mois }, aujourdhui) && aujourdhui.heure >= lireConfig(serveur.id).anniversaires.heure;
       executer(
         `INSERT INTO anniversaires (serveur_id, utilisateur_id, jour, mois, annee_annoncee) VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(serveur_id, utilisateur_id) DO UPDATE SET jour = excluded.jour, mois = excluded.mois, annee_annoncee = excluded.annee_annoncee`,
@@ -191,10 +191,10 @@ const pageReglage: PageReglage = {
   ordre: 3,
   description: 'Le bot souhaite les anniversaires à l’heure choisie (fuseau du serveur) et peut donner un rôle pour la journée.\n-# Variables : `{mention}` `{user}` `{server}`',
   champs: [
-    { genre: 'channel', cle: 'channel', libelle: 'Salon des anniversaires', lire: (c) => c.anniversaires.channelId, ecrire: (c, v) => void (c.anniversaires.channelId = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des anniversaires', lire: (c) => c.anniversaires.salonId, ecrire: (c, v) => void (c.anniversaires.salonId = v) },
     { genre: 'role', cle: 'role', libelle: 'Rôle du jour', attribuable: true, lire: (c) => c.anniversaires.roleId, ecrire: (c, v) => void (c.anniversaires.roleId = v) },
     { genre: 'text', cle: 'message', libelle: 'Message', long: true, longueurMax: 1500, obligatoire: true, lire: (c) => c.anniversaires.message, ecrire: (c, v) => void (c.anniversaires.message = v) },
-    { genre: 'number', cle: 'hour', libelle: 'Heure d’annonce', min: 0, max: 23, unite: 'h', lire: (c) => c.anniversaires.hour, ecrire: (c, v) => void (c.anniversaires.hour = v) },
+    { genre: 'number', cle: 'hour', libelle: 'Heure d’annonce', min: 0, max: 23, unite: 'h', lire: (c) => c.anniversaires.heure, ecrire: (c, v) => void (c.anniversaires.heure = v) },
   ],
 };
 
@@ -228,7 +228,7 @@ export const moduleAnniversaires: ModuleBot = {
       description: 'Voir le message avec ton nom',
       async executer(interaction) {
         const reglages = lireConfig(interaction.guildId).anniversaires;
-        const salon = resoudreSalonTexte(interaction.guild, reglages.channelId);
+        const salon = resoudreSalonTexte(interaction.guild, reglages.salonId);
         if (!salon) return '⚠️ Aucun salon d’anniversaires utilisable.';
         await salon.send({
           embeds: [new EmbedBuilder().setColor(couleurPour(interaction.guild)).setTitle('🎂 ANNIVERSAIRE ! (test)').setDescription(remplirModele(reglages.message, { membre: interaction.member, serveur: interaction.guild }))],

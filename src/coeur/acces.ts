@@ -354,7 +354,6 @@ export function botAPermissions(serveur: Guild, permissions: PermissionResolvabl
   return serveur.members.me?.permissions.has(permissions) ?? false;
 }
 
-
 export const COULEUR_DEFAUT = 0x9146ff;
 
 export const CLES_EMOJIS = {

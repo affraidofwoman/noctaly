@@ -60,8 +60,8 @@ export function couleurPour(serveur: RefServeur, genre: GenreEmbed = 'primary'):
   if (!id) return genre === 'primary' ? enseigne.couleur : hexaEnEntier(TONS_ENSEIGNE[genre]);
   const general = lireConfig(id).general;
   if (general.theme === 'brand') return genre === 'primary' ? enseigne.couleur : hexaEnEntier(TONS_ENSEIGNE[genre]);
-  if (general.theme === 'custom') return hexaEnEntier(general.colors[genre]);
-  return hexaEnEntier(THEMES[general.theme]?.colors[genre] ?? general.colors[genre]);
+  if (general.theme === 'custom') return hexaEnEntier(general.couleurs[genre]);
+  return hexaEnEntier(THEMES[general.theme]?.colors[genre] ?? general.couleurs[genre]);
 }
 
 export function enseigneDuServeur(serveur: RefServeur): Enseigne {
@@ -78,7 +78,7 @@ export function embedEnseigne(serveur: RefServeur, genre: GenreEmbed = 'primary'
   const embed = new EmbedBuilder().setColor(couleurPour(serveur, genre));
   if (serveur && typeof serveur !== 'string') {
     const enseigne = enseigneDuServeur(serveur);
-    const enseignes = lireConfig(serveur.id).general.footer;
+    const enseignes = lireConfig(serveur.id).general.pied;
     const texte = enseignes || enseigne.pied || nomEnseigne(serveur);
     embed.setFooter({ text: texte.slice(0, 2048), iconURL: enseigne.logo ?? serveur.iconURL() ?? undefined });
   }

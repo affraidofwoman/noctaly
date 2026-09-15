@@ -31,7 +31,7 @@ export interface FichierSauvegarde {
   createdAt: number;
   tables: Record<string, Record<string, unknown>[]>;
   entrees: Record<string, unknown>[];
-  structure: { roles: { name: string; color: number; position: number }[]; channels: { name: string; type: number; parent: string | null }[] };
+  structure: { roles: { nom: string; couleur: number; position: number }[]; salons: { nom: string; type: number; parent: string | null }[] };
 }
 
 function dossierDe(serveurId: string): string {
@@ -53,8 +53,8 @@ export function creerSauvegarde(serveur: Guild, creePar: string, nom = 'manuelle
     tables,
     entrees,
     structure: {
-      roles: serveur.roles.cache.filter((r) => r.id !== serveur.id && !r.managed).map((r) => ({ name: r.name, color: r.color, position: r.position })),
-      channels: serveur.channels.cache.map((c) => ({ name: c.name, type: c.type, parent: c.parent?.name ?? null })),
+      roles: serveur.roles.cache.filter((r) => r.id !== serveur.id && !r.managed).map((r) => ({ nom: r.name, couleur: r.color, position: r.position })),
+      salons: serveur.channels.cache.map((c) => ({ nom: c.name, type: c.type, parent: c.parent?.name ?? null })),
     },
   };
   const json = JSON.stringify(donnees);

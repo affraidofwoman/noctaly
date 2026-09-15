@@ -94,8 +94,8 @@ export interface ConfigServeur {
   general: {
     fuseau: string;
     theme: ThemeId | 'brand';
-    colors: CouleursTheme;
-    footer: string;
+    couleurs: CouleursTheme;
+    pied: string;
     salonStaffId: string | null;
     rotationStatut: boolean;
   };
@@ -110,13 +110,13 @@ export interface ConfigServeur {
     moderateur: string[];
     staff: string[];
     support: string[];
-    member: string[];
+    membre: string[];
   };
   bienvenue: {
-    channelId: string | null;
+    salonId: string | null;
     message: string;
     utiliserEmbed: boolean;
-    title: string;
+    titre: string;
     modeImage: 'none' | 'card' | 'url';
     urlImage: string;
     mpActif: boolean;
@@ -125,7 +125,7 @@ export interface ConfigServeur {
     formatCompteur: string;
   };
   depart: {
-    channelId: string | null;
+    salonId: string | null;
     message: string;
     utiliserEmbed: boolean;
   };
@@ -136,7 +136,7 @@ export interface ConfigServeur {
   };
   journaux: {
     salonSecoursId: string | null;
-    channels: Partial<Record<TypeJournal, string>>;
+    salons: Partial<Record<TypeJournal, string>>;
     disabled: TypeJournal[];
     salonsIgnores: string[];
   };
@@ -155,7 +155,7 @@ export interface ConfigServeur {
     piedBienvenue: string;
     modeFermeture: 'delete' | 'archive';
     transcriptAuMembre: boolean;
-    counter: number;
+    compteur: number;
   };
   tirages: {
     salonDefautId: string | null;
@@ -168,12 +168,12 @@ export interface ConfigServeur {
     roleDefautId: string | null;
     messageLive: string;
     messageFin: string;
-    color: string;
+    couleur: string;
   };
   musique: {
     rolesDj: string[];
     volumeParDefaut: number;
-    maxQueue: number;
+    fileMax: number;
     quitterSiVideMinutes: number;
     annoncerLecture: boolean;
   };
@@ -185,13 +185,13 @@ export interface ConfigServeur {
     heuresEffaceesBan: number;
   };
   automod: {
-    spam: { enabled: boolean; messages: number; seconds: number };
-    repetitions: { enabled: boolean; count: number };
-    liens: { enabled: boolean; whitelist: string[] };
-    invites: { enabled: boolean };
-    motsInterdits: { enabled: boolean; mots: string[] };
-    mentions: { enabled: boolean; max: number };
-    majuscules: { enabled: boolean; percent: number; minLength: number };
+    spam: { actif: boolean; messages: number; secondes: number };
+    repetitions: { actif: boolean; nombre: number };
+    liens: { actif: boolean; whitelist: string[] };
+    invitations: { actif: boolean };
+    motsInterdits: { actif: boolean; mots: string[] };
+    mentions: { actif: boolean; max: number };
+    majuscules: { actif: boolean; pourcentage: number; longueurMin: number };
     action: ActionAutomod;
     minutesTimeout: number;
     ignorerStaff: boolean;
@@ -212,19 +212,19 @@ export interface ConfigServeur {
     cumulerRoles: boolean;
   };
   anciennete: {
-    paliers: { days: number; roleId: string }[];
-    stack: boolean;
+    paliers: { jours: number; roleId: string }[];
+    cumuler: boolean;
   };
   suggestions: {
-    channelId: string | null;
+    salonId: string | null;
     creerFil: boolean;
-    counter: number;
+    compteur: number;
   };
   anniversaires: {
-    channelId: string | null;
+    salonId: string | null;
     roleId: string | null;
     message: string;
-    hour: number;
+    heure: number;
   };
   rappels: {
     maxParMembre: number;
@@ -236,14 +236,14 @@ export interface ConfigServeur {
     prefixe: string;
   };
   invitations: {
-    channelId: string | null;
+    salonId: string | null;
     joursCompteFaux: number;
   };
   boosts: {
-    channelId: string | null;
+    salonId: string | null;
     message: string;
     roleBoosterId: string | null;
-    recompenses: { count: number; roleId: string | null; badgeId: string | null; pieces: number }[];
+    recompenses: { nombre: number; roleId: string | null; badgeId: string | null; pieces: number }[];
   };
   evenements: {
     salonDefautId: string | null;
@@ -265,22 +265,22 @@ export interface ConfigServeur {
     delaiMessageSecondes: number;
   };
   quetes: {
-    list: DefinitionQuete[];
-    paliersSerie: { days: number; pieces: number; xp: number }[];
+    liste: DefinitionQuete[];
+    paliersSerie: { jours: number; pieces: number; xp: number }[];
     annonce: boolean;
   };
   profils: {
     badgesAuto: boolean;
   };
   reglement: {
-    channelId: string | null;
-    title: string;
-    sections: { title: string; content: string }[];
+    salonId: string | null;
+    titre: string;
+    sections: { titre: string; contenu: string }[];
     roleAcceptationId: string | null;
     roleRetireId: string | null;
   };
   verification: {
-    channelId: string | null;
+    salonId: string | null;
     roleVerifieId: string | null;
     roleNonVerifieId: string | null;
     method: 'button' | 'captcha';
@@ -297,24 +297,24 @@ export interface ConfigServeur {
   };
   antinuke: {
     fenetreSecondes: number;
-    thresholds: {
+    seuils: {
       channelDelete: number;
       channelCreate: number;
       roleDelete: number;
       roleCreate: number;
-      ban: number;
-      kick: number;
+      bannir: number;
+      expulser: number;
       creationWebhook: number;
     };
     action: 'alert' | 'strip' | 'kick' | 'ban';
     membresDeConfiance: string[];
   };
   signalements: {
-    channelId: string | null;
+    salonId: string | null;
     mode: 'channel' | 'ticket';
   };
   avis: {
-    channelId: string | null;
+    salonId: string | null;
   };
   formulaires: {
     salonPartenariatsId: string | null;
@@ -352,19 +352,19 @@ export function configParDefaut(): ConfigServeur {
     general: {
       fuseau: environnement.fuseauParDefaut,
       theme: 'brand',
-      colors: { ...THEMES.twitch.colors },
-      footer: '',
+      couleurs: { ...THEMES.twitch.colors },
+      pied: '',
       salonStaffId: null,
       rotationStatut: true,
     },
     prefixes: { ...PREFIXES_DEFAUT },
     commandes: { salonsAutorises: [], effacerCommande: false },
-    permissions: { streamer: [], admin: [], moderateur: [], staff: [], support: [], member: [] },
+    permissions: { streamer: [], admin: [], moderateur: [], staff: [], support: [], membre: [] },
     bienvenue: {
-      channelId: null,
+      salonId: null,
       message: '🎉 Bienvenue {mention} !\n\nTu es maintenant membre de **{server}**.\n\nNous sommes désormais **{membercount} membres** !',
       utiliserEmbed: true,
-      title: '👋 BIENVENUE',
+      titre: '👋 BIENVENUE',
       modeImage: 'card',
       urlImage: '',
       mpActif: false,
@@ -373,12 +373,12 @@ export function configParDefaut(): ConfigServeur {
       formatCompteur: '👥 Membres : {membercount}',
     },
     depart: {
-      channelId: null,
+      salonId: null,
       message: '👋 **{username}** a quitté le serveur.\nNous sommes maintenant **{membercount} membres**.',
       utiliserEmbed: true,
     },
     rolesAuto: { rolesMembres: [], rolesBots: [], delaiSecondes: 0 },
-    journaux: { salonSecoursId: null, channels: {}, disabled: [], salonsIgnores: [] },
+    journaux: { salonSecoursId: null, salons: {}, disabled: [], salonsIgnores: [] },
     tickets: {
       salonPanneauId: null,
       categorieParenteId: null,
@@ -394,7 +394,7 @@ export function configParDefaut(): ConfigServeur {
       piedBienvenue: 'Ferme le ticket une fois réglé — tu recevras la conversation en MP.',
       modeFermeture: 'delete',
       transcriptAuMembre: true,
-      counter: 0,
+      compteur: 0,
     },
     tirages: { salonDefautId: null, roleMentionId: null, mpGagnants: true, journaliserParticipations: false },
     twitch: {
@@ -402,9 +402,9 @@ export function configParDefaut(): ConfigServeur {
       roleDefautId: null,
       messageLive: '🔴 **{streamer}** est en LIVE ! {role}',
       messageFin: '⚫ Le live de **{streamer}** est terminé. Merci à tous d\'être passés !',
-      color: '#9146FF',
+      couleur: '#9146FF',
     },
-    musique: { rolesDj: [], volumeParDefaut: 60, maxQueue: 200, quitterSiVideMinutes: 2, annoncerLecture: true },
+    musique: { rolesDj: [], volumeParDefaut: 60, fileMax: 200, quitterSiVideMinutes: 2, annoncerLecture: true },
     moderation: {
       mpSanction: true,
       texteContact: 'Si tu souhaites discuter de ta sanction, ouvre un ticket sur le serveur.',
@@ -417,16 +417,16 @@ export function configParDefaut(): ConfigServeur {
       minutesTimeoutDefaut: 10,
     },
     automod: {
-      spam: { enabled: true, messages: 6, seconds: 5 },
-      repetitions: { enabled: true, count: 4 },
+      spam: { actif: true, messages: 6, secondes: 5 },
+      repetitions: { actif: true, nombre: 4 },
       liens: {
-        enabled: false,
+        actif: false,
         whitelist: ['youtube.com', 'youtu.be', 'twitch.tv', 'twitter.com', 'x.com', 'instagram.com', 'tiktok.com', 'discord.com', 'tenor.com', 'giphy.com'],
       },
-      invites: { enabled: true },
-      motsInterdits: { enabled: false, mots: [] },
-      mentions: { enabled: true, max: 6 },
-      majuscules: { enabled: false, percent: 75, minLength: 12 },
+      invitations: { actif: true },
+      motsInterdits: { actif: false, mots: [] },
+      mentions: { actif: true, max: 6 },
+      majuscules: { actif: false, pourcentage: 75, longueurMin: 12 },
       action: 'delete',
       minutesTimeout: 5,
       ignorerStaff: true,
@@ -446,20 +446,20 @@ export function configParDefaut(): ConfigServeur {
       rolesSansXp: [],
       cumulerRoles: true,
     },
-    anciennete: { paliers: [], stack: false },
-    suggestions: { channelId: null, creerFil: false, counter: 0 },
+    anciennete: { paliers: [], cumuler: false },
+    suggestions: { salonId: null, creerFil: false, compteur: 0 },
     anniversaires: {
-      channelId: null,
+      salonId: null,
       roleId: null,
       message: '🎂 Joyeux anniversaire {mention} ! 🎉\n\nToute la communauté te souhaite une excellente journée !',
-      hour: 9,
+      heure: 9,
     },
     rappels: { maxParMembre: 25 },
     annonces: { salonDefautId: null },
     commandesPerso: { prefixe: '!' },
-    invitations: { channelId: null, joursCompteFaux: 7 },
+    invitations: { salonId: null, joursCompteFaux: 7 },
     boosts: {
-      channelId: null,
+      salonId: null,
       message: '🚀 Merci {mention} pour le boost ! Le serveur compte maintenant **{boosts} boosts** 💜',
       roleBoosterId: null,
       recompenses: [],
@@ -475,33 +475,33 @@ export function configParDefaut(): ConfigServeur {
       delaiMessageSecondes: 60,
     },
     quetes: {
-      list: [
+      liste: [
         { id: 'messages20', libelle: 'Envoyer 20 messages', type: 'messages', cible: 20, recompenseXp: 100, recompensePieces: 50 },
         { id: 'voice30', libelle: 'Passer 30 minutes en vocal', type: 'voice_minutes', cible: 30, recompenseXp: 150, recompensePieces: 50 },
         { id: 'daily', libelle: 'Récupérer ta récompense /daily', type: 'daily', cible: 1, recompenseXp: 50, recompensePieces: 0 },
       ],
       paliersSerie: [
-        { days: 7, pieces: 200, xp: 200 },
-        { days: 30, pieces: 1000, xp: 1000 },
+        { jours: 7, pieces: 200, xp: 200 },
+        { jours: 30, pieces: 1000, xp: 1000 },
       ],
       annonce: true,
     },
     profils: { badgesAuto: true },
     reglement: {
-      channelId: null,
-      title: '📜 RÈGLEMENT',
+      salonId: null,
+      titre: '📜 RÈGLEMENT',
       sections: [
-        { title: '🤝 Respect', content: 'Sois respectueux envers tous les membres. Aucune insulte, discrimination ou harcèlement.' },
-        { title: '💬 Salons', content: 'Utilise les salons pour leur usage prévu. Pas de spam ni de flood.' },
-        { title: '📢 Publicité', content: "La publicité non autorisée est interdite, y compris en message privé." },
-        { title: '🔞 Contenu', content: 'Aucun contenu NSFW, choquant ou illégal.' },
-        { title: '🛡️ Staff', content: "Les décisions du staff doivent être respectées. En cas de désaccord, ouvre un ticket." },
+        { titre: '🤝 Respect', contenu: 'Sois respectueux envers tous les membres. Aucune insulte, discrimination ou harcèlement.' },
+        { titre: '💬 Salons', contenu: 'Utilise les salons pour leur usage prévu. Pas de spam ni de flood.' },
+        { titre: '📢 Publicité', contenu: "La publicité non autorisée est interdite, y compris en message privé." },
+        { titre: '🔞 Contenu', contenu: 'Aucun contenu NSFW, choquant ou illégal.' },
+        { titre: '🛡️ Staff', contenu: "Les décisions du staff doivent être respectées. En cas de désaccord, ouvre un ticket." },
       ],
       roleAcceptationId: null,
       roleRetireId: null,
     },
     verification: {
-      channelId: null,
+      salonId: null,
       roleVerifieId: null,
       roleNonVerifieId: null,
       method: 'button',
@@ -518,12 +518,12 @@ export function configParDefaut(): ConfigServeur {
     },
     antinuke: {
       fenetreSecondes: 30,
-      thresholds: { channelDelete: 3, channelCreate: 8, roleDelete: 3, roleCreate: 8, ban: 4, kick: 5, creationWebhook: 4 },
+      seuils: { channelDelete: 3, channelCreate: 8, roleDelete: 3, roleCreate: 8, bannir: 4, expulser: 5, creationWebhook: 4 },
       action: 'alert',
       membresDeConfiance: [],
     },
-    signalements: { channelId: null, mode: 'channel' },
-    avis: { channelId: null },
+    signalements: { salonId: null, mode: 'channel' },
+    avis: { salonId: null },
     formulaires: { salonPartenariatsId: null, salonCandidaturesId: null },
     statistiques: { suivreVocal: true },
     concours: { salonDefautId: null },

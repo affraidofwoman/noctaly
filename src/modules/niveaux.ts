@@ -598,7 +598,7 @@ const JOURS_DEFAUT = [30, 90, 180];
 
 export async function synchroniserAnciennete(serveur: Guild, progression?: (fait: number, total: number) => void): Promise<number> {
   const reglages = lireConfig(serveur.id).anciennete;
-  const paliers = reglages.paliers.filter((t) => t.roleId && t.days > 0).sort((a, b) => a.days - b.days);
+  const paliers = reglages.paliers.filter((t) => t.roleId && t.jours > 0).sort((a, b) => a.jours - b.jours);
   if (!paliers.length) return 0;
   const membres = await serveur.members.fetch().catch(() => serveur.members.cache);
   let changements = 0;
@@ -608,14 +608,14 @@ export async function synchroniserAnciennete(serveur: Guild, progression?: (fait
     progression?.(++fait, membres.size);
     if (membre.user.bot || !membre.joinedTimestamp) continue;
     const jours = joursDepuis(membre.joinedTimestamp);
-    const obtenus = paliers.filter((t) => jours >= t.days);
-    const cible = reglages.stack ? obtenus : obtenus.slice(-1);
+    const obtenus = paliers.filter((t) => jours >= t.jours);
+    const cible = reglages.cumuler ? obtenus : obtenus.slice(-1);
     const ciblesIds = new Set(cible.map((t) => t.roleId));
     const ajouter = rolesAttribuables(serveur, [...ciblesIds]).filter((r) => !membre.roles.cache.has(r.id));
-    const retirer = reglages.stack ? [] : rolesAttribuables(serveur, paliers.map((t) => t.roleId)).filter((r) => !ciblesIds.has(r.id) && membre.roles.cache.has(r.id));
+    const retirer = reglages.cumuler ? [] : rolesAttribuables(serveur, paliers.map((t) => t.roleId)).filter((r) => !ciblesIds.has(r.id) && membre.roles.cache.has(r.id));
     if (ajouter.length) await membre.roles.add(ajouter, 'Ancienneté').then(() => changements++).catch(() => undefined);
     if (retirer.length) await membre.roles.remove(retirer, 'Ancienneté').catch(() => undefined);
-    if (jours >= meilleurs.days) donnerBadge(serveur.id, membre.id, 'og');
+    if (jours >= meilleurs.jours) donnerBadge(serveur.id, membre.id, 'og');
   }
   if (changements) void journal(serveur, 'autorole', { titre: 'Rôles d’ancienneté', ton: 'ok', lignes: [`**${changements}** membre(s) ont reçu un nouveau rôle d’ancienneté.`] });
   return changements;
@@ -631,7 +631,7 @@ function champsPalier(indice: number): ChampReglage[] {
       lire: (c) => c.anciennete.paliers[indice]?.roleId || null,
       ecrire: (c, v) => {
         const paliers = [...c.anciennete.paliers];
-        while (paliers.length <= indice) paliers.push({ days: JOURS_DEFAUT[paliers.length] ?? 365, roleId: '' });
+        while (paliers.length <= indice) paliers.push({ jours: JOURS_DEFAUT[paliers.length] ?? 365, roleId: '' });
         paliers[indice] = { ...paliers[indice]!, roleId: v ?? '' };
         c.anciennete.paliers = paliers;
       },
@@ -647,11 +647,11 @@ function champJours(indice: number): ChampReglage {
     min: 1,
     max: 3650,
     unite: 'j',
-    lire: (c) => c.anciennete.paliers[indice]?.days ?? JOURS_DEFAUT[indice] ?? 365,
+    lire: (c) => c.anciennete.paliers[indice]?.jours ?? JOURS_DEFAUT[indice] ?? 365,
     ecrire: (c, v) => {
       const paliers = [...c.anciennete.paliers];
-      while (paliers.length <= indice) paliers.push({ days: JOURS_DEFAUT[paliers.length] ?? 365, roleId: '' });
-      paliers[indice] = { ...paliers[indice]!, days: v };
+      while (paliers.length <= indice) paliers.push({ jours: JOURS_DEFAUT[paliers.length] ?? 365, roleId: '' });
+      paliers[indice] = { ...paliers[indice]!, jours: v };
       c.anciennete.paliers = paliers;
     },
   };
@@ -669,7 +669,7 @@ const pageReglageAnciennete: PageReglage = {
     ...champsPalier(0),
     ...champsPalier(1),
     ...champsPalier(2),
-    { genre: 'toggle', cle: 'stack', libelle: 'Cumuler les paliers', lire: (c) => c.anciennete.stack, ecrire: (c, v) => void (c.anciennete.stack = v) },
+    { genre: 'toggle', cle: 'stack', libelle: 'Cumuler les paliers', lire: (c) => c.anciennete.cumuler, ecrire: (c, v) => void (c.anciennete.cumuler = v) },
     champJours(0),
     champJours(1),
     champJours(2),

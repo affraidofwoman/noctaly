@@ -213,7 +213,7 @@ const registreBienvenue = creerRegistre('bienvenue');
 export async function envoyerBienvenue(membre: GuildMember): Promise<string | null> {
   const serveur = membre.guild;
   const reglages = lireConfig(serveur.id).bienvenue;
-  const salon = resoudreSalonTexte(serveur, reglages.channelId);
+  const salon = resoudreSalonTexte(serveur, reglages.salonId);
   if (!salon) return null;
 
   const texte = remplirModele(reglages.message, { membre, serveur });
@@ -229,7 +229,7 @@ export async function envoyerBienvenue(membre: GuildMember): Promise<string | nu
 
   const embed = new EmbedBuilder()
     .setColor(couleurPour(serveur))
-    .setTitle(remplirModele(reglages.title || `${emojiPour(serveur.id, 'bienvenue')} Nouveau membre`, { membre, serveur }).slice(0, 256))
+    .setTitle(remplirModele(reglages.titre || `${emojiPour(serveur.id, 'bienvenue')} Nouveau membre`, { membre, serveur }).slice(0, 256))
     .setDescription(tronquer(texte, 4096))
     .setFooter({ text: `${membre.user.tag} · ${serveur.memberCount}ᵉ membre`, iconURL: membre.user.displayAvatarURL({ size: 64 }) })
     .setTimestamp();
@@ -256,7 +256,6 @@ async function envoyerBienvenueMp(membre: GuildMember): Promise<void> {
     .setThumbnail(membre.guild.iconURL({ size: 128 }));
   await membre.send({ embeds: [embed] }).catch(() => undefined);
 }
-
 
 const compteursEnAttente = new Set<string>();
 const dernierRenommage = new Map<string, number>();
@@ -291,7 +290,7 @@ const pageReglage: PageReglage = {
   ordre: 1,
   description: `Le message posté à chaque arrivée, avec la carte aux couleurs de l’enseigne.\n-# Variables : ${['mention', 'user', 'username', 'server', 'membercount', 'createdat'].map((v) => `\`{${v}}\``).join(' ')}`,
   champs: [
-    { genre: 'channel', cle: 'channel', libelle: 'Salon de bienvenue', lire: (c) => c.bienvenue.channelId, ecrire: (c, v) => void (c.bienvenue.channelId = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon de bienvenue', lire: (c) => c.bienvenue.salonId, ecrire: (c, v) => void (c.bienvenue.salonId = v) },
     {
       genre: 'channel',
       cle: 'counter',
@@ -314,7 +313,7 @@ const pageReglage: PageReglage = {
     },
     { genre: 'toggle', cle: 'embed', libelle: 'Embed', lire: (c) => c.bienvenue.utiliserEmbed, ecrire: (c, v) => void (c.bienvenue.utiliserEmbed = v) },
     { genre: 'toggle', cle: 'dm', libelle: 'Message privé', lire: (c) => c.bienvenue.mpActif, ecrire: (c, v) => void (c.bienvenue.mpActif = v) },
-    { genre: 'text', cle: 'title', libelle: 'Titre', longueurMax: 200, lire: (c) => c.bienvenue.title, ecrire: (c, v) => void (c.bienvenue.title = v) },
+    { genre: 'text', cle: 'title', libelle: 'Titre', longueurMax: 200, lire: (c) => c.bienvenue.titre, ecrire: (c, v) => void (c.bienvenue.titre = v) },
     { genre: 'text', cle: 'message', libelle: 'Message', long: true, longueurMax: 2000, obligatoire: true, lire: (c) => c.bienvenue.message, ecrire: (c, v) => void (c.bienvenue.message = v) },
     { genre: 'text', cle: 'dmmessage', libelle: 'Message privé', long: true, longueurMax: 2000, lire: (c) => c.bienvenue.messageMp, ecrire: (c, v) => void (c.bienvenue.messageMp = v) },
     {
@@ -396,7 +395,7 @@ const registreDepart = creerRegistre('depart');
 export async function envoyerDepart(membre: GuildMember | PartialGuildMember): Promise<string | null> {
   const serveur = membre.guild;
   const reglages = lireConfig(serveur.id).depart;
-  const salon = resoudreSalonTexte(serveur, reglages.channelId);
+  const salon = resoudreSalonTexte(serveur, reglages.salonId);
   if (!salon || !membre.user) return null;
   const texte = remplirModele(reglages.message, { utilisateur: membre.user, serveur });
   if (!reglages.utiliserEmbed) {
@@ -431,7 +430,7 @@ const pageReglageDepart: PageReglage = {
   ordre: 2,
   description: 'Le message posté quand quelqu’un quitte le serveur.\n-# Variables : `{user}` `{username}` `{server}` `{membercount}`',
   champs: [
-    { genre: 'channel', cle: 'channel', libelle: 'Salon des départs', lire: (c) => c.depart.channelId, ecrire: (c, v) => void (c.depart.channelId = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des départs', lire: (c) => c.depart.salonId, ecrire: (c, v) => void (c.depart.salonId = v) },
     { genre: 'toggle', cle: 'embed', libelle: 'Embed + statistiques', lire: (c) => c.depart.utiliserEmbed, ecrire: (c, v) => void (c.depart.utiliserEmbed = v) },
     { genre: 'text', cle: 'message', libelle: 'Message', long: true, longueurMax: 2000, obligatoire: true, lire: (c) => c.depart.message, ecrire: (c, v) => void (c.depart.message = v) },
   ],

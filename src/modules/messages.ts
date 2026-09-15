@@ -60,13 +60,13 @@ export interface Brouillon {
   image: string;
   miniature: string;
   horodatage: boolean;
-  champs: { name: string; value: string; inline: boolean }[];
-  boutons: { label: string; url: string }[];
+  champs: { nom: string; valeur: string; enLigne: boolean }[];
+  boutons: { libelle: string; url: string }[];
   contenu: string;
   salonId: string | null;
   roleId: string | null;
   mentionTous: boolean;
-  messageAModifier: { channelId: string; messageId: string } | null;
+  messageAModifier: { salonId: string; messageId: string } | null;
 }
 
 const brouillons = new CarteExpirante<string, Brouillon>(45 * 60_000);
@@ -91,7 +91,7 @@ export function nouveauBrouillon(serveur: Guild, proprietaireId: string, genre: 
     miniature: '',
     horodatage: genre === 'announce',
     champs: [],
-    boutons: genre === 'announce' && enseigne.pseudoTwitch ? [{ label: '🔴 Twitch', url: `https://twitch.tv/${enseigne.pseudoTwitch}` }] : [],
+    boutons: genre === 'announce' && enseigne.pseudoTwitch ? [{ libelle: '🔴 Twitch', url: `https://twitch.tv/${enseigne.pseudoTwitch}` }] : [],
     contenu: '',
     salonId: null,
     roleId: null,
@@ -125,14 +125,14 @@ export function construireEmbed(serveur: Guild, d: Brouillon): EmbedBuilder {
   if (d.image && estLienHttp(d.image)) embed.setImage(d.image);
   if (d.miniature && estLienHttp(d.miniature)) embed.setThumbnail(d.miniature);
   if (d.horodatage) embed.setTimestamp();
-  for (const f of d.champs.slice(0, 25)) embed.addFields({ name: tronquer(f.name, 256), value: tronquer(f.value, 1024), inline: f.inline });
+  for (const f of d.champs.slice(0, 25)) embed.addFields({ name: tronquer(f.nom, 256), value: tronquer(f.valeur, 1024), inline: f.enLigne });
   if (!d.titre && !d.description && !d.champs.length && !d.image) embed.setDescription('​');
   return embed;
 }
 
 function rangeesLiens(d: Brouillon) {
   if (!d.boutons.length) return [];
-  return [rangee(...d.boutons.slice(0, 5).map((b) => boutonLien(b.url, b.label)))];
+  return [rangee(...d.boutons.slice(0, 5).map((b) => boutonLien(b.url, b.libelle)))];
 }
 
 export function affichageEditeur(serveur: Guild, d: Brouillon, note?: string) {
@@ -257,7 +257,7 @@ async function publier(interaction: ButtonInteraction<'cached'>, d: Brouillon): 
   const embed = construireEmbed(serveur, d);
   const composants = rangeesLiens(d);
   if (d.messageAModifier) {
-    const salon = serveur.channels.cache.get(d.messageAModifier.channelId) as GuildTextBasedChannel | undefined;
+    const salon = serveur.channels.cache.get(d.messageAModifier.salonId) as GuildTextBasedChannel | undefined;
     const message = salon?.isTextBased() ? await salon.messages.fetch(d.messageAModifier.messageId).catch(() => null) : null;
     if (!message || message.author.id !== interaction.client.user.id) throw new ErreurUtilisateur('Le message à modifier est introuvable (ou n’a pas été envoyé par le bot).');
     await message.edit({ content: d.contenu || null, embeds: [embed], components: composants });
@@ -313,11 +313,11 @@ export async function surFenetreRedaction(interaction: ModalSubmitInteraction<'c
       d.miniature = valeurChamp('thumbnail');
       break;
     case 'fieldm':
-      d.champs.push({ name: valeurChamp('name'), value: valeurChamp('value'), inline: /^o(ui)?|y(es)?$/i.test(valeurChamp('inline')) });
+      d.champs.push({ nom: valeurChamp('name'), valeur: valeurChamp('value'), enLigne: /^o(ui)?|y(es)?$/i.test(valeurChamp('inline')) });
       break;
     case 'linkm':
       if (!estLienHttp(valeurChamp('url'))) throw new ErreurUtilisateur('Le lien du bouton doit commencer par http(s)://');
-      d.boutons.push({ label: valeurChamp('label'), url: valeurChamp('url') });
+      d.boutons.push({ libelle: valeurChamp('label'), url: valeurChamp('url') });
       break;
     case 'metam':
       if (lienInvalide(valeurChamp('authorIcon'))) throw new ErreurUtilisateur('L’icône doit être un lien http(s).');
@@ -331,7 +331,7 @@ export async function surFenetreRedaction(interaction: ModalSubmitInteraction<'c
       if (boutonSaisi) {
         const [libelle, url] = boutonSaisi.split('|').map((s) => s.trim());
         if (!libelle || !url || !estLienHttp(url)) throw new ErreurUtilisateur('Bouton attendu au format `Texte | https://lien`.');
-        d.boutons = [{ label: libelle, url }];
+        d.boutons = [{ libelle, url }];
       }
       Object.assign(d, { title: valeurChamp('title'), description: valeurChamp('message'), image: valeurChamp('image'), color: couleur });
       break;
@@ -348,7 +348,7 @@ const annonce: CommandeSlash = {
     const brouillon = nouveauBrouillon(interaction.guild, interaction.user.id, 'announce');
     brouillon.salonId = lireConfig(interaction.guildId).annonces.salonDefautId;
     stockerBrouillon(brouillon);
-    const boutonParDefaut = brouillon.boutons[0] ? `${brouillon.boutons[0].label} | ${brouillon.boutons[0].url}` : '';
+    const boutonParDefaut = brouillon.boutons[0] ? `${brouillon.boutons[0].libelle} | ${brouillon.boutons[0].url}` : '';
     await interaction.showModal(
       construireFormulaire(`an:announcem:${brouillon.id}`, 'Nouvelle annonce', [
         { id: 'title', libelle: 'Titre', valeur: '📢 NOUVELLE ANNONCE', longueurMax: 256, indication: '🎮 STREAM CE SOIR !' },

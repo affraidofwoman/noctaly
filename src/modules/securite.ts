@@ -243,16 +243,16 @@ export const moduleAntiraid: ModuleBot = {
 
 const registreAntinuke = creerRegistre('antinuke');
 
-type Compteur = 'channelDelete' | 'channelCreate' | 'roleDelete' | 'roleCreate' | 'ban' | 'kick' | 'creationWebhook';
+type Compteur = 'channelDelete' | 'channelCreate' | 'roleDelete' | 'roleCreate' | 'bannir' | 'expulser' | 'creationWebhook';
 
-const ACTIONS: Partial<Record<AuditLogEvent, { counter: Compteur; label: string }>> = {
-  [AuditLogEvent.ChannelDelete]: { counter: 'channelDelete', label: 'suppressions de salons' },
-  [AuditLogEvent.ChannelCreate]: { counter: 'channelCreate', label: 'créations de salons' },
-  [AuditLogEvent.RoleDelete]: { counter: 'roleDelete', label: 'suppressions de rôles' },
-  [AuditLogEvent.RoleCreate]: { counter: 'roleCreate', label: 'créations de rôles' },
-  [AuditLogEvent.MemberBanAdd]: { counter: 'ban', label: 'bannissements' },
-  [AuditLogEvent.MemberKick]: { counter: 'kick', label: 'expulsions' },
-  [AuditLogEvent.WebhookCreate]: { counter: 'creationWebhook', label: 'créations de webhooks' },
+const ACTIONS: Partial<Record<AuditLogEvent, { compteur: Compteur; libelle: string }>> = {
+  [AuditLogEvent.ChannelDelete]: { compteur: 'channelDelete', libelle: 'suppressions de salons' },
+  [AuditLogEvent.ChannelCreate]: { compteur: 'channelCreate', libelle: 'créations de salons' },
+  [AuditLogEvent.RoleDelete]: { compteur: 'roleDelete', libelle: 'suppressions de rôles' },
+  [AuditLogEvent.RoleCreate]: { compteur: 'roleCreate', libelle: 'créations de rôles' },
+  [AuditLogEvent.MemberBanAdd]: { compteur: 'bannir', libelle: 'bannissements' },
+  [AuditLogEvent.MemberKick]: { compteur: 'expulser', libelle: 'expulsions' },
+  [AuditLogEvent.WebhookCreate]: { compteur: 'creationWebhook', libelle: 'créations de webhooks' },
 };
 
 const DANGEREUSES = [
@@ -310,19 +310,19 @@ async function surAudit(entree: GuildAuditLogsEntry, serveur: Guild): Promise<vo
   const executantId = entree.executorId;
   if (!definition || !executantId || estDeConfiance(serveur, executantId)) return;
   const reglages = lireConfig(serveur.id).antinuke;
-  const seuil = reglages.thresholds[definition.counter];
+  const seuil = reglages.seuils[definition.compteur];
   if (!seuil) return;
-  const nombre = compterAction(`${serveur.id}:${executantId}:${definition.counter}`, reglages.fenetreSecondes * 1000);
+  const nombre = compterAction(`${serveur.id}:${executantId}:${definition.compteur}`, reglages.fenetreSecondes * 1000);
   if (nombre < seuil) return;
   const cle = `${serveur.id}:${executantId}`;
   if ((sanctionnes.get(cle) ?? 0) > Date.now()) return;
   sanctionnes.set(cle, Date.now() + 5 * 60_000);
 
-  const issue = await neutraliser(serveur, executantId, `Anti-nuke : ${nombre} ${definition.label} en ${reglages.fenetreSecondes} s`);
-  historiser(serveur.id, 'security', 'nuke', executantId, null, { counter: definition.counter, count: nombre, outcome: issue });
-  const lignes = [`**Compte** : <@${executantId}> \`${executantId}\``, `**Détecté** : ${nombre} ${definition.label} en ${reglages.fenetreSecondes} s (seuil ${seuil})`, `**Réaction** : ${issue}`];
+  const issue = await neutraliser(serveur, executantId, `Anti-nuke : ${nombre} ${definition.libelle} en ${reglages.fenetreSecondes} s`);
+  historiser(serveur.id, 'security', 'nuke', executantId, null, { counter: definition.compteur, count: nombre, outcome: issue });
+  const lignes = [`**Compte** : <@${executantId}> \`${executantId}\``, `**Détecté** : ${nombre} ${definition.libelle} en ${reglages.fenetreSecondes} s (seuil ${seuil})`, `**Réaction** : ${issue}`];
   void journal(serveur, 'security', { titre: 'Anti-nuke déclenché', ton: 'alerte', lignes });
-  registreAntinuke.avertir(`Anti-nuke sur ${serveur.id} : ${executantId} — ${definition.counter} ×${nombre} → ${issue}`);
+  registreAntinuke.avertir(`Anti-nuke sur ${serveur.id} : ${executantId} — ${definition.compteur} ×${nombre} → ${issue}`);
   const embed = new EmbedBuilder().setColor(couleurPour(serveur, 'error')).setTitle('💥 Anti-nuke déclenché').setDescription(lignes.join('\n')).setFooter({ text: serveur.name }).setTimestamp();
   for (const id of new Set([serveur.ownerId, ...membresListe('streamer', serveur.id)])) {
     const utilisateur = await serveur.client.users.fetch(id).catch(() => null);
@@ -367,7 +367,7 @@ const antinuke: CommandeSlash = {
           [
             `Fenêtre : **${reglages.fenetreSecondes} s** · réaction : **${reglages.action}**`,
             '',
-            ...Object.values(ACTIONS).map((a) => `• ${a!.label} — seuil **${reglages.thresholds[a!.counter]}**`),
+            ...Object.values(ACTIONS).map((a) => `• ${a!.libelle} — seuil **${reglages.seuils[a!.compteur]}**`),
             '',
             `Comptes de confiance : ${reglages.membresDeConfiance.map((id) => `<@${id}>`).join(' ') || '*aucun*'} (+ propriétaire, streamers, owners bot)`,
           ].join('\n'),
@@ -385,8 +385,8 @@ const champCompteur = (compteur: Compteur, libelle: string) => ({
   libelle,
   min: 1,
   max: 100,
-  lire: (c: import('../coeur/reglages').ConfigServeur) => c.antinuke.thresholds[compteur],
-  ecrire: (c: import('../coeur/reglages').ConfigServeur, v: number) => void (c.antinuke.thresholds[compteur] = v),
+  lire: (c: import('../coeur/reglages').ConfigServeur) => c.antinuke.seuils[compteur],
+  ecrire: (c: import('../coeur/reglages').ConfigServeur, v: number) => void (c.antinuke.seuils[compteur] = v),
 });
 
 const pageReglageAntinuke: PageReglage = {
@@ -413,7 +413,7 @@ const pageReglageAntinuke: PageReglage = {
     },
     champCompteur('channelDelete', 'Suppressions de salons'),
     champCompteur('roleDelete', 'Suppressions de rôles'),
-    champCompteur('ban', 'Bannissements'),
+    champCompteur('bannir', 'Bannissements'),
     champCompteur('channelCreate', 'Créations de salons'),
     { genre: 'number', cle: 'window', libelle: 'Fenêtre', min: 5, max: 600, unite: 's', lire: (c) => c.antinuke.fenetreSecondes, ecrire: (c, v) => void (c.antinuke.fenetreSecondes = v) },
   ],
@@ -470,7 +470,7 @@ const commandeVerifier: CommandeSlash = {
   async executer(interaction) {
     const reglages = lireConfig(interaction.guildId).verification;
     if (!reglages.roleVerifieId) throw new ErreurUtilisateur('Choisis d’abord le rôle « vérifié » dans `/setup` → Sécurité & accès.');
-    const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(interaction.guild, reglages.channelId) ?? interaction.channel) as GuildTextBasedChannel | null;
+    const salon = (interaction.options.getChannel('salon') ?? resoudreSalonTexte(interaction.guild, reglages.salonId) ?? interaction.channel) as GuildTextBasedChannel | null;
     if (!salon) throw new ErreurUtilisateur('Salon introuvable.');
     const embed = new EmbedBuilder()
       .setColor(couleurPour(interaction.guild))
@@ -504,7 +504,7 @@ const pageReglageVerification: PageReglage = {
       lire: (c) => c.verification.method,
       ecrire: (c, v) => void (c.verification.method = v as 'button' | 'captcha'),
     },
-    { genre: 'channel', cle: 'channel', libelle: 'Salon de vérification', lire: (c) => c.verification.channelId, ecrire: (c, v) => void (c.verification.channelId = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon de vérification', lire: (c) => c.verification.salonId, ecrire: (c, v) => void (c.verification.salonId = v) },
     { genre: 'number', cle: 'age', libelle: 'Âge minimum du compte', min: 0, max: 365, unite: 'j', lire: (c) => c.verification.ageCompteMinJours, ecrire: (c, v) => void (c.verification.ageCompteMinJours = v) },
   ],
 };

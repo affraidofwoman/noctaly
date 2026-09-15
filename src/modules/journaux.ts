@@ -92,8 +92,8 @@ async function surMessageModifie(avant: Message | PartialMessage, apres: Message
     ton: 'info',
     lignes: [`**Auteur** : <@${apres.author?.id}> \`${apres.author?.tag}\``, `**Salon** : <#${apres.channelId}> · [aller au message](${apres.url})`],
     champs: [
-      { name: 'Avant', value: avant.partial ? '*inconnu*' : citer(avant.content), inline: false },
-      { name: 'Après', value: citer(apres.content), inline: false },
+      { nom: 'Avant', valeur: avant.partial ? '*inconnu*' : citer(avant.content), enLigne: false },
+      { nom: 'Après', valeur: citer(apres.content), enLigne: false },
     ],
   });
 }
@@ -127,7 +127,6 @@ async function surVocal(avant: VoiceState, apres: VoiceState) {
     await journal(serveur, 'voice', { titre: 'Déplacement vocal', ton: 'info', lignes: [`<@${membre.id}> : <#${avant.channelId}> → <#${apres.channelId}>`] });
   }
 }
-
 
 type Changement = { key: string; old?: unknown; new?: unknown };
 

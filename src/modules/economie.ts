@@ -486,7 +486,7 @@ function recompense(serveurId: string, utilisateurId: string, xp: number, pieces
 function progression(client: Client | null, serveurId: string, utilisateurId: string, type: TypeActivite, montant: number): void {
   if (!moduleActif(serveurId, 'quests') || montant <= 0) return;
   const jour = aujourdhui(serveurId);
-  for (const quete of lireConfig(serveurId).quetes.list.filter((q) => q.type === type)) {
+  for (const quete of lireConfig(serveurId).quetes.liste.filter((q) => q.type === type)) {
     const rangee = lire<{ progression: number; terminee: number }>('SELECT progression, terminee FROM quetes WHERE serveur_id = ? AND utilisateur_id = ? AND jour = ? AND quete_id = ?', serveurId, utilisateurId, jour, quete.id);
     if (rangee?.terminee) continue;
     const valeur = Math.min(quete.cible, (rangee?.progression ?? 0) + montant);
@@ -524,7 +524,7 @@ function avancerSerie(client: Client | null, serveurId: string, utilisateurId: s
     record,
     jour,
   );
-  const palier = lireConfig(serveurId).quetes.paliersSerie.find((m) => m.days === actuel);
+  const palier = lireConfig(serveurId).quetes.paliersSerie.find((m) => m.jours === actuel);
   if (palier) {
     const gains = recompense(serveurId, utilisateurId, palier.xp, palier.pieces);
     void prevenir(client, serveurId, utilisateurId, `🔥 **Série de ${actuel} jours !**\nMerci pour ta fidélité. Récompense : **${gains}**`);
@@ -542,7 +542,7 @@ function embedQuetes(serveur: Guild, utilisateur: User) {
   const rangees = lireTout<{ quete_id: string; progression: number; terminee: number }>('SELECT quete_id, progression, terminee FROM quetes WHERE serveur_id = ? AND utilisateur_id = ? AND jour = ?', serveur.id, utilisateur.id, jour);
   const serie = lire<{ actuelle: number; record: number }>('SELECT actuelle, record FROM series WHERE serveur_id = ? AND utilisateur_id = ?', serveur.id, utilisateur.id);
   const economie = lireConfig(serveur.id).economie;
-  const lignes = lireConfig(serveur.id).quetes.list.map((q: DefinitionQuete) => {
+  const lignes = lireConfig(serveur.id).quetes.liste.map((q: DefinitionQuete) => {
     const r = rangees.find((x) => x.quete_id === q.id);
     const valeur = r?.progression ?? 0;
     const recompenses = [q.recompenseXp ? `+${q.recompenseXp} XP` : null, q.recompensePieces ? `+${q.recompensePieces} ${economie.emojiMonnaie}` : null].filter(Boolean).join(' · ');
@@ -597,10 +597,10 @@ const pageReglageQuetes: PageReglage = {
       libelle: 'Quêtes du jour',
       long: true,
       longueurMax: 1500,
-      lire: (c) => c.quetes.list.map((q) => `${q.type}:${q.cible}:${q.recompenseXp}:${q.recompensePieces}:${q.libelle}`).join('\n'),
+      lire: (c) => c.quetes.liste.map((q) => `${q.type}:${q.cible}:${q.recompenseXp}:${q.recompensePieces}:${q.libelle}`).join('\n'),
       ecrire: (c, v) => {
         const lu = lireQuetes(v);
-        if (lu) c.quetes.list = lu;
+        if (lu) c.quetes.liste = lu;
       },
       validate: (v) => (lireQuetes(v) ? null : 'Format : `messages:20:100:50:Envoyer 20 messages` (types : messages, voice_minutes, giveaways, daily).'),
     },
@@ -609,7 +609,7 @@ const pageReglageQuetes: PageReglage = {
       cle: 'milestones',
       libelle: 'Paliers de série',
       longueurMax: 300,
-      lire: (c) => c.quetes.paliersSerie.map((m) => `${m.days}:${m.pieces}:${m.xp}`).join(', '),
+      lire: (c) => c.quetes.paliersSerie.map((m) => `${m.jours}:${m.pieces}:${m.xp}`).join(', '),
       ecrire: (c, v) => {
         const lu = lirePaliers(v);
         if (lu) c.quetes.paliersSerie = lu;
@@ -629,15 +629,15 @@ export function lireQuetes(saisie: string): DefinitionQuete[] | null {
   return sortie.slice(0, 10);
 }
 
-export function lirePaliers(saisie: string): { days: number; pieces: number; xp: number }[] | null {
+export function lirePaliers(saisie: string): { jours: number; pieces: number; xp: number }[] | null {
   if (!saisie.trim()) return [];
-  const sortie: { days: number; pieces: number; xp: number }[] = [];
+  const sortie: { jours: number; pieces: number; xp: number }[] = [];
   for (const partie of saisie.split(',')) {
     const m = /^\s*(\d{1,4})\s*:\s*(\d{1,7})\s*:\s*(\d{1,7})\s*$/.exec(partie);
     if (!m) return null;
-    sortie.push({ days: Number(m[1]), pieces: Number(m[2]), xp: Number(m[3]) });
+    sortie.push({ jours: Number(m[1]), pieces: Number(m[2]), xp: Number(m[3]) });
   }
-  return sortie.sort((a, b) => a.days - b.days).slice(0, 10);
+  return sortie.sort((a, b) => a.jours - b.jours).slice(0, 10);
 }
 
 export const moduleQuetes: ModuleBot = {
@@ -674,7 +674,7 @@ const boostsRecents = new Map<string, number>();
 async function appliquerRecompenses(membre: GuildMember, nombre: number): Promise<string[]> {
   const serveur = membre.guild;
   const donnes: string[] = [];
-  for (const r of lireConfig(serveur.id).boosts.recompenses.filter((x) => x.count === nombre)) {
+  for (const r of lireConfig(serveur.id).boosts.recompenses.filter((x) => x.nombre === nombre)) {
     const role = r.roleId ? serveur.roles.cache.get(r.roleId) : null;
     if (role && botPeutGererRole(serveur, role)) {
       await membre.roles.add(role, `Récompense de ${nombre} boost(s)`).catch(() => undefined);
@@ -710,7 +710,7 @@ async function enregistrerBoost(membre: GuildMember): Promise<void> {
   donnerBadge(serveur.id, membre.id, 'vip');
   const recompenses = await appliquerRecompenses(membre, nombre);
   void journal(serveur, 'boost', { titre: 'Nouveau boost', ton: 'ok', lignes: [`**Membre** : <@${membre.id}>`, `**Boosts de ce membre** : ${nombre}`, `**Boosts du serveur** : ${serveur.premiumSubscriptionCount ?? 0}`, recompenses.length ? `**Récompenses** : ${recompenses.join(', ')}` : null] });
-  const salon = resoudreSalonTexte(serveur, reglages.channelId);
+  const salon = resoudreSalonTexte(serveur, reglages.salonId);
   if (!salon) return;
   const embed = new EmbedBuilder()
     .setColor(couleurPour(serveur))
@@ -756,13 +756,13 @@ const boost: CommandeSlash = {
     if (sousCommande === 'recompenses') {
       const recompenses = lireConfig(serveur.id).boosts.recompenses;
       return repondre(interaction, {
-        embeds: [info(serveur, recompenses.map((r) => `**${r.count} boost(s)** → ${[r.roleId ? `<@&${r.roleId}>` : null, r.badgeId ? `badge \`${r.badgeId}\`` : null, r.pieces ? `${r.pieces} pièces` : null].filter(Boolean).join(', ')}`).join('\n') || 'Aucune récompense.', { titre: 'Récompenses de boost', sujet: '🚀' })],
+        embeds: [info(serveur, recompenses.map((r) => `**${r.nombre} boost(s)** → ${[r.roleId ? `<@&${r.roleId}>` : null, r.badgeId ? `badge \`${r.badgeId}\`` : null, r.pieces ? `${r.pieces} pièces` : null].filter(Boolean).join(', ')}`).join('\n') || 'Aucune récompense.', { titre: 'Récompenses de boost', sujet: '🚀' })],
         ephemeral: true,
       });
     }
     const nombre = interaction.options.getInteger('boosts', true);
     if (sousCommande === 'retirer') {
-      modifierConfig(serveur.id, (c) => void (c.boosts.recompenses = c.boosts.recompenses.filter((r) => r.count !== nombre)));
+      modifierConfig(serveur.id, (c) => void (c.boosts.recompenses = c.boosts.recompenses.filter((r) => r.nombre !== nombre)));
       return repondre(interaction, { embeds: [ok(serveur, `Récompenses du palier ${nombre} retirées.`)], ephemeral: true });
     }
     const role = interaction.options.getRole('role');
@@ -771,7 +771,7 @@ const boost: CommandeSlash = {
     if (!role && !badgeId && !pieces) throw new ErreurUtilisateur('Choisis au moins un rôle, un badge ou des pièces.');
     if (role && !botPeutGererRole(serveur, serveur.roles.cache.get(role.id)!)) throw new ErreurUtilisateur('Je ne peux pas donner ce rôle.');
     if (badgeId && !lireBadge(serveur.id, badgeId)) throw new ErreurUtilisateur('Badge introuvable (voir `/badge liste`).');
-    modifierConfig(serveur.id, (c) => c.boosts.recompenses.push({ count: nombre, roleId: role?.id ?? null, badgeId, pieces }));
+    modifierConfig(serveur.id, (c) => c.boosts.recompenses.push({ nombre, roleId: role?.id ?? null, badgeId, pieces }));
     return repondre(interaction, { embeds: [ok(serveur, `Récompense ajoutée au palier **${nombre} boost(s)**.`)], ephemeral: true });
   },
 };
@@ -785,7 +785,7 @@ const pageReglageBoosts: PageReglage = {
   ordre: 13,
   description: 'Remercier les boosters, leur donner un rôle et des récompenses par palier (`/boost recompense`).\n-# Variables : `{mention}` `{user}` `{boosts}`',
   champs: [
-    { genre: 'channel', cle: 'channel', libelle: 'Salon des remerciements', lire: (c) => c.boosts.channelId, ecrire: (c, v) => void (c.boosts.channelId = v) },
+    { genre: 'channel', cle: 'channel', libelle: 'Salon des remerciements', lire: (c) => c.boosts.salonId, ecrire: (c, v) => void (c.boosts.salonId = v) },
     { genre: 'role', cle: 'role', libelle: 'Rôle booster', attribuable: true, lire: (c) => c.boosts.roleBoosterId, ecrire: (c, v) => void (c.boosts.roleBoosterId = v) },
     { genre: 'text', cle: 'message', libelle: 'Message', long: true, longueurMax: 1500, obligatoire: true, lire: (c) => c.boosts.message, ecrire: (c, v) => void (c.boosts.message = v) },
   ],
@@ -824,7 +824,7 @@ export const moduleBoosts: ModuleBot = {
       description: 'Voir le message de remerciement à ton nom (sans compter de boost)',
       async executer(interaction) {
         const reglages = lireConfig(interaction.guildId).boosts;
-        const salon = resoudreSalonTexte(interaction.guild, reglages.channelId);
+        const salon = resoudreSalonTexte(interaction.guild, reglages.salonId);
         if (!salon) return '⚠️ Aucun salon de remerciements utilisable.';
         await salon.send({ embeds: [new EmbedBuilder().setColor(couleurPour(interaction.guild)).setTitle('🚀 NOUVEAU BOOST ! (test)').setDescription(remplirModele(reglages.message, { membre: interaction.member, serveur: interaction.guild }))], allowedMentions: { parse: [] } });
         return `✅ Message de test posté dans <#${salon.id}>.`;

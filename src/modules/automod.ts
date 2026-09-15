@@ -8,7 +8,6 @@ import { creerRegistre, Delais, LimiteurFenetre, tronquer, Niveau } from '../coe
 import { type ConfigServeur, lireConfig, modifierConfig } from '../coeur/reglages';
 import { appliquerSanction } from './moderation';
 
-
 export const MOTS_DEFAUT = [
   'negre', 'negro', 'nigger', 'nigga', 'bougnoule', 'bicot', 'youpin', 'chintok', 'niakoue',
   'nazi', 'heilhitler', 'siegheil',
@@ -138,21 +137,21 @@ export interface VerdictContenu {
 }
 
 export function verifierContenu(reglages: ConfigServeur['automod'], contenu: string, nombreMentions: number, mentionneTous: boolean): VerdictContenu | null {
-  if (reglages.invites.enabled && contientInvitation(contenu)) return { regle: 'invites', detail: contenu.match(INVITATION)?.[0] ?? '' };
-  if (reglages.liens.enabled) {
+  if (reglages.invitations.actif && contientInvitation(contenu)) return { regle: 'invites', detail: contenu.match(INVITATION)?.[0] ?? '' };
+  if (reglages.liens.actif) {
     const lien = lienInterdit(contenu, reglages.liens.whitelist);
     if (lien) return { regle: 'links', detail: lien };
   }
-  if (reglages.motsInterdits.enabled) {
+  if (reglages.motsInterdits.actif) {
     const mot = trouverMotInterdit(reglages.motsInterdits.mots, contenu);
     if (mot) return { regle: 'badWords', detail: mot };
   }
-  if (reglages.mentions.enabled && (nombreMentions > reglages.mentions.max || mentionneTous)) {
+  if (reglages.mentions.actif && (nombreMentions > reglages.mentions.max || mentionneTous)) {
     return { regle: 'mentions', detail: mentionneTous ? '@everyone/@here' : `${nombreMentions} mentions` };
   }
-  if (reglages.majuscules.enabled) {
+  if (reglages.majuscules.actif) {
     const { lettres, taux } = tauxMajuscules(contenu);
-    if (lettres >= reglages.majuscules.minLength && taux * 100 >= reglages.majuscules.percent) return { regle: 'caps', detail: `${Math.round(taux * 100)} %` };
+    if (lettres >= reglages.majuscules.longueurMin && taux * 100 >= reglages.majuscules.pourcentage) return { regle: 'caps', detail: `${Math.round(taux * 100)} %` };
   }
   return null;
 }
@@ -247,11 +246,11 @@ async function surMessage(message: Message): Promise<'stop' | void> {
     await sanctionner(message, verdict.regle, verdict.detail);
     return 'stop';
   }
-  if (reglages.spam.enabled && spamDetecte(message.guildId, message.author.id, reglages.spam.messages, reglages.spam.seconds)) {
-    await sanctionner(message, 'spam', `${reglages.spam.messages} messages / ${reglages.spam.seconds} s`);
+  if (reglages.spam.actif && spamDetecte(message.guildId, message.author.id, reglages.spam.messages, reglages.spam.secondes)) {
+    await sanctionner(message, 'spam', `${reglages.spam.messages} messages / ${reglages.spam.secondes} s`);
     return 'stop';
   }
-  if (reglages.repetitions.enabled && contenu && repetitionDetectee(message.guildId, message.author.id, contenu, reglages.repetitions.count)) {
+  if (reglages.repetitions.actif && contenu && repetitionDetectee(message.guildId, message.author.id, contenu, reglages.repetitions.nombre)) {
     await sanctionner(message, 'duplicates', tronquer(contenu, 80));
     return 'stop';
   }
@@ -281,13 +280,13 @@ const pages: PageReglage[] = [
     ordre: 2,
     description: 'Les filtres automatiques. Le staff, le bypass et les salons/rôles autorisés sont ignorés.\n-# Liste des domaines et mots : séparés par des virgules.',
     champs: [
-      { genre: 'toggle', cle: 'spam', libelle: 'Spam', lire: (c) => c.automod.spam.enabled, ecrire: (c, v) => void (c.automod.spam.enabled = v) },
-      { genre: 'toggle', cle: 'dup', libelle: 'Répétition', lire: (c) => c.automod.repetitions.enabled, ecrire: (c, v) => void (c.automod.repetitions.enabled = v) },
-      { genre: 'toggle', cle: 'links', libelle: 'Liens', lire: (c) => c.automod.liens.enabled, ecrire: (c, v) => void (c.automod.liens.enabled = v) },
-      { genre: 'toggle', cle: 'invites', libelle: 'Invitations', lire: (c) => c.automod.invites.enabled, ecrire: (c, v) => void (c.automod.invites.enabled = v) },
-      { genre: 'toggle', cle: 'words', libelle: 'Mots interdits', lire: (c) => c.automod.motsInterdits.enabled, ecrire: (c, v) => void (c.automod.motsInterdits.enabled = v) },
-      { genre: 'toggle', cle: 'mentions', libelle: 'Mentions', lire: (c) => c.automod.mentions.enabled, ecrire: (c, v) => void (c.automod.mentions.enabled = v) },
-      { genre: 'toggle', cle: 'caps', libelle: 'Majuscules', lire: (c) => c.automod.majuscules.enabled, ecrire: (c, v) => void (c.automod.majuscules.enabled = v) },
+      { genre: 'toggle', cle: 'spam', libelle: 'Spam', lire: (c) => c.automod.spam.actif, ecrire: (c, v) => void (c.automod.spam.actif = v) },
+      { genre: 'toggle', cle: 'dup', libelle: 'Répétition', lire: (c) => c.automod.repetitions.actif, ecrire: (c, v) => void (c.automod.repetitions.actif = v) },
+      { genre: 'toggle', cle: 'links', libelle: 'Liens', lire: (c) => c.automod.liens.actif, ecrire: (c, v) => void (c.automod.liens.actif = v) },
+      { genre: 'toggle', cle: 'invites', libelle: 'Invitations', lire: (c) => c.automod.invitations.actif, ecrire: (c, v) => void (c.automod.invitations.actif = v) },
+      { genre: 'toggle', cle: 'words', libelle: 'Mots interdits', lire: (c) => c.automod.motsInterdits.actif, ecrire: (c, v) => void (c.automod.motsInterdits.actif = v) },
+      { genre: 'toggle', cle: 'mentions', libelle: 'Mentions', lire: (c) => c.automod.mentions.actif, ecrire: (c, v) => void (c.automod.mentions.actif = v) },
+      { genre: 'toggle', cle: 'caps', libelle: 'Majuscules', lire: (c) => c.automod.majuscules.actif, ecrire: (c, v) => void (c.automod.majuscules.actif = v) },
       {
         genre: 'choice',
         cle: 'action',
@@ -325,10 +324,10 @@ const pages: PageReglage[] = [
       { genre: 'roles', cle: 'roles', libelle: 'Rôles ignorés', lire: (c) => c.automod.rolesExemptes, ecrire: (c, v) => void (c.automod.rolesExemptes = v) },
       { genre: 'toggle', cle: 'staff', libelle: 'Ignorer le staff', lire: (c) => c.automod.ignorerStaff, ecrire: (c, v) => void (c.automod.ignorerStaff = v) },
       { genre: 'number', cle: 'spammsg', libelle: 'Spam : messages', min: 2, max: 30, lire: (c) => c.automod.spam.messages, ecrire: (c, v) => void (c.automod.spam.messages = v) },
-      { genre: 'number', cle: 'spamsec', libelle: 'Spam : secondes', min: 1, max: 60, unite: 's', lire: (c) => c.automod.spam.seconds, ecrire: (c, v) => void (c.automod.spam.seconds = v) },
-      { genre: 'number', cle: 'dup', libelle: 'Répétitions tolérées', min: 2, max: 20, lire: (c) => c.automod.repetitions.count, ecrire: (c, v) => void (c.automod.repetitions.count = v) },
-      { genre: 'number', cle: 'capspct', libelle: 'Majuscules : %', min: 50, max: 100, unite: '%', lire: (c) => c.automod.majuscules.percent, ecrire: (c, v) => void (c.automod.majuscules.percent = v) },
-      { genre: 'number', cle: 'capsmin', libelle: 'Majuscules : longueur min', min: 5, max: 200, lire: (c) => c.automod.majuscules.minLength, ecrire: (c, v) => void (c.automod.majuscules.minLength = v) },
+      { genre: 'number', cle: 'spamsec', libelle: 'Spam : secondes', min: 1, max: 60, unite: 's', lire: (c) => c.automod.spam.secondes, ecrire: (c, v) => void (c.automod.spam.secondes = v) },
+      { genre: 'number', cle: 'dup', libelle: 'Répétitions tolérées', min: 2, max: 20, lire: (c) => c.automod.repetitions.nombre, ecrire: (c, v) => void (c.automod.repetitions.nombre = v) },
+      { genre: 'number', cle: 'capspct', libelle: 'Majuscules : %', min: 50, max: 100, unite: '%', lire: (c) => c.automod.majuscules.pourcentage, ecrire: (c, v) => void (c.automod.majuscules.pourcentage = v) },
+      { genre: 'number', cle: 'capsmin', libelle: 'Majuscules : longueur min', min: 5, max: 200, lire: (c) => c.automod.majuscules.longueurMin, ecrire: (c, v) => void (c.automod.majuscules.longueurMin = v) },
     ],
   },
 ];
@@ -348,13 +347,13 @@ const commandesPrefixe: CommandePrefixe[] = [
       const sujet = { titre: 'Mots interdits', sujet: emojiPour(serveurId, 'sanction') };
       if (!argument) {
         const texte = reglages.mots.length ? reglages.mots.map((w) => `\`${w}\``).join(' · ') : '*Aucun mot.*';
-        await message.reply({ embeds: [info(message.guild, `Filtre : **${reglages.enabled ? 'actif' : 'coupé'}**\n\n${tronquer(texte, 3800)}`, sujet)], allowedMentions: { repliedUser: false } });
+        await message.reply({ embeds: [info(message.guild, `Filtre : **${reglages.actif ? 'actif' : 'coupé'}**\n\n${tronquer(texte, 3800)}`, sujet)], allowedMentions: { repliedUser: false } });
         return;
       }
       if (argument === 'on' || argument === 'off') {
         const initialise = argument === 'on' && reglages.mots.length === 0;
         modifierConfig(serveurId, (c) => {
-          c.automod.motsInterdits.enabled = argument === 'on';
+          c.automod.motsInterdits.actif = argument === 'on';
           if (initialise) c.automod.motsInterdits.mots = [...MOTS_DEFAUT];
         });
         await message.reply({ embeds: [ok(message.guild, `Filtre ${argument === 'on' ? 'activé' : 'coupé'}.${initialise ? `\n-# Liste de départ : ${MOTS_DEFAUT.length} mots.` : ''}`, sujet)], allowedMentions: { repliedUser: false } });
@@ -396,13 +395,13 @@ export const moduleAutomod: ModuleBot = {
       async executer(interaction) {
         const a = lireConfig(interaction.guildId).automod;
         const rangees: [string, boolean][] = [
-          ['Spam', a.spam.enabled],
-          ['Répétition', a.repetitions.enabled],
-          ['Liens', a.liens.enabled],
-          ['Invitations', a.invites.enabled],
-          ['Mots interdits', a.motsInterdits.enabled],
-          ['Mentions', a.mentions.enabled],
-          ['Majuscules', a.majuscules.enabled],
+          ['Spam', a.spam.actif],
+          ['Répétition', a.repetitions.actif],
+          ['Liens', a.liens.actif],
+          ['Invitations', a.invitations.actif],
+          ['Mots interdits', a.motsInterdits.actif],
+          ['Mentions', a.mentions.actif],
+          ['Majuscules', a.majuscules.actif],
         ];
         return `${rangees.map(([l, e]) => `${e ? '🟢' : '🔴'} ${l}`).join('\n')}\n\nAction : **${a.action}**`;
       },

@@ -358,12 +358,12 @@ function pagePersonnalisation(session: Session, serveur: Guild, avertissement?: 
   return `<h1>🎨 Personnalisation</h1><p class="sub">Le thème des messages du bot sur ce serveur.</p>${avertissement ? `<div class="notice">${h(avertissement)}</div>` : ''}
 <form class="card" method="post" action="/g/${serveur.id}/personnalisation">${champCsrf(session.csrf)}
 <label>Thème</label><select name="theme">${themes.map(([v, l]) => `<option value="${h(v!)}"${reglages.theme === v ? ' selected' : ''}>${h(l!)}</option>`).join('')}</select>
-<label>Couleur principale (thème personnalisé)</label><input name="primary" value="${h(reglages.colors.primary)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Succès</label><input name="success" value="${h(reglages.colors.success)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Erreur</label><input name="error" value="${h(reglages.colors.error)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Avertissement</label><input name="warning" value="${h(reglages.colors.warning)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Information</label><input name="info" value="${h(reglages.colors.info)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Pied de page (vide = enseigne)</label><input name="footer" maxlength="128" value="${h(reglages.footer)}"/>
+<label>Couleur principale (thème personnalisé)</label><input name="primary" value="${h(reglages.couleurs.primary)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Succès</label><input name="success" value="${h(reglages.couleurs.success)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Erreur</label><input name="error" value="${h(reglages.couleurs.error)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Avertissement</label><input name="warning" value="${h(reglages.couleurs.warning)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Information</label><input name="info" value="${h(reglages.couleurs.info)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Pied de page (vide = enseigne)</label><input name="footer" maxlength="128" value="${h(reglages.pied)}"/>
 <label>Fuseau horaire</label><input name="timezone" maxlength="64" value="${h(reglages.fuseau)}"/>
 <p><button type="submit">💾 Enregistrer</button></p></form>`;
 }
@@ -438,9 +438,9 @@ async function traiter(client: Client<true>, conditions: IncomingMessage, repons
       if (theme === 'brand' || theme === 'custom' || theme in THEMES) c.general.theme = theme as typeof c.general.theme;
       for (const k of ['primary', 'success', 'error', 'warning', 'info'] as const) {
         const v = hexa(formulaire.get(k));
-        if (v) c.general.colors[k] = v;
+        if (v) c.general.couleurs[k] = v;
       }
-      c.general.footer = (formulaire.get('footer') ?? '').slice(0, 128);
+      c.general.pied = (formulaire.get('footer') ?? '').slice(0, 128);
       if (fuseauValide(fuseau)) c.general.fuseau = fuseau;
     });
     return envoyer(reponse, 200, pageServeur(session, acces.guild, `/g/${m[1]}/personnalisation`, 'Personnalisation', pagePersonnalisation(session, acces.guild, 'Enregistré.')));

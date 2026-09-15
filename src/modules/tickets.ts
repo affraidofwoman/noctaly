@@ -309,7 +309,7 @@ export async function creerTicket(membre: GuildMember, categorieId: string, suje
   const membresWhitelists = [...new Set([...membresListe('support', serveur.id), ...membresListe('staff', serveur.id)])].filter((id) => serveur.members.cache.has(id) && id !== membre.id).slice(0, 30);
   for (const id of membresWhitelists) permissionsSalon.push({ id, allow: AUTORISATIONS_MEMBRE });
 
-  const numero = modifierConfig(serveur.id, (c) => void (c.tickets.counter += 1)).tickets.counter;
+  const numero = modifierConfig(serveur.id, (c) => void (c.tickets.compteur += 1)).tickets.compteur;
   const salon = await serveur.channels.create({
     name: nom,
     type: ChannelType.GuildText,
@@ -355,11 +355,11 @@ export async function archiverTranscript(serveur: Guild, salon: TextChannel, tic
     ton: 'neutre',
     lignes: [`**#${salon.name}** · ${messages.length} message${messages.length > 1 ? 's' : ''} · transcript en pièce jointe`],
     champs: [
-      { name: 'Ouvert par', value: `<@${ticket.utilisateur_id}>` },
-      { name: 'Fermé par', value: `<@${fermePar.id}>` },
-      { name: 'Motif', value: `${categorie.emoji} ${categorie.libelle}` },
-      { name: 'Pris en charge', value: ticket.pris_par ? `<@${ticket.pris_par}>` : '—' },
-      { name: 'Durée', value: `<t:${Math.floor(ticket.cree_le / 1000)}:R>` },
+      { nom: 'Ouvert par', valeur: `<@${ticket.utilisateur_id}>` },
+      { nom: 'Fermé par', valeur: `<@${fermePar.id}>` },
+      { nom: 'Motif', valeur: `${categorie.emoji} ${categorie.libelle}` },
+      { nom: 'Pris en charge', valeur: ticket.pris_par ? `<@${ticket.pris_par}>` : '—' },
+      { nom: 'Durée', valeur: `<t:${Math.floor(ticket.cree_le / 1000)}:R>` },
     ],
     fichiers: [new AttachmentBuilder(Buffer.from(html, 'utf8'), { name: nomFichier })],
     par: fermePar,
@@ -600,7 +600,6 @@ async function envoyerTranscriptPrive(interaction: RepliableInteraction, salon: 
     files: [new AttachmentBuilder(Buffer.from(html, 'utf8'), { name: `transcript-${salon.name}.html` })],
   });
 }
-
 
 function ecranMotifs(serveur: Guild, note?: string) {
   const motifs = lireConfig(serveur.id).tickets.categories;

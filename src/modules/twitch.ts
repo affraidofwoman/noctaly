@@ -188,7 +188,6 @@ export function normaliserPseudo(saisie: string): string {
     .toLowerCase();
 }
 
-
 const FICHIER_JETON = path.join(path.dirname(environnement.cheminBase), 'twitch-user-token.json');
 
 export interface JetonUtilisateur {
@@ -306,7 +305,7 @@ export function modifierChaine(id: number, correctif: Partial<Pick<LigneChaineTw
 }
 
 function couleurDe(serveur: Guild, salonVise: LigneChaineTwitch): number {
-  return lireCouleur(salonVise.couleur) ?? lireCouleur(lireConfig(serveur.id).twitch.color) ?? enseigneDe(serveur.id).couleur;
+  return lireCouleur(salonVise.couleur) ?? lireCouleur(lireConfig(serveur.id).twitch.couleur) ?? enseigneDe(serveur.id).couleur;
 }
 
 function variablesLive(serveur: Guild, salonVise: LigneChaineTwitch, flux: Pick<TwitchStream, 'user_name' | 'game_name' | 'title' | 'viewer_count'> | null) {
@@ -849,8 +848,8 @@ const pageReglage: PageReglage = {
       cle: 'color',
       libelle: 'Couleur (#hex)',
       longueurMax: 7,
-      lire: (c) => c.twitch.color,
-      ecrire: (c, v) => void (c.twitch.color = enHexa(lireCouleur(v) ?? 0x9146ff)),
+      lire: (c) => c.twitch.couleur,
+      ecrire: (c, v) => void (c.twitch.couleur = enHexa(lireCouleur(v) ?? 0x9146ff)),
       validate: (v) => (lireCouleur(v) !== null ? null : 'Code hexadécimal attendu (ex : #9146FF).'),
     },
   ],

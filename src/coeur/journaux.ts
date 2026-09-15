@@ -143,7 +143,7 @@ export function resoudreSalonTexte(serveur: Guild, salonId: string | null | unde
 export function salonJournalPour(serveur: Guild, type: TypeJournal): GuildTextBasedChannel | null {
   const reglages = lireConfig(serveur.id).journaux;
   if (reglages.disabled.includes(type)) return null;
-  const configure = salonTexteUtilisable(serveur, reglages.channels[type] ?? reglages.salonSecoursId);
+  const configure = salonTexteUtilisable(serveur, reglages.salons[type] ?? reglages.salonSecoursId);
   if (configure) return configure;
   const nom = definitionJournal(type).nom;
   const parNom = serveur.channels.cache.find((c) => c.name === nom && c.type === ChannelType.GuildText);
@@ -155,7 +155,7 @@ export interface OptionsJournal {
   lignes?: (string | null | undefined | false)[];
   ton?: Ton;
   par?: User | null;
-  champs?: { name: string; value: string; inline?: boolean }[];
+  champs?: { nom: string; valeur: string; enLigne?: boolean }[];
   fichiers?: AttachmentBuilder[];
   miniature?: string | null;
 }
@@ -168,7 +168,7 @@ export function construireEmbedJournal(options: OptionsJournal): EmbedBuilder {
   const description = (options.lignes ?? []).filter(Boolean).join('\n');
   if (description) embed.setDescription(tronquer(description, 4096));
   for (const f of (options.champs ?? []).slice(0, 25)) {
-    embed.addFields({ name: tronquer(f.name, 256), value: tronquer(f.value || '—', 1024), inline: f.inline ?? true });
+    embed.addFields({ name: tronquer(f.nom, 256), value: tronquer(f.valeur || '—', 1024), inline: f.enLigne ?? true });
   }
   if (options.miniature) embed.setThumbnail(options.miniature);
   if (options.par) embed.setFooter({ text: tronquer(`par ${options.par.tag}`, 2048), iconURL: options.par.displayAvatarURL({ size: 64 }) });
@@ -297,7 +297,7 @@ export async function creerSalonsJournal(serveur: Guild, progression?: (fait: nu
     }
   }
   modifierConfig(serveur.id, (c) => {
-    c.journaux.channels = { ...c.journaux.channels, ...salons };
+    c.journaux.salons = { ...c.journaux.salons, ...salons };
   });
   return { cree, titreLie };
 }

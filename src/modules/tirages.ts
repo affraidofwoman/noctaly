@@ -366,7 +366,6 @@ function libelle(g: LigneTirage): string {
   return tronquer(`${etat} #${g.id} · ${g.lot}`, 100);
 }
 
-
 function menu(serveur: Guild, note?: string) {
   const lireTout = tiragesDuServeur(serveur.id);
   const enCours = lireTout.filter((g) => g.statut === 'running').length;

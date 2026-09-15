@@ -99,7 +99,6 @@ export function fluxNormalise(saisie: Readable): Readable {
   return saisie.pipe(transcodeur);
 }
 
-
 export const YTDLP_FOURNI = path.join(RACINE_PROJET, 'assets', 'bin', 'yt-dlp');
 
 interface Commande {
@@ -262,7 +261,6 @@ export async function chercherYoutube(requete: string): Promise<PisteResolue | n
   }
   return null;
 }
-
 
 let jetonSpotify: { token: string; expires: number } | null = null;
 export const spotifyActif = () => !!process.env.SPOTIFY_CLIENT_ID && !!process.env.SPOTIFY_CLIENT_SECRET;
@@ -502,7 +500,7 @@ export class LecteurServeur {
     const place = Math.max(0, FILE_ACTIVE_MAX - this.file.length);
     this.file.push(...pistes.slice(0, place));
     if (pistes.length > place) this.reserve.push(...pistes.slice(place));
-    const fileMax = lireConfig(this.serveur.id).musique.maxQueue;
+    const fileMax = lireConfig(this.serveur.id).musique.fileMax;
     if (fileMax > 0 && this.waiting > fileMax * 25) this.reserve.length = Math.max(0, fileMax * 25 - this.file.length);
     this.annulerInactivite();
     if (!enLecture) void this.suivant();
@@ -818,7 +816,6 @@ const evenements: EvenementsLecteur = {
     void annonce(session, { embeds: [new EmbedBuilder().setColor(couleurPour(session.serveur)).setDescription('📭 File terminée. Ajoute un morceau avec `m!play` — je quitte le vocal dans 5 minutes sinon.')] });
   },
 };
-
 
 function estDj(membre: GuildMember): boolean {
   const reglages = lireConfig(membre.guild.id).musique;
@@ -1205,7 +1202,7 @@ const pageReglage: PageReglage = {
     { genre: 'toggle', cle: 'announce', libelle: 'Annoncer chaque morceau', lire: (c) => c.musique.annoncerLecture, ecrire: (c, v) => void (c.musique.annoncerLecture = v) },
     { genre: 'number', cle: 'volume', libelle: 'Volume par défaut', min: 1, max: 200, unite: '%', lire: (c) => c.musique.volumeParDefaut, ecrire: (c, v) => void (c.musique.volumeParDefaut = v) },
     { genre: 'number', cle: 'empty', libelle: 'Quitter si seul après', min: 0, max: 60, unite: 'min', lire: (c) => c.musique.quitterSiVideMinutes, ecrire: (c, v) => void (c.musique.quitterSiVideMinutes = v) },
-    { genre: 'number', cle: 'maxqueue', libelle: 'Taille de file (×25 en réserve)', min: 10, max: 1000, lire: (c) => c.musique.maxQueue, ecrire: (c, v) => void (c.musique.maxQueue = v) },
+    { genre: 'number', cle: 'maxqueue', libelle: 'Taille de file (×25 en réserve)', min: 10, max: 1000, lire: (c) => c.musique.fileMax, ecrire: (c, v) => void (c.musique.fileMax = v) },
   ],
 };
 

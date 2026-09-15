@@ -833,7 +833,6 @@ const verrouillage: CommandeSlash = {
   },
 };
 
-
 async function exigerCible(message: Message<true>, argument: string | undefined): Promise<User> {
   const membre = await membreCible(message, argument);
   if (membre) return membre.user;

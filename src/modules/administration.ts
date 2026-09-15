@@ -128,7 +128,7 @@ export const pagesAdministration: PageReglage[] = [
         ecrire: (c, v) => {
           c.general.theme = v as typeof c.general.theme;
           const modele = THEMES[v as keyof typeof THEMES];
-          if (modele) c.general.colors = { ...modele.colors };
+          if (modele) c.general.couleurs = { ...modele.colors };
         },
       },
       {
@@ -136,9 +136,9 @@ export const pagesAdministration: PageReglage[] = [
         cle: 'primary',
         libelle: 'Couleur principale (#hex)',
         longueurMax: 7,
-        lire: (c) => c.general.colors.primary,
+        lire: (c) => c.general.couleurs.primary,
         ecrire: (c, v) => {
-          c.general.colors.primary = v.toUpperCase().startsWith('#') ? v.toUpperCase() : `#${v.toUpperCase()}`;
+          c.general.couleurs.primary = v.toUpperCase().startsWith('#') ? v.toUpperCase() : `#${v.toUpperCase()}`;
           c.general.theme = 'custom';
         },
         validate: (v) => (/^#?[0-9a-f]{6}$/i.test(v) ? null : 'Code hexadécimal attendu (ex : #5865F2).'),
@@ -148,9 +148,9 @@ export const pagesAdministration: PageReglage[] = [
         cle: 'footer',
         libelle: 'Pied de page (vide = enseigne)',
         longueurMax: 128,
-        lire: (c) => c.general.footer,
+        lire: (c) => c.general.pied,
         ecrire: (c, v) => {
-          c.general.footer = v;
+          c.general.pied = v;
         },
       },
       {
@@ -927,8 +927,8 @@ const STRUCTURE_RAPIDE: { categorie: string; channels: SalonRapide[] }[] = [
   {
     categorie: '📁 INFORMATION',
     channels: [
-      { nom: 'bienvenue', lectureSeule: true, lien: (c, id) => void (c.bienvenue.channelId ??= id) },
-      { nom: 'règlement', lectureSeule: true, lien: (c, id) => void (c.reglement.channelId ??= id) },
+      { nom: 'bienvenue', lectureSeule: true, lien: (c, id) => void (c.bienvenue.salonId ??= id) },
+      { nom: 'règlement', lectureSeule: true, lien: (c, id) => void (c.reglement.salonId ??= id) },
       { nom: 'annonces', lectureSeule: true, lien: (c, id) => void (c.annonces.salonDefautId ??= id) },
       { nom: 'lives', lectureSeule: true, lien: (c, id) => void (c.twitch.salonDefautId ??= id) },
     ],
@@ -938,7 +938,7 @@ const STRUCTURE_RAPIDE: { categorie: string; channels: SalonRapide[] }[] = [
     channels: [
       { nom: 'général' },
       { nom: 'médias' },
-      { nom: 'suggestions', lien: (c, id) => void (c.suggestions.channelId ??= id) },
+      { nom: 'suggestions', lien: (c, id) => void (c.suggestions.salonId ??= id) },
     ],
   },
   { categorie: '📁 SUPPORT', channels: [{ nom: 'tickets', lectureSeule: true, lien: (c, id) => void (c.tickets.salonPanneauId ??= id) }] },
@@ -1029,7 +1029,7 @@ function diagnostic(serveur: Guild) {
   const auDessusDuBot = serveur.roles.cache.filter((r) => roleHaut && r.comparePositionTo(roleHaut) > 0 && !r.managed).size;
   const journauxManquants = TYPES_JOURNAUX.filter((t) => !salonJournalPour(serveur, t.type)).length;
   const verifications = [
-    `${reglages.bienvenue.channelId ? '✅' : '⚠️'} Salon de bienvenue`,
+    `${reglages.bienvenue.salonId ? '✅' : '⚠️'} Salon de bienvenue`,
     `${reglages.tickets.salonPanneauId ? '✅' : '⚠️'} Salon des tickets`,
     `${journauxManquants === 0 ? '✅' : '⚠️'} Salons de logs (${TYPES_JOURNAUX.length - journauxManquants}/${TYPES_JOURNAUX.length})`,
     `${enseigneDe(serveur.id).cle ? '✅' : 'ℹ️'} Enseigne : **${nomEnseigne(serveur)}**`,
