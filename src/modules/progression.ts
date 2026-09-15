@@ -366,7 +366,7 @@ async function prevenir(client: Client | null, serveurId: string, utilisateurId:
   const serveur = client.guilds.cache.get(serveurId);
   const utilisateur = await client.users.fetch(utilisateurId).catch(() => null);
   if (!serveur || !utilisateur) return;
-  await utilisateur.send({ embeds: [embedEnseigne(serveur, 'success').setAuthor({ name: serveur.name, iconURL: serveur.iconURL() ?? undefined }).setDescription(texte)] }).catch(() => undefined);
+  await utilisateur.send({ embeds: [embedEnseigne(serveur, 'succes').setAuthor({ name: serveur.name, iconURL: serveur.iconURL() ?? undefined }).setDescription(texte)] }).catch(() => undefined);
 }
 
 export function avancerQuetes(client: Client | null, serveurId: string, utilisateurId: string, suivi: Suivi, montant: number, salonId?: string): void {

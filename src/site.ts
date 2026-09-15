@@ -190,13 +190,13 @@ async function lireFormulaireWeb(conditions: IncomingMessage): Promise<URLSearch
 
 // - OAuth2 Discord -
 
-const uriRedirection = () => `${environnement.siteUrl}/callback`;
+const adresseRetour = () => `${environnement.siteUrl}/callback`;
 
 async function echangerCode(code: string): Promise<{ id: string; username: string; avatar: string | null } | null> {
   const jeton = await fetch('https://discord.com/api/v10/oauth2/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: environnement.clientId, client_secret: environnement.secretClient, grant_type: 'authorization_code', code, redirect_uri: uriRedirection() }),
+    body: new URLSearchParams({ client_id: environnement.clientId, client_secret: environnement.secretClient, grant_type: 'authorization_code', code, redirect_uri: adresseRetour() }),
     signal: AbortSignal.timeout(10_000),
   });
   if (!jeton.ok) return null;
@@ -358,10 +358,10 @@ function pagePersonnalisation(session: Session, serveur: Guild, avertissement?: 
   return `<h1>🎨 Personnalisation</h1><p class="sub">Le thème des messages du bot sur ce serveur.</p>${avertissement ? `<div class="notice">${h(avertissement)}</div>` : ''}
 <form class="card" method="post" action="/g/${serveur.id}/personnalisation">${champCsrf(session.csrf)}
 <label>Thème</label><select name="theme">${themes.map(([v, l]) => `<option value="${h(v!)}"${reglages.theme === v ? ' selected' : ''}>${h(l!)}</option>`).join('')}</select>
-<label>Couleur principale (thème personnalisé)</label><input name="primary" value="${h(reglages.couleurs.primary)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Succès</label><input name="success" value="${h(reglages.couleurs.success)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Erreur</label><input name="error" value="${h(reglages.couleurs.error)}" pattern="#?[0-9a-fA-F]{6}"/>
-<label>Avertissement</label><input name="warning" value="${h(reglages.couleurs.warning)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Couleur principale (thème personnalisé)</label><input name="principale" value="${h(reglages.couleurs.principale)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Succès</label><input name="succes" value="${h(reglages.couleurs.succes)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Erreur</label><input name="erreur" value="${h(reglages.couleurs.erreur)}" pattern="#?[0-9a-fA-F]{6}"/>
+<label>Avertissement</label><input name="attention" value="${h(reglages.couleurs.attention)}" pattern="#?[0-9a-fA-F]{6}"/>
 <label>Information</label><input name="info" value="${h(reglages.couleurs.info)}" pattern="#?[0-9a-fA-F]{6}"/>
 <label>Pied de page (vide = enseigne)</label><input name="footer" maxlength="128" value="${h(reglages.pied)}"/>
 <label>Fuseau horaire</label><input name="timezone" maxlength="64" value="${h(reglages.fuseau)}"/>
@@ -387,7 +387,7 @@ async function traiter(client: Client<true>, conditions: IncomingMessage, repons
     const etat = randomBytes(18).toString('base64url');
     etatsEnAttente.ecrire(etat, true);
     const autorisation = new URL('https://discord.com/oauth2/authorize');
-    autorisation.search = new URLSearchParams({ client_id: environnement.clientId, response_type: 'code', scope: 'identify', redirect_uri: uriRedirection(), state: etat }).toString();
+    autorisation.search = new URLSearchParams({ client_id: environnement.clientId, response_type: 'code', scope: 'identify', redirect_uri: adresseRetour(), state: etat }).toString();
     return rediriger(reponse, autorisation.toString());
   }
 
@@ -436,7 +436,7 @@ async function traiter(client: Client<true>, conditions: IncomingMessage, repons
     const fuseau = formulaire.get('timezone') ?? '';
     modifierConfig(m[1]!, (c) => {
       if (theme === 'brand' || theme === 'custom' || theme in THEMES) c.general.theme = theme as typeof c.general.theme;
-      for (const k of ['primary', 'success', 'error', 'warning', 'info'] as const) {
+      for (const k of ['principale', 'succes', 'erreur', 'attention', 'info'] as const) {
         const v = hexa(formulaire.get(k));
         if (v) c.general.couleurs[k] = v;
       }

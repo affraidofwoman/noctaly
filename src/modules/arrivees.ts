@@ -355,7 +355,7 @@ export async function envoyerDepart(membre: GuildMember | PartialGuildMember): P
   const activite = activiteMembre(serveur.id, membre.id);
   const reste = membre.joinedTimestamp ? Date.now() - membre.joinedTimestamp : null;
   const embed = new EmbedBuilder()
-    .setColor(couleurPour(serveur, 'error'))
+    .setColor(couleurPour(serveur, 'erreur'))
     .setTitle(`${emojiPour(serveur.id, 'depart')} Départ`)
     .setDescription(tronquer(texte, 4096))
     .setThumbnail(membre.user.displayAvatarURL({ size: 256 }))

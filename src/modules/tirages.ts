@@ -134,7 +134,7 @@ export function construireMessageTirage(serveur: Guild, g: LigneTirage) {
   const termine = g.statut === 'ended';
   const enPause = g.statut === 'paused';
   const embed = new EmbedBuilder()
-    .setColor(couleurPour(serveur, termine ? 'info' : 'primary'))
+    .setColor(couleurPour(serveur, termine ? 'info' : 'principale'))
     .setAuthor({ name: termine ? 'Giveaway terminé' : enPause ? 'Giveaway en pause' : 'Giveaway en cours' })
     .setTitle(`${cadeauEmoji} ${termine ? `~~${tronquer(g.lot, 200)}~~` : tronquer(g.lot, 240)}`)
     .setFooter({ text: `${g.nombre_gagnants} gagnant${g.nombre_gagnants > 1 ? 's' : ''} · lancé par ${serveur.members.cache.get(g.organisateur_id)?.user.tag ?? 'le staff'}` });
@@ -267,8 +267,8 @@ export async function terminerTirage(client: Client, id: number, terminePar: str
   let eligibles = reserveTirage;
   if (serveur) {
     const membres = await serveur.members.fetch({ user: reserveTirage.slice(0, 1000) }).catch(() => null);
-    if (membres) eligibles = reserveTirage.filter((uid) => {
-      const m = membres.get(uid);
+    if (membres) eligibles = reserveTirage.filter((utilisateurId) => {
+      const m = membres.get(utilisateurId);
       return m && !verifierEligibilite(m, conditions);
     });
   }
@@ -299,19 +299,19 @@ export async function terminerTirage(client: Client, id: number, terminePar: str
       await salon
         .send({
           content: gagnants.slice(0, 50).map((w) => `<@${w}>`).join(' '),
-          embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'success')).setDescription(`${cadeauEmoji} Bravo ${listeMentions(gagnants)} — tu remportes **${tronquer(g.lot, 300)}** !\n-# Ouvre un ticket pour récupérer ton lot.`)],
+          embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'succes')).setDescription(`${cadeauEmoji} Bravo ${listeMentions(gagnants)} — tu remportes **${tronquer(g.lot, 300)}** !\n-# Ouvre un ticket pour récupérer ton lot.`)],
           allowedMentions: { users: gagnants.slice(0, 100) },
         })
         .catch(() => undefined);
     } else {
       const raisonRefus = suffisant ? 'Personne d’éligible n’a participé' : `Pas assez de participants (${reserveTirage.length}/${conditions.participantsMin})`;
-      await salon.send({ embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'warning')).setDescription(`⏹️ ${raisonRefus} : **${tronquer(g.lot, 300)}** n’a pas trouvé preneur.`)] }).catch(() => undefined);
+      await salon.send({ embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'attention')).setDescription(`⏹️ ${raisonRefus} : **${tronquer(g.lot, 300)}** n’a pas trouvé preneur.`)] }).catch(() => undefined);
     }
     if (gagnants.length && lireConfig(salon.guild.id).tirages.mpGagnants) {
       for (const w of gagnants.slice(0, 20)) {
         const utilisateur = await client.users.fetch(w).catch(() => null);
         await utilisateur
-          ?.send({ embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'success')).setTitle(`${cadeauEmoji} Tu as gagné !`).setDescription(`Tu remportes **${tronquer(g.lot, 300)}** sur **${salon.guild.name}**.\nOuvre un ticket sur le serveur pour récupérer ton lot.`)] })
+          ?.send({ embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'succes')).setTitle(`${cadeauEmoji} Tu as gagné !`).setDescription(`Tu remportes **${tronquer(g.lot, 300)}** sur **${salon.guild.name}**.\nOuvre un ticket sur le serveur pour récupérer ton lot.`)] })
           .catch(() => undefined);
       }
     }
@@ -331,7 +331,7 @@ export async function relancerTirage(client: Client, g: LigneTirage, auteurId: s
     await rafraichirMessage(client, lireTirage(g.id)!);
     await salon.send({
       content: gagnants.map((w) => `<@${w}>`).join(' '),
-      embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'success')).setDescription(`${emojiPour(salon.guild.id, 'cadeau')} Nouveau tirage pour **${tronquer(g.lot, 300)}** — bravo ${listeMentions(gagnants)}.`)],
+      embeds: [new EmbedBuilder().setColor(couleurPour(salon.guild, 'succes')).setDescription(`${emojiPour(salon.guild.id, 'cadeau')} Nouveau tirage pour **${tronquer(g.lot, 300)}** — bravo ${listeMentions(gagnants)}.`)],
       allowedMentions: { users: gagnants },
     });
     historiser(salon.guild.id, 'giveaway', 'reroll', null, auteurId, { id: g.id, winners: gagnants });

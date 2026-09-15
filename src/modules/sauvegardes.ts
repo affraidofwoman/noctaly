@@ -28,7 +28,7 @@ export interface FichierSauvegarde {
   version: 1;
   serveurId: string;
   nomServeur: string;
-  createdAt: number;
+  creeLe: number;
   tables: Record<string, Record<string, unknown>[]>;
   entrees: Record<string, unknown>[];
   structure: { roles: { nom: string; couleur: number; position: number }[]; salons: { nom: string; type: number; parent: string | null }[] };
@@ -49,7 +49,7 @@ export function creerSauvegarde(serveur: Guild, creePar: string, nom = 'manuelle
     version: 1,
     serveurId: serveur.id,
     nomServeur: serveur.name,
-    createdAt: Date.now(),
+    creeLe: Date.now(),
     tables,
     entrees,
     structure: {

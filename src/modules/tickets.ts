@@ -104,7 +104,7 @@ function rendreMessage(m: Message, serveur: Guild): string {
     const couleur = embed.hexColor ?? '#7b5cff';
     textes.push(`<div class="embed" style="border-left-color:${couleur}">${parties.filter(Boolean).join('<br/>')}</div>`);
   }
-  const attachments = [...m.attachments.values()]
+  const piecesJointes = [...m.attachments.values()]
     .map((a) => {
       const url = echapperHtml(a.url);
       const nom = echapperHtml(a.name || 'fichier');
@@ -113,7 +113,7 @@ function rendreMessage(m: Message, serveur: Guild): string {
         : `<a class="att-file" href="${url}" target="_blank" rel="noopener">📎 ${nom}</a>`;
     })
     .join('');
-  return `<div class="msg"><img class="avatar" src="${avatar}" alt="" loading="lazy"/><div class="corps"><div class="tete"><span class="auteur">${auteur}</span>${bot}<span class="heure">${heure}</span></div>${textes.map((t) => `<div class="texte">${t}</div>`).join('')}${attachments ? `<div class="pjs">${attachments}</div>` : ''}</div></div>`;
+  return `<div class="msg"><img class="avatar" src="${avatar}" alt="" loading="lazy"/><div class="corps"><div class="tete"><span class="auteur">${auteur}</span>${bot}<span class="heure">${heure}</span></div>${textes.map((t) => `<div class="texte">${t}</div>`).join('')}${piecesJointes ? `<div class="pjs">${piecesJointes}</div>` : ''}</div></div>`;
 }
 
 function style(accent: string): string {
@@ -409,7 +409,7 @@ export async function verrouillerCreateur(salon: TextChannel, ticket: LigneTicke
   await salon.permissionOverwrites.edit(ticket.utilisateur_id, { SendMessages: ouvrir, ViewChannel: true }, { reason: ouvrir ? 'Ticket rouvert' : 'Ticket fermé' }).catch(() => undefined);
 }
 
-export function stockerMessageTicket(ticketId: number, messageId: string, auteurId: string, pseudoAuteur: string, contenu: string, attachments: string[]): void {
+export function stockerMessageTicket(ticketId: number, messageId: string, auteurId: string, pseudoAuteur: string, contenu: string, piecesJointes: string[]): void {
   executer(
     'INSERT INTO messages_tickets (ticket_id, message_id, auteur_id, auteur_pseudo, contenu, pieces_jointes, cree_le) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ticketId,
@@ -417,7 +417,7 @@ export function stockerMessageTicket(ticketId: number, messageId: string, auteur
     auteurId,
     pseudoAuteur,
     contenu.slice(0, 4000),
-    JSON.stringify(attachments.slice(0, 10)),
+    JSON.stringify(piecesJointes.slice(0, 10)),
     Date.now(),
   );
 }

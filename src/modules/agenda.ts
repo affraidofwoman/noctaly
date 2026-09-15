@@ -418,7 +418,7 @@ function afficher(serveur: Guild, e: LigneEvenement) {
   const liste = reponsesRsvp(e.id);
   const ferme = e.statut === 'cancelled' || e.statut === 'ended';
   const embed = new EmbedBuilder()
-    .setColor(couleurPour(serveur, e.statut === 'cancelled' ? 'error' : 'primary'))
+    .setColor(couleurPour(serveur, e.statut === 'cancelled' ? 'erreur' : 'principale'))
     .setTitle(`🎮 ${tronquer(e.nom.toUpperCase(), 240)}`)
     .setDescription(
       [

@@ -245,16 +245,16 @@ export class Aiguilleur {
         }
       }
       for (const gestionnaire of module.composants ?? []) this.ajouterComposant(gestionnaire, module);
-      for (const evt of module.evenements ?? []) this.ajouterEvenement(evt, module);
+      for (const evenement of module.evenements ?? []) this.ajouterEvenement(evenement, module);
     }
     this.ajouterEvenement({ evenement: 'messageCreate', priorite: 50, executer: (message: Message) => this.traiterPrefixe(message) } as EvenementModule, coeur);
     for (const liste of this.evenements.values()) liste.sort((a, b) => a.event.priorite - b.event.priorite);
   }
 
-  private ajouterEvenement(evt: EvenementModule, module: ModuleBot): void {
-    const liste = this.evenements.get(evt.evenement) ?? [];
-    liste.push({ event: evt, module });
-    this.evenements.set(evt.evenement, liste);
+  private ajouterEvenement(evenement: EvenementModule, module: ModuleBot): void {
+    const liste = this.evenements.get(evenement.evenement) ?? [];
+    liste.push({ event: evenement, module });
+    this.evenements.set(evenement.evenement, liste);
   }
 
   private ajouterComposant(gestionnaire: GestionnaireComposant, module: ModuleBot): void {

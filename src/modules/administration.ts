@@ -136,9 +136,9 @@ export const pagesAdministration: PageReglage[] = [
         cle: 'primary',
         libelle: 'Couleur principale (#hex)',
         longueurMax: 7,
-        lire: (c) => c.general.couleurs.primary,
+        lire: (c) => c.general.couleurs.principale,
         ecrire: (c, v) => {
-          c.general.couleurs.primary = v.toUpperCase().startsWith('#') ? v.toUpperCase() : `#${v.toUpperCase()}`;
+          c.general.couleurs.principale = v.toUpperCase().startsWith('#') ? v.toUpperCase() : `#${v.toUpperCase()}`;
           c.general.theme = 'custom';
         },
         validate: (v) => (/^#?[0-9a-f]{6}$/i.test(v) ? null : 'Code hexadécimal attendu (ex : #5865F2).'),

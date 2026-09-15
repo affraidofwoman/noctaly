@@ -55,7 +55,7 @@ async function alerter(serveur: Guild, titre: string, lignes: string[]): Promise
   void journal(serveur, 'security', { titre, ton: 'alerte', lignes });
   if ((derniereAlerte.get(serveur.id) ?? 0) > Date.now()) return;
   derniereAlerte.set(serveur.id, Date.now() + 10 * 60_000);
-  const embed = new EmbedBuilder().setColor(couleurPour(serveur, 'error')).setTitle(`🚨 ${titre}`).setDescription(lignes.join('\n')).setFooter({ text: serveur.name }).setTimestamp();
+  const embed = new EmbedBuilder().setColor(couleurPour(serveur, 'erreur')).setTitle(`🚨 ${titre}`).setDescription(lignes.join('\n')).setFooter({ text: serveur.name }).setTimestamp();
   const salon = resoudreSalonTexte(serveur, lireConfig(serveur.id).antiraid.salonAlerteId);
   if (salon) await salon.send({ embeds: [embed] }).catch(() => undefined);
   const destinataires = new Set([serveur.ownerId, ...membresListe('streamer', serveur.id)]);
@@ -323,7 +323,7 @@ async function surAudit(entree: GuildAuditLogsEntry, serveur: Guild): Promise<vo
   const lignes = [`**Compte** : <@${executantId}> \`${executantId}\``, `**Détecté** : ${nombre} ${definition.libelle} en ${reglages.fenetreSecondes} s (seuil ${seuil})`, `**Réaction** : ${issue}`];
   void journal(serveur, 'security', { titre: 'Anti-nuke déclenché', ton: 'alerte', lignes });
   registreAntinuke.avertir(`Anti-nuke sur ${serveur.id} : ${executantId} — ${definition.compteur} ×${nombre} → ${issue}`);
-  const embed = new EmbedBuilder().setColor(couleurPour(serveur, 'error')).setTitle('💥 Anti-nuke déclenché').setDescription(lignes.join('\n')).setFooter({ text: serveur.name }).setTimestamp();
+  const embed = new EmbedBuilder().setColor(couleurPour(serveur, 'erreur')).setTitle('💥 Anti-nuke déclenché').setDescription(lignes.join('\n')).setFooter({ text: serveur.name }).setTimestamp();
   for (const id of new Set([serveur.ownerId, ...membresListe('streamer', serveur.id)])) {
     const utilisateur = await serveur.client.users.fetch(id).catch(() => null);
     await utilisateur?.send({ embeds: [embed] }).catch(() => undefined);

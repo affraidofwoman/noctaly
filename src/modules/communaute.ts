@@ -61,9 +61,9 @@ interface LigneSuggestion {
 }
 
 const STATUTS = {
-  pending: { label: 'En attente', emoji: '⏳', kind: 'primary' as const },
-  accepted: { label: 'Acceptée', emoji: '✅', kind: 'success' as const },
-  denied: { label: 'Refusée', emoji: '❌', kind: 'error' as const },
+  pending: { label: 'En attente', emoji: '⏳', kind: 'principale' as const },
+  accepted: { label: 'Acceptée', emoji: '✅', kind: 'succes' as const },
+  denied: { label: 'Refusée', emoji: '❌', kind: 'erreur' as const },
 };
 
 function votes(id: number): { up: number; down: number } {
@@ -294,7 +294,7 @@ function afficherSondages(serveur: Guild, sondage: LigneSondage) {
     return `${NUMEROS[i]} **${tronquer(c, 80)}**${victoire}\n${barreProgression(total ? comptes[i]! / total : 0, 14)} ${pourcentage}% · ${comptes[i]} vote${comptes[i]! > 1 ? 's' : ''}`;
   });
   const embed = new EmbedBuilder()
-    .setColor(couleurPour(serveur, ferme ? 'info' : 'primary'))
+    .setColor(couleurPour(serveur, ferme ? 'info' : 'principale'))
     .setAuthor({ name: ferme ? '📊 SONDAGE TERMINÉ' : '📊 SONDAGE' })
     .setTitle(tronquer(sondage.question, 256))
     .setDescription(lignes.join('\n\n'))
@@ -419,7 +419,7 @@ async function envoyerSignalement(membre: GuildMember, cible: User, raison: stri
       await salon.send({
         embeds: [
           new EmbedBuilder()
-            .setColor(couleurPour(serveur, 'warning'))
+            .setColor(couleurPour(serveur, 'attention'))
             .setTitle('🚨 Signalement')
             .setDescription(`**Signalé :** <@${cible.id}> \`${cible.id}\`\n**Raison :** ${nettoyer}${preuve ? `\n**Preuve :** ${tronquer(preuve, 500)}` : ''}`),
         ],
@@ -435,7 +435,7 @@ async function envoyerSignalement(membre: GuildMember, cible: User, raison: stri
   await salon.send({
     embeds: [
       new EmbedBuilder()
-        .setColor(couleurPour(serveur, 'warning'))
+        .setColor(couleurPour(serveur, 'attention'))
         .setAuthor({ name: `Signalé par ${membre.user.tag}`, iconURL: membre.user.displayAvatarURL({ size: 64 }) })
         .setTitle('🚨 Nouveau signalement')
         .setThumbnail(cible.displayAvatarURL({ size: 128 }))
@@ -530,7 +530,7 @@ export const moduleSignalements: ModuleBot = {
           embed.setFooter({ text: `Pris en charge par ${interaction.user.tag}` });
           await interaction.update({ embeds: [embed], components: [rangee(bouton('rep:done:x', 'Traité', ButtonStyle.Success, '✅'))] });
         } else {
-          embed.setColor(couleurPour(interaction.guild, 'success')).setFooter({ text: `Traité par ${interaction.user.tag}` });
+          embed.setColor(couleurPour(interaction.guild, 'succes')).setFooter({ text: `Traité par ${interaction.user.tag}` });
           await interaction.update({ embeds: [embed], components: [] });
         }
       },

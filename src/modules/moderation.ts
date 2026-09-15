@@ -112,7 +112,7 @@ async function prevenir(serveur: Guild, utilisateur: User, type: TypeSanction, r
     if (reglages.texteContact) lignes.push('', reglages.texteContact);
   }
   const embed = new EmbedBuilder()
-    .setColor(couleurPour(serveur, pose ? 'error' : 'success'))
+    .setColor(couleurPour(serveur, pose ? 'erreur' : 'succes'))
     .setAuthor({ name: pose ? 'Sanction appliquée' : 'Sanction levée' })
     .setDescription(lignes.join('\n'))
     .setFooter({ text: nomEnseigne(serveur) })
@@ -356,12 +356,12 @@ async function restaurerSalon(salon: GuildChannel, cliche: InstantanePermissions
 }
 
 function versOptions(autorise: bigint, refuse: bigint): Record<string, boolean | null> {
-  const opts: Record<string, boolean | null> = {};
+  const choix: Record<string, boolean | null> = {};
   for (const drapeau of PERMISSIONS_VERROU) {
     const nom = new PermissionsBitField(drapeau).toArray()[0]!;
-    opts[nom] = (autorise & drapeau) === drapeau ? true : (refuse & drapeau) === drapeau ? false : null;
+    choix[nom] = (autorise & drapeau) === drapeau ? true : (refuse & drapeau) === drapeau ? false : null;
   }
-  return opts;
+  return choix;
 }
 
 export interface ResultatVerrou {

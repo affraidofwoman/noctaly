@@ -375,7 +375,7 @@ export async function traiterBoutonReglage(interaction: ButtonInteraction<'cache
       modifierConfig(serveur.id, (c) => {
         c.assistant.termineLe = Date.now();
       });
-      const embed = embedEnseigne(serveur, 'success')
+      const embed = embedEnseigne(serveur, 'succes')
         .setTitle('✅ CONFIGURATION TERMINÉE')
         .setDescription('Votre serveur est prêt ! 🎉\n\nTu peux revenir à tout moment avec `/setup`, voir les modules avec `/modules` ou tester les messages avec `/test`.');
       await interaction.update({ embeds: [embed], components: [] });

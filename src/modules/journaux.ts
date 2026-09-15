@@ -69,7 +69,7 @@ async function surMessageSupprime(message: Message | PartialMessage) {
     });
     return;
   }
-  const attachments = [...message.attachments.values()].map((a) => `[${a.name}](${a.url})`);
+  const piecesJointes = [...message.attachments.values()].map((a) => `[${a.name}](${a.url})`);
   await journal(message.guild, 'message', {
     titre: 'Message supprimé',
     ton: 'alerte',
@@ -79,7 +79,7 @@ async function surMessageSupprime(message: Message | PartialMessage) {
       `**Envoyé** : ${marqueTemps(message.createdTimestamp, 'R')}`,
       '',
       citer(message.content, 3000),
-      attachments.length ? `\n**Pièces jointes** : ${attachments.join(' · ')}` : null,
+      piecesJointes.length ? `\n**Pièces jointes** : ${piecesJointes.join(' · ')}` : null,
     ],
   });
 }

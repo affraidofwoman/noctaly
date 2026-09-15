@@ -81,7 +81,7 @@ function messageConcours(serveur: Guild, c: LigneConcours) {
   const recompenses = [c.recompense_pieces ? `${c.recompense_pieces} ${lireConfig(serveur.id).economie.emojiMonnaie}` : null, c.recompense_xp ? `${c.recompense_xp} XP` : null, c.recompense_role_id ? `<@&${c.recompense_role_id}>` : null].filter(Boolean);
   const phase = c.statut === 'submissions' ? `📝 Participations jusqu’à ${marqueTemps(c.fin_participations_le, 'R')}` : c.statut === 'voting' ? `🗳️ Votes jusqu’à ${marqueTemps(c.fin_votes_le, 'R')}` : '🏁 Concours terminé';
   const embed = new EmbedBuilder()
-    .setColor(couleurPour(serveur, c.statut === 'ended' ? 'info' : 'primary'))
+    .setColor(couleurPour(serveur, c.statut === 'ended' ? 'info' : 'principale'))
     .setTitle(`🏆 CONCOURS — ${tronquer(c.nom.toUpperCase(), 230)}`)
     .setDescription([c.description, '', phase, `👥 **${entrees}** participation(s)`, c.role_jury_id ? `⚖️ Jury : <@&${c.role_jury_id}> (vote ×${POIDS_JURY})` : null, recompenses.length ? `🎁 Récompenses : ${recompenses.join(' · ')}` : null].filter((l) => l !== null).join('\n'));
   if (c.statut === 'ended') {
@@ -416,14 +416,14 @@ async function soumettre(interaction: ModalSubmitInteraction<'cached'>, formulai
   const serveur = interaction.guild;
   const salon = resoudreSalonTexte(serveur, formulaire.salonId ?? lireConfig(serveur.id).general.salonStaffId);
   if (!salon) throw new ErreurUtilisateur('Ce formulaire n’a pas de salon de réception. Préviens le staff.');
-  const answers = formulaire.questions.slice(0, 5).map((q, i) => ({ q: q.libelle, a: neutraliserMentions(interaction.fields.getTextInputValue(`q${i}`).trim()) }));
-  const r = executer('INSERT INTO reponses_formulaires (serveur_id, formulaire, utilisateur_id, reponses, cree_le) VALUES (?, ?, ?, ?, ?)', serveur.id, formulaire.nom, interaction.user.id, JSON.stringify(answers), Date.now());
+  const reponses = formulaire.questions.slice(0, 5).map((q, i) => ({ q: q.libelle, a: neutraliserMentions(interaction.fields.getTextInputValue(`q${i}`).trim()) }));
+  const r = executer('INSERT INTO reponses_formulaires (serveur_id, formulaire, utilisateur_id, reponses, cree_le) VALUES (?, ?, ?, ?, ?)', serveur.id, formulaire.nom, interaction.user.id, JSON.stringify(reponses), Date.now());
   const embed = new EmbedBuilder()
     .setColor(couleurPour(serveur, 'info'))
     .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 64 }) })
     .setTitle(`${formulaire.titre} — #${r.lastInsertRowid}`)
     .setDescription(`<@${interaction.user.id}> \`${interaction.user.id}\``)
-    .addFields(answers.map((x) => ({ name: tronquer(x.q, 256), value: tronquer(x.a || '—', 1024), inline: false })))
+    .addFields(reponses.map((x) => ({ name: tronquer(x.q, 256), value: tronquer(x.a || '—', 1024), inline: false })))
     .setTimestamp();
   await salon.send({
     embeds: [embed],
@@ -564,9 +564,9 @@ export const moduleFormulaires: ModuleBot = {
         const formulaire = lireFormulaire(interaction.guild, sousCommande.formulaire);
         const utilisateur = await interaction.client.users.fetch(sousCommande.utilisateur_id).catch(() => null);
         await utilisateur
-          ?.send({ embeds: [new EmbedBuilder().setColor(couleurPour(interaction.guild, accepte ? 'success' : 'error')).setDescription(`${accepte ? '✅' : '❌'} Ta réponse au formulaire **${formulaire?.titre ?? sousCommande.formulaire}** sur **${interaction.guild.name}** a été **${accepte ? 'acceptée' : 'refusée'}**.${accepte ? '\nLe staff va te recontacter.' : ''}`)] })
+          ?.send({ embeds: [new EmbedBuilder().setColor(couleurPour(interaction.guild, accepte ? 'succes' : 'erreur')).setDescription(`${accepte ? '✅' : '❌'} Ta réponse au formulaire **${formulaire?.titre ?? sousCommande.formulaire}** sur **${interaction.guild.name}** a été **${accepte ? 'acceptée' : 'refusée'}**.${accepte ? '\nLe staff va te recontacter.' : ''}`)] })
           .catch(() => undefined);
-        const embed = EmbedBuilder.from(interaction.message.embeds[0]!).setColor(couleurPour(interaction.guild, accepte ? 'success' : 'error')).setFooter({ text: `${accepte ? 'Acceptée' : 'Refusée'} par ${interaction.user.tag}` });
+        const embed = EmbedBuilder.from(interaction.message.embeds[0]!).setColor(couleurPour(interaction.guild, accepte ? 'succes' : 'erreur')).setFooter({ text: `${accepte ? 'Acceptée' : 'Refusée'} par ${interaction.user.tag}` });
         await interaction.update({ embeds: [embed], components: [] });
       },
       async fenetre(interaction: ModalSubmitInteraction<'cached'>, [action, argument]) {

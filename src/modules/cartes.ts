@@ -1287,11 +1287,11 @@ export async function carteCommandes(nom: string, niveau: number, prefixe: strin
     const x = 40 + i * 480;
     panneau(contexte, x, 140, 460, 60 + lignes * 84, { bordure: `${c.couleur}44` });
     ecrire(contexte, c.titre, x + 28, 182, { taille: 22, poids: '700', couleur: c.couleur });
-    c.commandes.forEach((cmd, j) => {
+    c.commandes.forEach((commande, j) => {
       const y = 204 + j * 84;
       panneau(contexte, x + 16, y, 428, 72, { couleur: PALETTE.panneauClair, rayon: 12 });
-      ecrire(contexte, `${prefixe}${cmd.nom}`, x + 36, y + 32, { taille: 22, poids: '700' });
-      ecrire(contexte, cmd.description, x + 36, y + 58, { taille: 16, couleur: PALETTE.texteDoux, largeur: 390 });
+      ecrire(contexte, `${prefixe}${commande.nom}`, x + 36, y + 32, { taille: 22, poids: '700' });
+      ecrire(contexte, commande.description, x + 36, y + 58, { taille: 16, couleur: PALETTE.texteDoux, largeur: 390 });
     });
   });
   ecrire(contexte, 'Tape une commande pour commencer', 750, 234 + lignes * 84, { taille: 16, couleur: PALETTE.texteFaible, aligner: 'center' });

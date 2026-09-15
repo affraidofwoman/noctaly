@@ -40,41 +40,41 @@ import { type CouleursTheme, hexaEnEntier, lireConfig, THEMES } from './reglages
 
 export type GenreEmbed = keyof CouleursTheme;
 
-type RefServeur = Guild | string | null | undefined;
+type ServeurVise = Guild | string | null | undefined;
 
-function idDe(serveur: RefServeur): string | null {
+function idDe(serveur: ServeurVise): string | null {
   if (!serveur) return null;
   return typeof serveur === 'string' ? serveur : serveur.id;
 }
 
-const TONS_ENSEIGNE: Omit<CouleursTheme, 'primary'> = {
-  success: '#3FE08F',
-  error: '#E0455A',
-  warning: '#F0B232',
+const TONS_ENSEIGNE: Omit<CouleursTheme, 'principale'> = {
+  succes: '#3FE08F',
+  erreur: '#E0455A',
+  attention: '#F0B232',
   info: '#46C8FF',
 };
 
-export function couleurPour(serveur: RefServeur, genre: GenreEmbed = 'primary'): number {
+export function couleurPour(serveur: ServeurVise, genre: GenreEmbed = 'principale'): number {
   const id = idDe(serveur);
   const enseigne = enseigneDe(id);
-  if (!id) return genre === 'primary' ? enseigne.couleur : hexaEnEntier(TONS_ENSEIGNE[genre]);
+  if (!id) return genre === 'principale' ? enseigne.couleur : hexaEnEntier(TONS_ENSEIGNE[genre]);
   const general = lireConfig(id).general;
-  if (general.theme === 'brand') return genre === 'primary' ? enseigne.couleur : hexaEnEntier(TONS_ENSEIGNE[genre]);
+  if (general.theme === 'brand') return genre === 'principale' ? enseigne.couleur : hexaEnEntier(TONS_ENSEIGNE[genre]);
   if (general.theme === 'custom') return hexaEnEntier(general.couleurs[genre]);
   return hexaEnEntier(THEMES[general.theme]?.colors[genre] ?? general.couleurs[genre]);
 }
 
-export function enseigneDuServeur(serveur: RefServeur): Enseigne {
+export function enseigneDuServeur(serveur: ServeurVise): Enseigne {
   return enseigneDe(idDe(serveur));
 }
 
-export function nomEnseigne(serveur: RefServeur): string {
+export function nomEnseigne(serveur: ServeurVise): string {
   const enseigne = enseigneDuServeur(serveur);
   if (enseigne.cle) return enseigne.nom;
   return serveur && typeof serveur !== 'string' ? serveur.name : enseigne.nom;
 }
 
-export function embedEnseigne(serveur: RefServeur, genre: GenreEmbed = 'primary'): EmbedBuilder {
+export function embedEnseigne(serveur: ServeurVise, genre: GenreEmbed = 'principale'): EmbedBuilder {
   const embed = new EmbedBuilder().setColor(couleurPour(serveur, genre));
   if (serveur && typeof serveur !== 'string') {
     const enseigne = enseigneDuServeur(serveur);
@@ -113,7 +113,7 @@ export function signer(embed: EmbedBuilder, utilisateur: User | null | undefined
   return embed.setFooter({ text: utilisateur.tag, iconURL: utilisateur.displayAvatarURL({ size: 64 }) }).setTimestamp();
 }
 
-function bati(serveur: RefServeur, genre: GenreEmbed, emojiParDefaut: string, texte: string, options: ReponseOptions = {}): EmbedBuilder {
+function bati(serveur: ServeurVise, genre: GenreEmbed, emojiParDefaut: string, texte: string, options: ReponseOptions = {}): EmbedBuilder {
   const emoji = options.emoji ?? emojiParDefaut;
   const embed = new EmbedBuilder().setColor(couleurPour(serveur, genre));
   if (options.titre) {
@@ -128,11 +128,11 @@ function bati(serveur: RefServeur, genre: GenreEmbed, emojiParDefaut: string, te
   return signer(embed, options.par);
 }
 
-export const ok = (serveur: RefServeur, texte: string, options?: ReponseOptions) => bati(serveur, 'success', emojiPour(idDe(serveur), 'valide'), texte, options);
-export const erreur = (serveur: RefServeur, texte: string, options?: ReponseOptions) => bati(serveur, 'error', emojiPour(idDe(serveur), 'probleme'), texte, options);
-export const refus = (serveur: RefServeur, texte: string, options?: ReponseOptions) => bati(serveur, 'error', emojiPour(idDe(serveur), 'refus'), texte, options);
-export const info = (serveur: RefServeur, texte: string, options?: ReponseOptions) => bati(serveur, 'primary', emojiPour(idDe(serveur), 'info'), texte, options);
-export const attention = (serveur: RefServeur, texte: string, options?: ReponseOptions) => bati(serveur, 'warning', emojiPour(idDe(serveur), 'attention'), texte, options);
+export const ok = (serveur: ServeurVise, texte: string, options?: ReponseOptions) => bati(serveur, 'succes', emojiPour(idDe(serveur), 'valide'), texte, options);
+export const erreur = (serveur: ServeurVise, texte: string, options?: ReponseOptions) => bati(serveur, 'erreur', emojiPour(idDe(serveur), 'probleme'), texte, options);
+export const refus = (serveur: ServeurVise, texte: string, options?: ReponseOptions) => bati(serveur, 'erreur', emojiPour(idDe(serveur), 'refus'), texte, options);
+export const info = (serveur: ServeurVise, texte: string, options?: ReponseOptions) => bati(serveur, 'principale', emojiPour(idDe(serveur), 'info'), texte, options);
+export const attention = (serveur: ServeurVise, texte: string, options?: ReponseOptions) => bati(serveur, 'attention', emojiPour(idDe(serveur), 'attention'), texte, options);
 
 export interface PanneauSection {
   emoji: string;
@@ -142,40 +142,40 @@ export interface PanneauSection {
 }
 
 export function panneau(
-  serveur: RefServeur,
-  opts: { sujet?: string; titre?: string; ouverture?: string; sections?: PanneauSection[]; totaux?: { emoji: string; libelle: string; valeur: string | number }[]; texte?: string; par?: User | null },
+  serveur: ServeurVise,
+  options: { sujet?: string; titre?: string; ouverture?: string; sections?: PanneauSection[]; totaux?: { emoji: string; libelle: string; valeur: string | number }[]; texte?: string; par?: User | null },
 ): EmbedBuilder {
   const embed = embedEnseigne(serveur);
-  if (opts.titre) embed.setTitle(`${opts.sujet ? `${opts.sujet} ` : ''}${opts.titre}`.slice(0, 256));
+  if (options.titre) embed.setTitle(`${options.sujet ? `${options.sujet} ` : ''}${options.titre}`.slice(0, 256));
   const bloc: string[] = [];
-  if (opts.ouverture) bloc.push(opts.ouverture.trim());
-  for (const s of opts.sections ?? []) {
+  if (options.ouverture) bloc.push(options.ouverture.trim());
+  for (const s of options.sections ?? []) {
     const lignes = (s.lignes ?? []).map((l) => (Array.isArray(l) ? puce(l[0], l[1]) : puce(l)));
     if (!lignes.length && !s.texte) continue;
     bloc.push('', section(s.emoji, s.nom));
     if (s.texte) bloc.push(s.texte.trim());
     bloc.push(...lignes);
   }
-  if (opts.totaux?.length) bloc.push('', ...opts.totaux.map((t) => total(t.emoji, t.libelle, t.valeur)));
-  if (opts.texte) bloc.push('', opts.texte.trim());
+  if (options.totaux?.length) bloc.push('', ...options.totaux.map((t) => total(t.emoji, t.libelle, t.valeur)));
+  if (options.texte) bloc.push('', options.texte.trim());
   const corps = bloc.join('\n').trim();
   if (corps) embed.setDescription(corps.slice(0, 4096));
-  return opts.par ? signer(embed, opts.par) : embed;
+  return options.par ? signer(embed, options.par) : embed;
 }
 
-export function embedSucces(serveur: RefServeur, description: string, titre = 'C’est fait'): EmbedBuilder {
+export function embedSucces(serveur: ServeurVise, description: string, titre = 'C’est fait'): EmbedBuilder {
   return ok(serveur, description, { titre });
 }
 
-export function embedErreur(serveur: RefServeur, description: string, titre = 'Une erreur est survenue'): EmbedBuilder {
+export function embedErreur(serveur: ServeurVise, description: string, titre = 'Une erreur est survenue'): EmbedBuilder {
   return erreur(serveur, description, { titre });
 }
 
-export function embedAvertissement(serveur: RefServeur, description: string, titre = 'Êtes-vous sûr ?'): EmbedBuilder {
+export function embedAvertissement(serveur: ServeurVise, description: string, titre = 'Êtes-vous sûr ?'): EmbedBuilder {
   return attention(serveur, description, { titre });
 }
 
-export function embedInfo(serveur: RefServeur, description: string, titre = 'Information'): EmbedBuilder {
+export function embedInfo(serveur: ServeurVise, description: string, titre = 'Information'): EmbedBuilder {
   return info(serveur, description, { titre });
 }
 
@@ -191,7 +191,7 @@ export interface ContexteVariables {
   maintenant?: number;
 }
 
-export const DOCS_VARIABLES: Record<string, string> = {
+export const AIDE_VARIABLES: Record<string, string> = {
   user: "Nom d'affichage de l'utilisateur",
   mention: "Mention de l'utilisateur",
   username: "Nom d'utilisateur",
@@ -248,7 +248,7 @@ export function remplirModele(modele: string, contexte: ContexteVariables): stri
 }
 
 export function aideVariables(noms: string[]): string {
-  return noms.map((n) => `\`{${n}}\` — ${DOCS_VARIABLES[n] ?? n}`).join('\n');
+  return noms.map((n) => `\`{${n}}\` — ${AIDE_VARIABLES[n] ?? n}`).join('\n');
 }
 
 export interface ChampFenetre {
@@ -542,7 +542,7 @@ export interface Suivi {
   terminer(): Promise<void>;
 }
 
-export function suiviReponse(interaction: { editReply(charge: object): Promise<unknown> }, serveur: RefServeur, titre: string, total = 0): Suivi {
+export function suiviReponse(interaction: { editReply(charge: object): Promise<unknown> }, serveur: ServeurVise, titre: string, total = 0): Suivi {
   return creerSuivi((texte) => interaction.editReply({ content: null, embeds: [info(serveur, texte)], components: [] }), titre, total);
 }
 

@@ -809,7 +809,7 @@ const evenements: EvenementsLecteur = {
   },
   surErreur(session, piste, erreur) {
     void annonce(session, {
-      embeds: [new EmbedBuilder().setColor(couleurPour(session.serveur, 'error')).setDescription(`⚠️ Impossible de lire **${tronquer(piste?.titre ?? 'ce morceau', 150)}** : \`${tronquer(erreur.message, 200)}\`. Passage au suivant.`)],
+      embeds: [new EmbedBuilder().setColor(couleurPour(session.serveur, 'erreur')).setDescription(`⚠️ Impossible de lire **${tronquer(piste?.titre ?? 'ce morceau', 150)}** : \`${tronquer(erreur.message, 200)}\`. Passage au suivant.`)],
     });
   },
   surFin(session) {
