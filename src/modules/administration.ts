@@ -669,7 +669,7 @@ function ecranEmojis(cle: string, page = 0) {
   const embed = new EmbedBuilder()
     .setColor(s.couleur ?? COULEUR_DEFAUT)
     .setTitle('Émojis')
-    .setDescription('Choisis une clé pour lui donner ton émoji. Celles que tu laisses gardent celui du bot — pas besoin de tout fournir.')
+    .setDescription('Choisis une clé pour lui donner ton émoji. Celles que tu laisses prennent l’émoji du serveur qui porte le même nom, sinon celui du bot — pas besoin de tout fournir.')
     .addFields({ name: `Repris par l’enseigne (${pris.length})`, value: tronquer(pris.length ? pris.map(([n, c]) => `${c} \`${n}\``).join(' · ') : AUCUN, 1024) })
     .setFooter({ text: `Page ${p + 1} sur ${pages} · ${cles.length} clés en tout` });
   const menu = new StringSelectMenuBuilder()

@@ -555,8 +555,85 @@ export function enseigneDe(serveurId: string | null | undefined): Enseigne {
   return enseigne;
 }
 
+// - Les émojis du serveur, repris tout seuls -
+// Chaque serveur n’utilise que ses propres émojis : rien ne passe d’un streamer à l’autre.
+const MOTS_EMOJIS: Record<CleEmoji, string[]> = {
+  valide: ['valide', 'check', 'ok', 'oui', 'yes', 'tick', 'verif', 'verifie', 'done'],
+  probleme: ['non', 'no', 'croix', 'cross', 'erreur', 'error', 'fail'],
+  refus: ['refus', 'interdit', 'deny', 'forbidden', 'stop'],
+  info: ['info', 'infos', 'information'],
+  attention: ['attention', 'warning', 'warn', 'alerte', 'alert'],
+  attente: ['attente', 'loading', 'chargement', 'wait', 'sablier'],
+  ticket: ['ticket', 'tickets', 'tcket', 'support'],
+  giveaway: ['giveaway', 'giveaways', 'gw', 'tada', 'fete', 'party'],
+  cadeau: ['cadeau', 'cadeaux', 'gift', 'present'],
+  live: ['live', 'enlive', 'onair', 'rec', 'direct'],
+  twitch: ['twitch'],
+  musique: ['musique', 'music', 'note', 'spotify', 'song'],
+  bienvenue: ['bienvenue', 'welcome', 'hello', 'coucou', 'salut', 'wave', 'join'],
+  depart: ['depart', 'bye', 'leave', 'aurevoir', 'ciao'],
+  sanction: ['sanction', 'sanctions', 'modo', 'moderation', 'mod', 'shield', 'bouclier', 'ban', 'hammer'],
+  whitelist: ['whitelist', 'wl', 'cadenas', 'lock', 'acces'],
+  couronne: ['couronne', 'crown', 'roi', 'king', 'reine', 'queen', 'owner'],
+  etoile: ['etoile', 'star', 'staff'],
+  stats: ['stats', 'stat', 'statistiques', 'graph', 'chart'],
+  message: ['message', 'messages', 'msg', 'chat', 'bulle', 'notes'],
+  vocal: ['vocal', 'voice', 'micro', 'mic'],
+  role: ['role', 'roles'],
+  cle: ['cle', 'key', 'cles', 'keys'],
+  corbeille: ['corbeille', 'trash', 'poubelle', 'bin', 'delete'],
+  lien: ['lien', 'liens', 'link', 'url'],
+  anniversaire: ['anniversaire', 'anniv', 'birthday', 'gateau', 'cake'],
+  rappel: ['rappel', 'reminder', 'alarm', 'reveil', 'horloge', 'clock'],
+  annonce: ['annonce', 'annonces', 'announce', 'megaphone', 'news'],
+  argent: ['argent', 'money', 'gold', 'coin', 'coins', 'piece', 'cash', 'euro'],
+  niveau: ['niveau', 'level', 'lvl', 'trophee', 'trophy', 'rank', 'classement'],
+  boost: ['boost', 'nitro', 'booster', 'boosts'],
+  suggestion: ['suggestion', 'suggestions', 'idee', 'idea', 'ampoule'],
+};
+
+const motsDuNom = (nom: string) =>
+  nom
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+
+export function associerEmojis(emojis: { id: string; nom: string; anime: boolean; utilisable: boolean }[]): Partial<Record<CleEmoji, string>> {
+  const sortie: Partial<Record<CleEmoji, string>> = {};
+  const pris = new Set<string>();
+  const utilisables = emojis.filter((e) => e.utilisable);
+  // - Le nom exact d’abord, puis un mot du nom -
+  for (const exact of [true, false]) {
+    for (const cle of Object.keys(MOTS_EMOJIS) as CleEmoji[]) {
+      if (sortie[cle]) continue;
+      const trouve = utilisables.find((e) => {
+        if (pris.has(e.id)) return false;
+        const mots = motsDuNom(e.nom);
+        return exact ? MOTS_EMOJIS[cle].includes(mots.join('')) : mots.some((m) => MOTS_EMOJIS[cle].includes(m));
+      });
+      if (!trouve) continue;
+      sortie[cle] = `<${trouve.anime ? 'a' : ''}:${trouve.nom}:${trouve.id}>`;
+      pris.add(trouve.id);
+    }
+  }
+  return sortie;
+}
+
+const emojisServeurs = new Map<string, Partial<Record<CleEmoji, string>>>();
+
+export function poserEmojisServeur(serveurId: string, emojis: Partial<Record<CleEmoji, string>>): void {
+  emojisServeurs.set(serveurId, emojis);
+}
+
+export function emojisDuServeur(serveurId: string): Partial<Record<CleEmoji, string>> {
+  return emojisServeurs.get(serveurId) ?? {};
+}
+
 export function emojiPour(serveurId: string | null | undefined, cle: CleEmoji): string {
-  return enseigneDe(serveurId).emojis[cle] ?? CLES_EMOJIS[cle];
+  return enseigneDe(serveurId).emojis[cle] ?? (serveurId ? emojisServeurs.get(serveurId)?.[cle] : undefined) ?? CLES_EMOJIS[cle];
 }
 
 export function oublierEnseignes(): void {

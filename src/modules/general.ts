@@ -10,7 +10,7 @@ import {
   SlashCommandBuilder,
   type User,
 } from 'discord.js';
-import { aAcces, libelleNiveauVu, whitelistsMembreVues } from '../coeur/acces';
+import { aAcces, associerEmojis, type CleEmoji, emojiPour, libelleNiveauVu, poserEmojisServeur, whitelistsMembreVues } from '../coeur/acces';
 import { bouton, boutonCorbeille, couleurPour, embedEnseigne, info, nomEnseigne, rangee, rangeeCorbeille, repondre } from '../coeur/affichage';
 import { type CommandePrefixe, type CommandeSlash, etatBot, lireAiguilleur, type ModuleBot, niveauRequis, sur } from '../coeur/noyau';
 import { formaterDuree, formaterNombre, marqueTemps, membreCible, resoudreUtilisateur, tronquer, type CategorieAide, CATEGORIES_AIDE, Niveau } from '../coeur/outils';
@@ -112,6 +112,20 @@ export function tableauAide(sections: { titre: string; lignes: string[] }[], opt
   return embeds;
 }
 
+// - Les émojis du serveur en tête de chaque section -
+const EMOJIS_CATEGORIES: Partial<Record<CategorieAide, CleEmoji>> = {
+  general: 'info',
+  progression: 'niveau',
+  community: 'message',
+  music: 'musique',
+  tickets: 'ticket',
+  moderation: 'sanction',
+  salons: 'cle',
+  customization: 'annonce',
+  acces: 'whitelist',
+  admin: 'couronne',
+};
+
 function sectionsAide(membre: GuildMember): { titre: string; lignes: string[] }[] {
   const aiguilleur = lireAiguilleur();
   const serveurId = membre.guild.id;
@@ -140,7 +154,8 @@ function sectionsAide(membre: GuildMember): { titre: string; lignes: string[] }[
     }
     lignes.sort((a, b) => a.localeCompare(b, 'fr'));
     lignes.push(...pairesPrefixe(aPrefixe));
-    if (lignes.length) sections.push({ titre: `${CATEGORIES_AIDE[categorie].emoji} ${CATEGORIES_AIDE[categorie].label}`, lignes });
+    const cleEmoji = EMOJIS_CATEGORIES[categorie];
+    if (lignes.length) sections.push({ titre: `${cleEmoji ? emojiPour(serveurId, cleEmoji) : CATEGORIES_AIDE[categorie].emoji} ${CATEGORIES_AIDE[categorie].label}`, lignes });
   }
   return sections;
 }
@@ -304,6 +319,14 @@ async function membreDuPrefixe(message: import('discord.js').Message<true>, argu
   return { user: utilisateur, member: membreSecours };
 }
 
+// - Les émojis du serveur -
+function relireEmojis(serveur: Guild): void {
+  poserEmojisServeur(
+    serveur.id,
+    associerEmojis([...serveur.emojis.cache.values()].map((e) => ({ id: e.id, nom: e.name ?? '', anime: Boolean(e.animated), utilisable: e.available !== false && e.roles.cache.size === 0 }))),
+  );
+}
+
 const commandesPrefixe: CommandePrefixe[] = [
   {
     nom: 'help',
@@ -409,7 +432,13 @@ export const moduleGeneral: ModuleBot = {
       },
     },
   ],
-  evenements: [sur('voiceStateUpdate', (avant, apres) => traiterEtatVocal(avant, apres), 5)],
+  evenements: [
+    sur('voiceStateUpdate', (avant, apres) => traiterEtatVocal(avant, apres), 5),
+    sur('emojiCreate', (e) => relireEmojis(e.guild)),
+    sur('emojiUpdate', (_avant, apres) => relireEmojis(apres.guild)),
+    sur('emojiDelete', (e) => relireEmojis(e.guild)),
+    sur('guildCreate', (g) => relireEmojis(g)),
+  ],
   taches: [
     {
       nom: 'voice-flush',
@@ -421,5 +450,6 @@ export const moduleGeneral: ModuleBot = {
   ],
   async auDemarrage(client) {
     resynchroniserVocal(client);
+    for (const serveur of client.guilds.cache.values()) relireEmojis(serveur);
   },
 };
